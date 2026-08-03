@@ -233,6 +233,19 @@ mkbackup() { # name [age-days]
     server_is_stopped
 }
 
+# ── engine tick rate ─────────────────────────────────────────────────────────
+
+@test "gen_engine_tickrate writes Engine.ini when set, rejects junk" {
+    SERVER_TICKRATE=120 gen_engine_tickrate
+    run cat "$SAVES_DIR/Config/LinuxServer/Engine.ini"
+    [[ "$output" == *'[/script/onlinesubsystemutils.ipnetdriver]'* ]]
+    [[ "$output" == *'NetServerMaxTickRate=120'* ]]
+    [[ "$output" == *'LanServerMaxTickRate=120'* ]]
+    rm -rf "$SAVES_DIR/Config"
+    SERVER_TICKRATE="60; rm -rf /" gen_engine_tickrate
+    [ ! -e "$SAVES_DIR/Config/LinuxServer/Engine.ini" ]
+}
+
 # ── ini_set ──────────────────────────────────────────────────────────────────
 
 @test "ini_set updates an existing key in the right section" {

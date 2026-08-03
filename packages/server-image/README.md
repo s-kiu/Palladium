@@ -98,6 +98,7 @@ docker compose run --rm palworld restore <archive|latest>
 | `SHUTDOWN_MESSAGE` | `Server is shutting down` | Broadcast text |
 | `PUID` / `PGID` | `1000` | Owner of `/palworld` (match your host user) |
 | `SKIP_CHOWN` | `false` | Skip ownership fixing on boot |
+| `SERVER_TICKRATE` | unset | Engine tick-rate cap (default 60); e.g. `120` — smoother, but much higher CPU |
 | `SERVER_ARGS` | empty | Extra `PalServer.sh` flags |
 | `PERF_ARGS` | community defaults | `-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS` |
 | `STEAM_APP_ID` | `2394010` | Palworld Dedicated Server |

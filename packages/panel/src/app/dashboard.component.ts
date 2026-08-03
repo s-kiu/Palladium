@@ -90,6 +90,12 @@ import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
           </div>
           <div class="kv"><span>Server FPS</span><b>{{ s.metrics?.serverfps ?? '—' }}</b></div>
           <div class="kv"><span>Uptime</span><b>{{ uptime(s) }}</b></div>
+          <div class="kv"><span>Game CPU / RAM</span>
+            <b>{{ s.resources.game ? (s.resources.game.cpuPercent ?? '—') + '% · ' + gb(s.resources.game.rssMb) : '—' }}</b>
+          </div>
+          <div class="kv"><span>Host CPU / RAM</span>
+            <b>{{ (s.resources.host.cpuPercent ?? '—') + '% · ' + gb(s.resources.host.memUsedMb) + ' / ' + gb(s.resources.host.memTotalMb) }}</b>
+          </div>
         </div>
 
         <div class="card">
@@ -168,6 +174,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   uptime(s: Status): string {
     return fmtUptime(s.metrics?.uptime);
+  }
+
+  gb(mb: number | null | undefined): string {
+    return mb == null ? '—' : (mb / 1024).toFixed(1) + ' GB';
   }
 
   applyUpdate(): void {

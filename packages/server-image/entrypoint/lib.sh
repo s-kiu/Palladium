@@ -437,27 +437,42 @@ ensure_saves_link() {
 }
 
 # ── ini editing ──────────────────────────────────────────────────────────────
-ini_set() { # <file> <section> <key> <value>
-    local file="$1" section="$2" key="$3" value="$4" tmp
+ini_set() { # <file> <section> <key> <value> [separator]
+    local file="$1" section="$2" key="$3" value="$4" sep="${5:- = }" tmp
     [[ -f "$file" ]] || touch "$file"
     tmp="$(mktemp)"
-    awk -v s="[$section]" -v k="$key" -v v="$value" '
+    awk -v s="[$section]" -v k="$key" -v v="$value" -v sep="$sep" '
         BEGIN { insec = 0; done = 0; kre = "^[ \t]*" k "[ \t]*=" }
         /^\[/ {
-            if (insec && !done) { print k " = " v; done = 1 }
+            if (insec && !done) { print k sep v; done = 1 }
             insec = ($0 == s)
             print
             next
         }
-        insec && !done && $0 ~ kre { print k " = " v; done = 1; next }
+        insec && !done && $0 ~ kre { print k sep v; done = 1; next }
         { print }
         END {
             if (!done) {
                 if (!insec) print s
-                print k " = " v
+                print k sep v
             }
         }
     ' "$file" >"$tmp" && mv "$tmp" "$file"
+}
+
+gen_engine_tickrate() {
+    # Optional Engine.ini tick-rate override (the server targets 60 by
+    # default). Lives under Saved/Config, so it persists with the world.
+    [[ -n "${SERVER_TICKRATE:-}" ]] || return 0
+    if ! [[ "$SERVER_TICKRATE" =~ ^[0-9]+$ ]]; then
+        warn "SERVER_TICKRATE must be a plain number — ignoring '$SERVER_TICKRATE'"
+        return 0
+    fi
+    local ini="$SAVES_DIR/Config/LinuxServer/Engine.ini"
+    mkdir -p "$(dirname "$ini")"
+    ini_set "$ini" "/script/onlinesubsystemutils.ipnetdriver" NetServerMaxTickRate "$SERVER_TICKRATE" "="
+    ini_set "$ini" "/script/onlinesubsystemutils.ipnetdriver" LanServerMaxTickRate "$SERVER_TICKRATE" "="
+    log "Engine.ini tick rate set to ${SERVER_TICKRATE} (CPU cost rises with it)"
 }
 
 # ── UE4SS install & mod sync ─────────────────────────────────────────────────
@@ -779,16 +794,18 @@ prune_backups() { # <dir> <keep-count> <keep-days>
 maintenance_loop() { # runs in the background from serve.sh
     local backup_s=$((BACKUP_INTERVAL_MINUTES * 60))
     local check_s=$((UPDATE_CHECK_INTERVAL_MINUTES * 60))
-    ((backup_s > 0 || check_s > 0)) || return 0
     local bmark="$STATE_DIR/last-scheduled-backup" cmark="$STATE_DIR/last-update-check"
     ((backup_s > 0)) && log "scheduled backups: every ${BACKUP_INTERVAL_MINUTES} min (retention: count=${BACKUP_KEEP_COUNT}, days=${BACKUP_KEEP_DAYS})"
     ((check_s > 0)) && log "update checks: every ${UPDATE_CHECK_INTERVAL_MINUTES} min"
     [[ -f "$bmark" ]] || touch "$bmark"
     [[ -f "$cmark" ]] || touch "$cmark"
+    local hz prev_ticks=0 prev_ts=0 prev_pid=0
+    hz="$(getconf CLK_TCK 2>/dev/null || echo 100)"
     while true; do
-        sleep 60
+        sleep 15
         local now
         now="$(date +%s)"
+        sample_game_stats "$hz" || true
         if ((backup_s > 0 && now - $(stat -c %Y "$bmark" 2>/dev/null || echo 0) >= backup_s)); then
             touch "$bmark"
             create_backup scheduled >/dev/null || warn "scheduled backup failed"
@@ -808,6 +825,32 @@ maintenance_loop() { # runs in the background from serve.sh
 }
 
 # ── graceful shutdown ────────────────────────────────────────────────────────
+sample_game_stats() { # <clock-hz> — CPU/RSS of the game process for the panel
+    local hz="$1" out="$STATE_DIR/game-stats.json"
+    local pid statline rss ticks cpu="null" now
+    now="$(date +%s)"
+    pid="$(pgrep -f 'PalServer-Linux' | head -n1 || true)"
+    if [[ -z "$pid" || ! -r "/proc/$pid/stat" ]]; then
+        printf '{"at":%s,"running":false}\n' "$now" >"$out.tmp" && mv "$out.tmp" "$out"
+        prev_pid=0 prev_ts=0
+        return 0
+    fi
+    statline="$(cat "/proc/$pid/stat" 2>/dev/null || true)"
+    [[ -n "$statline" ]] || return 0
+    # the comm field may contain spaces — split only after the closing paren;
+    # utime and stime are then fields 12 and 13
+    set -- ${statline##*) }
+    (($# >= 13)) || return 0
+    ticks=$(( ${12} + ${13} ))
+    rss="$(awk '/^VmRSS/{print $2}' "/proc/$pid/status" 2>/dev/null || echo 0)"
+    if [[ "$pid" == "${prev_pid:-0}" ]] && ((${prev_ts:-0} > 0 && now > ${prev_ts:-0})); then
+        cpu=$(( (ticks - ${prev_ticks:-0}) * 100 / (hz * (now - prev_ts)) ))
+    fi
+    printf '{"at":%s,"rssKb":%s,"cpuPercent":%s}\n' "$now" "$rss" "$cpu" >"$out.tmp" \
+        && mv "$out.tmp" "$out"
+    prev_ticks=$ticks prev_ts=$now prev_pid=$pid
+}
+
 graceful_stop() { # <game-pid>
     local pid="$1"
     local wait_s="$SHUTDOWN_WARN_SECONDS"

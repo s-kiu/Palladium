@@ -213,6 +213,46 @@ async function listBackups(): Promise<{ name: string; sizeBytes: number; mtime: 
   }
 }
 
+// ── resource usage ───────────────────────────────────────────────────────────
+// Host memory/CPU from /proc (visible host-wide inside the container); game
+// process CPU/RSS from the sampler the game container writes onto the volume.
+let prevHostCpu: { total: number; idle: number } | null = null;
+
+async function hostResources() {
+  const mem = await readOpt('/proc/meminfo');
+  const memTotalKb = Number(mem?.match(/^MemTotal:\s+(\d+)/m)?.[1] ?? 0);
+  const memAvailKb = Number(mem?.match(/^MemAvailable:\s+(\d+)/m)?.[1] ?? 0);
+  let cpuPercent: number | null = null;
+  const stat = await readOpt('/proc/stat');
+  const parts = stat?.split('\n')[0]?.trim().split(/\s+/).slice(1).map(Number) ?? [];
+  if (parts.length >= 5) {
+    const idle = parts[3] + (parts[4] ?? 0);
+    const total = parts.reduce((a, b) => a + b, 0);
+    if (prevHostCpu && total > prevHostCpu.total) {
+      cpuPercent = Math.round(100 * (1 - (idle - prevHostCpu.idle) / (total - prevHostCpu.total)));
+    }
+    prevHostCpu = { total, idle };
+  }
+  return {
+    memTotalMb: Math.round(memTotalKb / 1024),
+    memUsedMb: Math.round((memTotalKb - memAvailKb) / 1024),
+    cpuPercent,
+  };
+}
+
+async function gameResources() {
+  try {
+    const j = JSON.parse((await readOpt(path.join(STATE_DIR, 'game-stats.json'))) ?? 'null');
+    if (!j || j.running === false || Date.now() / 1000 - j.at > 60) return null;
+    return {
+      rssMb: Math.round((j.rssKb ?? 0) / 1024),
+      cpuPercent: typeof j.cpuPercent === 'number' ? j.cpuPercent : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── app ──────────────────────────────────────────────────────────────────────
 const app = Fastify({ logger: true, bodyLimit: 64 * 1024 });
 
@@ -297,6 +337,7 @@ app.get('/api/status', async () => {
     info,
     metrics,
     operation: operationView(online, stopped),
+    resources: { host: await hostResources(), game: await gameResources() },
     build: {
       installed,
       latest: latest?.id ?? null,

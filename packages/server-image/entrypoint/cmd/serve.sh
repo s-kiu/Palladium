@@ -74,6 +74,7 @@ main() {
 
     # ── config ──
     gen_settings_ini
+    gen_engine_tickrate
     apply_persist_overlay
 
     # ── background maintenance (scheduled backups, update checks) ──

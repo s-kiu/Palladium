@@ -94,6 +94,10 @@ export interface Status {
     fireAt: number;
     phase: 'countdown' | 'executing';
   } | null;
+  resources: {
+    host: { memTotalMb: number; memUsedMb: number; cpuPercent: number | null };
+    game: { rssMb: number; cpuPercent: number | null } | null;
+  };
   build: {
     installed: string | null;
     latest: string | null;
