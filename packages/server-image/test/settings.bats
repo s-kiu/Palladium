@@ -54,6 +54,17 @@ setup() { setup_lib; }
     [[ "$out" != *'ServerPlayerMaxNum=32'* ]]
 }
 
+@test "panel overrides beat map defaults, env vars, and OPT_" {
+    mkdir -p "$CONFIG_DIR"
+    printf '# managed by the panel\nExpRate=3.5\nServerPlayerMaxNum=48\nSupplyDropSpan=99\nbad key=1\n' \
+        >"$PANEL_SETTINGS_FILE"
+    EXP_RATE=2.0 OPT_ServerPlayerMaxNum=64 out="$(build_option_settings "$MAP_FILE")"
+    [[ "$out" == *'ExpRate=3.5'* ]]           # beats env var
+    [[ "$out" == *'ServerPlayerMaxNum=48'* ]] # beats OPT_
+    [[ "$out" == *'SupplyDropSpan=99'* ]]     # appends unmapped keys
+    [[ "$out" != *'bad key'* ]]               # malformed lines ignored
+}
+
 @test "gen_settings_ini writes the section header and settings line" {
     ADMIN_PASSWORD=secret gen_settings_ini
     run cat "$SETTINGS_INI"

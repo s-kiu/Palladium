@@ -224,3 +224,32 @@ td.actions button + button { margin-left: 6px; }
 .login p { margin: 0; text-align: center; font-size: 13px; }
 .login button { background: var(--accent-strong); border-color: transparent; color: #fff; padding: 9px; }
 .login button:hover:not(:disabled) { background: #4f8ef7; }
+
+/* ── settings editor ────────────────────────────────────────────────────── */
+.group-title {
+  margin: 18px 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+table.settings td { vertical-align: middle; }
+td.setting-name { width: 45%; }
+td.setting-name .tag { margin-left: 8px; }
+td.setting-input input, td.setting-input select { width: 100%; }
+.tag.warn-tag { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); }
+tr.edited td { background: rgba(91, 157, 255, 0.06); }
+.searchbox { max-width: 240px; }
+.advanced-key { flex: 0 0 auto; min-width: 180px; }
+.short-key { flex: 0 0 220px; }
+.apply-bar { position: sticky; bottom: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); }
+
+/* ── accessibility ──────────────────────────────────────────────────────── */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

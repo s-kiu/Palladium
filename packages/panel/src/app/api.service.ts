@@ -32,6 +32,25 @@ export interface BackupEntry {
   tag: string;
 }
 
+export interface SettingEntry {
+  key: string;
+  type: 'str' | 'bool' | 'raw';
+  group: string;
+  envName: string;
+  default: string | null;
+  value: string;
+  source: 'panel' | 'env' | 'default';
+  liveValue: unknown;
+  overridden: boolean;
+  pending: boolean;
+}
+
+export interface SettingsEditorState {
+  online: boolean;
+  editable: SettingEntry[];
+  advanced: { key: string; value: string }[];
+}
+
 export interface ConnectInfo {
   online: boolean;
   gamePort: number;
@@ -139,6 +158,12 @@ export class Api {
   }
   lifecycle(action: 'restart' | 'stop' | 'start' | 'kill', opts: { waittime?: number; message?: string } = {}) {
     return this.http.post<{ ok: boolean; note: string }>('/api/lifecycle', { action, ...opts });
+  }
+  settingsEditor() {
+    return this.http.get<SettingsEditorState>('/api/settings-editor');
+  }
+  saveSettings(changes: Record<string, string | null>) {
+    return this.http.put<SettingsEditorState>('/api/settings-editor', { changes });
   }
 
   backups() {

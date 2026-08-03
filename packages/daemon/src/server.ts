@@ -482,6 +482,145 @@ app.post<{ Body: { action?: string; waittime?: number; message?: string } }>(
   },
 );
 
+// ── settings editor ──────────────────────────────────────────────────────────
+// The panel edits a highest-precedence overrides file on the shared volume;
+// the game container merges it into PalWorldSettings.ini on every boot, so
+// changes apply on the next (graceful) restart.
+const SETTINGS_MAP_PATH = process.env.SETTINGS_MAP_PATH ?? path.join(HERE, '..', 'settings.map');
+const PANEL_SETTINGS_FILE = path.join(PAL_ROOT, 'config', 'panel-settings.env');
+// Never editable from the panel: passwords (the admin password is the panel's
+// own credential) and the REST surface the panel depends on.
+const PROTECTED_KEYS = new Set(['AdminPassword', 'ServerPassword', 'RESTAPIEnabled', 'RESTAPIPort']);
+const INI_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+type SettingType = 'str' | 'bool' | 'raw';
+interface CatalogEntry {
+  key: string;
+  type: SettingType;
+  group: string;
+  envName: string;
+  default: string | null;
+}
+
+async function settingsCatalog(): Promise<CatalogEntry[]> {
+  const text = await readOpt(SETTINGS_MAP_PATH);
+  const out: CatalogEntry[] = [];
+  let group = 'Other';
+  for (const line of text?.split('\n') ?? []) {
+    const g = line.match(/^## (.+)$/);
+    if (g) {
+      group = g[1].trim();
+      continue;
+    }
+    if (!line.trim() || line.startsWith('#')) continue;
+    const [envName, key, type, def] = line.split('|');
+    if (!envName || !key || !type) continue;
+    if (PROTECTED_KEYS.has(key)) continue;
+    out.push({
+      key,
+      type: (type as SettingType) ?? 'raw',
+      group,
+      envName,
+      default: def === '-' ? null : (def ?? ''),
+    });
+  }
+  return out;
+}
+
+function parseOverrides(text: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text?.split('\n') ?? []) {
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const i = line.indexOf('=');
+    if (i < 1) continue;
+    const key = line.slice(0, i);
+    if (INI_KEY_RE.test(key)) out[key] = line.slice(i + 1);
+  }
+  return out;
+}
+
+function iniToDisplay(type: SettingType, v: string): string {
+  if (type === 'str') return v.replace(/^"([\s\S]*)"$/, '$1').replace(/\\"/g, '"');
+  if (type === 'bool') return /^true$/i.test(v) ? 'true' : 'false';
+  return v;
+}
+
+function displayToIni(type: SettingType, v: string): string {
+  const clean = String(v).replace(/[\r\n]/g, ' ').trim();
+  if (type === 'bool') return /^(1|true|yes|on)$/i.test(clean) ? 'True' : 'False';
+  if (type === 'str') return '"' + clean.replace(/"/g, '\\"') + '"';
+  return clean;
+}
+
+function normalizeForCompare(type: SettingType, v: unknown): string {
+  const s = String(v ?? '').trim();
+  if (type === 'bool') return /^(1|true|yes|on)$/i.test(s) ? 'true' : 'false';
+  const n = Number(s);
+  if (s !== '' && Number.isFinite(n)) return String(n);
+  return s;
+}
+
+async function settingsState() {
+  const [catalog, overridesText, liveRaw] = await Promise.all([
+    settingsCatalog(),
+    readOpt(PANEL_SETTINGS_FILE),
+    palSafe('GET', 'settings'),
+  ]);
+  const overrides = parseOverrides(overridesText);
+  const live =
+    liveRaw && typeof liveRaw === 'object' ? (liveRaw as Record<string, unknown>) : null;
+  const catalogKeys = new Set(catalog.map((c) => c.key));
+
+  const editable = catalog.map((c) => {
+    const overridden = c.key in overrides;
+    const envValue = process.env['OPT_' + c.key] ?? process.env[c.envName] ?? null;
+    const value = overridden
+      ? iniToDisplay(c.type, overrides[c.key])
+      : (envValue ?? c.default ?? '');
+    const source = overridden ? 'panel' : envValue !== null ? 'env' : 'default';
+    const liveValue = live && c.key in live ? live[c.key] : null;
+    const pending =
+      overridden &&
+      liveValue !== null &&
+      normalizeForCompare(c.type, value) !== normalizeForCompare(c.type, liveValue);
+    return { ...c, value, source, liveValue, overridden, pending };
+  });
+
+  const advanced = Object.entries(overrides)
+    .filter(([k]) => !catalogKeys.has(k))
+    .map(([key, value]) => ({ key, value }));
+
+  return { online: live !== null, editable, advanced };
+}
+
+app.get('/api/settings-editor', async () => settingsState());
+
+app.put<{ Body: { changes?: Record<string, string | null> } }>(
+  '/api/settings-editor',
+  async (req, reply) => {
+    const changes = req.body?.changes ?? {};
+    const catalog = await settingsCatalog();
+    const types = new Map(catalog.map((c) => [c.key, c.type]));
+    const overrides = parseOverrides(await readOpt(PANEL_SETTINGS_FILE));
+
+    for (const [key, value] of Object.entries(changes)) {
+      if (!INI_KEY_RE.test(key)) return reply.code(400).send({ error: `invalid key: ${key}` });
+      if (PROTECTED_KEYS.has(key)) return reply.code(400).send({ error: `protected key: ${key}` });
+      if (value === null) {
+        delete overrides[key];
+      } else {
+        overrides[key] = displayToIni(types.get(key) ?? 'raw', String(value));
+      }
+    }
+
+    const lines = ['# Managed by the pal-up panel — merged over .env settings on every boot.'];
+    for (const [k, v] of Object.entries(overrides)) lines.push(`${k}=${v}`);
+    await fs.mkdir(path.dirname(PANEL_SETTINGS_FILE), { recursive: true });
+    await fs.writeFile(PANEL_SETTINGS_FILE, lines.join('\n') + '\n');
+    return settingsState();
+  },
+);
+
 // ── connect info ─────────────────────────────────────────────────────────────
 let publicIpCache: { ip: string | null; at: number } = { ip: null, at: 0 };
 

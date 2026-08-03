@@ -7,8 +7,9 @@ import { ModsComponent } from './mods.component';
 import { BackupsComponent } from './backups.component';
 import { ConsoleComponent } from './console.component';
 import { AdminComponent } from './admin.component';
+import { SettingsComponent } from './settings.component';
 
-type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'console' | 'admin';
+type Tab = 'dashboard' | 'players' | 'mods' | 'settings' | 'backups' | 'console' | 'admin';
 
 @Component({
   selector: 'app-root',
@@ -21,6 +22,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'console' | 'admin';
     BackupsComponent,
     ConsoleComponent,
     AdminComponent,
+    SettingsComponent,
   ],
   template: `
     @if (authed() === null) {
@@ -42,6 +44,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'console' | 'admin';
           @case ('dashboard') { <app-dashboard /> }
           @case ('players') { <app-players /> }
           @case ('mods') { <app-mods /> }
+          @case ('settings') { <app-settings /> }
           @case ('backups') { <app-backups /> }
           @case ('console') { <app-console /> }
           @case ('admin') { <app-admin /> }
@@ -54,7 +57,7 @@ export class AppComponent implements OnInit {
   private api = inject(Api);
   authed = authed;
   tab = signal<Tab>('dashboard');
-  tabs: Tab[] = ['dashboard', 'players', 'mods', 'backups', 'console', 'admin'];
+  tabs: Tab[] = ['dashboard', 'players', 'mods', 'settings', 'backups', 'console', 'admin'];
 
   ngOnInit(): void {
     this.api.session().subscribe({

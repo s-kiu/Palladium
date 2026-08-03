@@ -29,7 +29,8 @@ What the entrypoint does on every boot, in order:
 ├── paks/          # ← you: loose .pak mods            → Pal/Content/Paks/~mods
 ├── logicmods/     # ← you: Blueprint/LogicMods .pak   → Pal/Content/Paks/LogicMods
 ├── config/
-│   └── persist/   # ← you: files copied verbatim over server/ on every boot
+│   ├── persist/   # ← you: files copied verbatim over server/ on every boot
+│   └── panel-settings.env  # written by the web panel; highest-precedence settings
 ├── backups/       # palworld-<utc-timestamp>-<tag>.tar.gz
 ├── logs/          # server.log — game output + entrypoint log, size-capped
 └── .state/        # markers: build ids, mod manifest, update-held, …
