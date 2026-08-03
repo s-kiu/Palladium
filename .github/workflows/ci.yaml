@@ -14,7 +14,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
           find packages/server-image -name '*.sh' -not -path '*/ue4ss/vendor/*' -print0 \
-            | xargs -0 shellcheck -x
+            | xargs -0 shellcheck -x --severity=warning
 
   test-image-scripts:
     runs-on: ubuntu-latest

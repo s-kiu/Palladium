@@ -33,7 +33,9 @@ GAME_PAL_DIR="$SERVER_DIR/Pal"
 SAVED_LINK="$GAME_PAL_DIR/Saved"
 SETTINGS_DIR="$SAVES_DIR/Config/LinuxServer"
 SETTINGS_INI="$SETTINGS_DIR/PalWorldSettings.ini"
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
 PAKS_TARGET="$GAME_PAL_DIR/Content/Paks/~mods"
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
 LOGICMODS_TARGET="$GAME_PAL_DIR/Content/Paks/LogicMods"
 UE4SS_MODS_TARGET="$SERVER_DIR/Mods"
 UE4SS_LIB="$SERVER_DIR/libUE4SS.so"
@@ -667,7 +669,9 @@ apply_persist_overlay() {
         count=$((count + 1))
         log "persist overlay: $rel"
     done < <(find "$pdir" -type f -print0)
-    ((count > 0)) && log "applied $count persisted config file(s) from config/persist/" || true
+    if ((count > 0)); then
+        log "applied $count persisted config file(s) from config/persist/"
+    fi
 }
 
 # ── REST admin API ───────────────────────────────────────────────────────────

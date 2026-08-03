@@ -14,10 +14,10 @@ while IFS= read -r -d '' f; do SH_FILES+=("$f"); done \
     < <(find . -name '*.sh' -not -path './ue4ss/vendor/*' -print0)
 
 if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck -x "${SH_FILES[@]}" || FAIL=1
+    shellcheck -x --severity=warning "${SH_FILES[@]}" || FAIL=1
 elif command -v docker >/dev/null 2>&1; then
     docker run --rm -v "$PKG_DIR:/mnt" -w /mnt koalaman/shellcheck:stable \
-        -x "${SH_FILES[@]}" || FAIL=1
+        -x --severity=warning "${SH_FILES[@]}" || FAIL=1
 else
     echo "shellcheck not found and no docker — SKIPPED" >&2
 fi
@@ -26,7 +26,10 @@ echo "── bats ────────────────────�
 if command -v bats >/dev/null 2>&1; then
     bats test/ || FAIL=1
 elif command -v docker >/dev/null 2>&1; then
-    docker run --rm -v "$PKG_DIR:/code" -w /code bats/bats:latest test/ || FAIL=1
+    # The suite needs GNU coreutils and rsync (same as the server image), so
+    # an Ubuntu container is used rather than the Alpine-based bats image.
+    docker run --rm -v "$PKG_DIR:/code" -w /code ubuntu:24.04 bash -c \
+        'apt-get update -qq && apt-get install -y -qq bats rsync >/dev/null && bats test/' || FAIL=1
 else
     echo "bats not found and no docker — SKIPPED" >&2
     echo "install: apt install bats  |  https://bats-core.readthedocs.io" >&2

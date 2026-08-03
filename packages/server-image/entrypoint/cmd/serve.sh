@@ -143,7 +143,9 @@ main() {
     done
     set -e
 
-    [[ -n "$SCHED_PID" ]] && kill "$SCHED_PID" 2>/dev/null || true
+    if [[ -n "$SCHED_PID" ]]; then
+        kill "$SCHED_PID" 2>/dev/null || true
+    fi
 
     if [[ "$STOP_REQUESTED" == "true" ]]; then
         log "server stopped"

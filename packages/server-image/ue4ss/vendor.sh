@@ -57,7 +57,8 @@ download() { # <tag>
 }
 
 verify() { # <tag>
-    local tarball="$VENDOR_DIR/$(artifact_name "$1")"
+    local tarball
+    tarball="$VENDOR_DIR/$(artifact_name "$1")"
     [[ -f "$tarball" ]] || die "artifact not present: $tarball (run: $0)"
     [[ -n "$SHA" ]] || die "lock has no checksum yet (run: $0 --pin)"
     echo "$SHA  $tarball" | sha256sum -c --quiet - \
