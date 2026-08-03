@@ -237,6 +237,7 @@ td.actions button + button { margin-left: 6px; }
 table.settings td { vertical-align: middle; }
 td.setting-name { width: 45%; }
 td.setting-name .tag { margin-left: 8px; }
+.setting-desc { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
 td.setting-input input, td.setting-input select { width: 100%; }
 .tag.warn-tag { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); }
 tr.edited td { background: rgba(91, 157, 255, 0.06); }

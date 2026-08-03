@@ -1,57 +1,59 @@
 # settings.map — env var → PalWorldSettings.ini OptionSettings key.
-# Format:  ENV_NAME|IniKey|type|default
+# Format:  ENV_NAME|IniKey|type|default|description
 #   type:    str  (quoted), bool (True/False), raw (verbatim: numbers, enums, tuples)
 #   default: "-" = optional (omit from the ini when the env var is unset);
 #            anything else (including empty) is emitted as the default value.
+#   description: shown in the web panel's settings editor.
+# Group headers (## …) structure the panel's settings editor.
 # Keys not listed here can always be set with OPT_<IniKey>=<verbatim value>.
 
 ## Identity & access
-SERVER_NAME|ServerName|str|Palworld Server (pal-up)
-SERVER_DESCRIPTION|ServerDescription|str|
-ADMIN_PASSWORD|AdminPassword|str|
-SERVER_PASSWORD|ServerPassword|str|
-MAX_PLAYERS|ServerPlayerMaxNum|raw|32
-COOP_MAX_PLAYERS|CoopPlayerMaxNum|raw|-
-USE_AUTH|bUseAuth|bool|true
-BAN_LIST_URL|BanListURL|str|https://api.palworldgame.com/api/banlist.txt
-REGION|Region|str|-
+SERVER_NAME|ServerName|str|Palworld Server (pal-up)|Name shown in the server browser and on join.
+SERVER_DESCRIPTION|ServerDescription|str||Short text shown under the server name in the browser.
+ADMIN_PASSWORD|AdminPassword|str||In-game admin and REST API password (managed via .env only).
+SERVER_PASSWORD|ServerPassword|str||Join password; empty means anyone can join (managed via .env only).
+MAX_PLAYERS|ServerPlayerMaxNum|raw|32|Maximum concurrent players (default 32).
+COOP_MAX_PLAYERS|CoopPlayerMaxNum|raw|-|Co-op session player cap — not used by dedicated servers (default 4).
+USE_AUTH|bUseAuth|bool|true|Authenticate players against Steam (default true — leave on).
+BAN_LIST_URL|BanListURL|str|https://api.palworldgame.com/api/banlist.txt|External ban list the server honors (default: Pocketpair's global list).
+REGION|Region|str|-|Region label shown in the server browser (free text).
 
 ## Network & admin
-PUBLIC_IP|PublicIP|str|
-PUBLIC_PORT|PublicPort|raw|8211
-REST_API_ENABLED|RESTAPIEnabled|bool|true
-REST_API_PORT|RESTAPIPort|raw|8212
-RCON_ENABLED|RCONEnabled|bool|false
-RCON_PORT|RCONPort|raw|25575
-CROSSPLAY_PLATFORMS|CrossplayPlatforms|raw|-
+PUBLIC_IP|PublicIP|str||Public IP advertised to clients — set only if auto-detection fails behind NAT.
+PUBLIC_PORT|PublicPort|raw|8211|Port advertised to clients (default 8211; must match the published game port).
+REST_API_ENABLED|RESTAPIEnabled|bool|true|Local REST admin API — the panel depends on it (managed via .env only).
+REST_API_PORT|RESTAPIPort|raw|8212|REST admin API port (managed via .env only).
+RCON_ENABLED|RCONEnabled|bool|false|Legacy RCON admin protocol (default false — the REST API is preferred).
+RCON_PORT|RCONPort|raw|25575|RCON port (default 25575).
+CROSSPLAY_PLATFORMS|CrossplayPlatforms|raw|-|Allowed platforms as a tuple, e.g. (Steam,Xbox,PS5,Mac).
 
 ## World & difficulty
-DIFFICULTY|Difficulty|raw|-
-DEATH_PENALTY|DeathPenalty|raw|-
-HARDCORE|bHardcore|bool|-
-PAL_LOST|bPalLost|bool|-
-PVP|bIsPvP|bool|-
-MULTIPLAY|bIsMultiplay|bool|-
-INVADER_ENEMY|bEnableInvaderEnemy|bool|-
-FAST_TRAVEL|bEnableFastTravel|bool|-
+DIFFICULTY|Difficulty|raw|-|Difficulty preset; None uses the fine-grained settings below (default None).
+DEATH_PENALTY|DeathPenalty|raw|-|What drops on death: None, Item, ItemAndEquipment or All (default All).
+HARDCORE|bHardcore|bool|-|Hardcore mode — characters are lost on death (default false).
+PAL_LOST|bPalLost|bool|-|Pals are permanently lost when they die (default false).
+PVP|bIsPvP|bool|-|Player-versus-player damage (default false).
+MULTIPLAY|bIsMultiplay|bool|-|Multiplayer rules flag (default false; dedicated servers usually leave this).
+INVADER_ENEMY|bEnableInvaderEnemy|bool|-|Raid events against player bases (default true).
+FAST_TRAVEL|bEnableFastTravel|bool|-|Fast travel via unlocked statues (default true).
 
 ## Rates
-EXP_RATE|ExpRate|raw|-
-PAL_CAPTURE_RATE|PalCaptureRate|raw|-
-PAL_SPAWN_NUM_RATE|PalSpawnNumRate|raw|-
-DAY_TIME_SPEED_RATE|DayTimeSpeedRate|raw|-
-NIGHT_TIME_SPEED_RATE|NightTimeSpeedRate|raw|-
-WORK_SPEED_RATE|WorkSpeedRate|raw|-
-ITEM_WEIGHT_RATE|ItemWeightRate|raw|-
-ENEMY_DROP_ITEM_RATE|EnemyDropItemRate|raw|-
-PAL_DAMAGE_RATE_ATTACK|PalDamageRateAttack|raw|-
-PAL_DAMAGE_RATE_DEFENSE|PalDamageRateDefense|raw|-
-PLAYER_DAMAGE_RATE_ATTACK|PlayerDamageRateAttack|raw|-
-PLAYER_DAMAGE_RATE_DEFENSE|PlayerDamageRateDefense|raw|-
-PAL_EGG_HATCHING_TIME|PalEggDefaultHatchingTime|raw|-
+EXP_RATE|ExpRate|raw|-|Experience multiplier (0.1–20, default 1).
+PAL_CAPTURE_RATE|PalCaptureRate|raw|-|Pal capture chance multiplier (0.5–2, default 1).
+PAL_SPAWN_NUM_RATE|PalSpawnNumRate|raw|-|Wild Pal spawn count multiplier (0.5–3, default 1; high values cost performance).
+DAY_TIME_SPEED_RATE|DayTimeSpeedRate|raw|-|Day length multiplier — higher means faster days (0.1–5, default 1).
+NIGHT_TIME_SPEED_RATE|NightTimeSpeedRate|raw|-|Night length multiplier (0.1–5, default 1).
+WORK_SPEED_RATE|WorkSpeedRate|raw|-|Base-work speed multiplier (0.1–5, default 1).
+ITEM_WEIGHT_RATE|ItemWeightRate|raw|-|Carried-item weight multiplier (0.5–2, default 1).
+ENEMY_DROP_ITEM_RATE|EnemyDropItemRate|raw|-|Loot drop multiplier (0.5–5, default 1).
+PAL_DAMAGE_RATE_ATTACK|PalDamageRateAttack|raw|-|Damage dealt by Pals (0.1–5, default 1).
+PAL_DAMAGE_RATE_DEFENSE|PalDamageRateDefense|raw|-|Damage taken by Pals (0.1–5, default 1).
+PLAYER_DAMAGE_RATE_ATTACK|PlayerDamageRateAttack|raw|-|Damage dealt by players (0.1–5, default 1).
+PLAYER_DAMAGE_RATE_DEFENSE|PlayerDamageRateDefense|raw|-|Damage taken by players (0.1–5, default 1).
+PAL_EGG_HATCHING_TIME|PalEggDefaultHatchingTime|raw|-|Hours for huge eggs to hatch (0–240, default 72).
 
 ## Limits
-BASE_CAMP_MAX_NUM|BaseCampMaxNum|raw|-
-BASE_CAMP_WORKER_MAX_NUM|BaseCampWorkerMaxNum|raw|-
-GUILD_PLAYER_MAX_NUM|GuildPlayerMaxNum|raw|-
-DROP_ITEM_MAX_NUM|DropItemMaxNum|raw|-
+BASE_CAMP_MAX_NUM|BaseCampMaxNum|raw|-|Maximum base camps across the whole server (default 128).
+BASE_CAMP_WORKER_MAX_NUM|BaseCampWorkerMaxNum|raw|-|Working Pals per base (1–50, default 15).
+GUILD_PLAYER_MAX_NUM|GuildPlayerMaxNum|raw|-|Players per guild (1–100, default 20).
+DROP_ITEM_MAX_NUM|DropItemMaxNum|raw|-|Cap on items lying in the world (0–5000, default 3000).

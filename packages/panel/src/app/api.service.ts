@@ -38,6 +38,7 @@ export interface SettingEntry {
   group: string;
   envName: string;
   default: string | null;
+  description: string;
   value: string;
   source: 'panel' | 'env' | 'default';
   liveValue: unknown;

@@ -615,7 +615,9 @@ build_option_settings() { # <map-file> → "OptionSettings=(...)" on stdout
     local -A kidx=()
     local envn key typ def val
 
-    while IFS='|' read -r envn key typ def; do
+    # Fifth column (description) is panel-only; absorb it so the default
+    # field never swallows the rest of the line.
+    while IFS='|' read -r envn key typ def _; do
         [[ -z "$envn" || "$envn" == \#* ]] && continue
         if [[ -n "${!envn+x}" ]]; then
             val="${!envn}"

@@ -34,10 +34,15 @@ import { Api, SettingEntry, SettingsEditorState } from './api.service';
                 @for (e of entriesFor(group); track e.key) {
                   <tr [class.edited]="isEdited(e.key)">
                     <td class="setting-name">
-                      {{ e.key }}
-                      @if (e.overridden && !isEdited(e.key)) { <span class="tag">panel</span> }
-                      @if (e.source === 'env' && !e.overridden) { <span class="tag">.env</span> }
-                      @if (e.pending) { <span class="tag warn-tag">restart pending</span> }
+                      <div>
+                        {{ e.key }}
+                        @if (e.overridden && !isEdited(e.key)) { <span class="tag">panel</span> }
+                        @if (e.source === 'env' && !e.overridden) { <span class="tag">.env</span> }
+                        @if (e.pending) { <span class="tag warn-tag">restart pending</span> }
+                      </div>
+                      @if (e.description) {
+                        <div class="setting-desc">{{ e.description }}</div>
+                      }
                     </td>
                     <td class="setting-input">
                       @if (e.type === 'bool') {
@@ -151,7 +156,10 @@ export class SettingsComponent implements OnInit {
     return (this.state()?.editable ?? []).filter(
       (e) =>
         e.group === group &&
-        (!q || e.key.toLowerCase().includes(q) || e.envName.toLowerCase().includes(q)),
+        (!q ||
+          e.key.toLowerCase().includes(q) ||
+          e.envName.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q)),
     );
   }
 

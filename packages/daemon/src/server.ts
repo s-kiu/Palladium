@@ -546,6 +546,7 @@ interface CatalogEntry {
   group: string;
   envName: string;
   default: string | null;
+  description: string;
 }
 
 async function settingsCatalog(): Promise<CatalogEntry[]> {
@@ -559,7 +560,7 @@ async function settingsCatalog(): Promise<CatalogEntry[]> {
       continue;
     }
     if (!line.trim() || line.startsWith('#')) continue;
-    const [envName, key, type, def] = line.split('|');
+    const [envName, key, type, def, description] = line.split('|');
     if (!envName || !key || !type) continue;
     if (PROTECTED_KEYS.has(key)) continue;
     out.push({
@@ -568,6 +569,7 @@ async function settingsCatalog(): Promise<CatalogEntry[]> {
       group,
       envName,
       default: def === '-' ? null : (def ?? ''),
+      description: description ?? '',
     });
   }
   return out;
