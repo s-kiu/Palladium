@@ -171,7 +171,7 @@ async function luaMods(): Promise<ModEntry[]> {
       disabledMarker: userNames.get(m[1]) ?? false,
     });
   }
-  // user mods not yet synced into mods.txt (added since last restart)
+  // mods present in the folder but absent from mods.txt until the next restart
   for (const [name, disabled] of userNames) {
     if (!seen.has(name)) {
       entries.push({ name, enabled: false, user: true, disabledMarker: disabled });
