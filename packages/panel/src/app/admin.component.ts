@@ -1,78 +1,42 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api, Status } from './api.service';
+import { ConsoleComponent } from './console.component';
+import { SettingsComponent } from './settings.component';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConsoleComponent, SettingsComponent],
   template: `
     <div class="card">
       <div class="row spread">
-        <h2>Server control</h2>
+        <h2>Server actions</h2>
         <span class="tag">{{ stateLabel() }}</span>
       </div>
-
       @if (status()?.stopped) {
         <p class="muted">
-          The server is stopped and stays stopped — the container is parked and waits.
-          Pending updates or restores still run while it's down.
+          The server is stopped and stays stopped — pending updates or restores still run while
+          it's down.
         </p>
         <div class="row">
           <button class="primary" (click)="start()">Start server</button>
-          @if (feedback()) { <span class="muted">{{ feedback() }}</span> }
         </div>
       } @else {
-        <p class="muted">
-          Restart and Stop are graceful: the world is saved, players get the countdown, then the
-          server goes down — Restart brings it right back, Stop keeps it down until you press
-          Start.
-        </p>
         <div class="row wrap">
-          <input class="short" type="number" min="0" [(ngModel)]="waittime" name="wait" />
-          <span class="muted">seconds warning</span>
-          <input placeholder="countdown message (optional)" [(ngModel)]="message" name="msg" />
-        </div>
-        <div class="row wrap">
-          <button class="primary" (click)="restart()">Restart</button>
-          <button (click)="stop()">Stop</button>
-          <button (click)="save()">Save world now</button>
-          <span style="flex:1"></span>
-          <button class="danger" (click)="kill()" title="immediate kill — no save, no warning">
+          <button class="primary" (click)="open(restartDlg)">Restart…</button>
+          <button (click)="open(stopDlg)">Stop…</button>
+          <button (click)="saveWorld()">Save world</button>
+          <button (click)="open(broadcastDlg)">Broadcast…</button>
+          <span class="spacer"></span>
+          <button class="danger" (click)="kill()" title="immediate kill — no warning, no save">
             Force kill
           </button>
         </div>
-        @if (feedback()) { <p class="muted small-note">{{ feedback() }}</p> }
-        <p class="muted small-note">
-          Force kill is for an unresponsive server only: no warning, no save — progress since the
-          last save is lost, and the container starts it fresh right away.
-        </p>
       }
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h2>Broadcast</h2>
-        <p class="muted">Message shown to everyone currently online.</p>
-        <div class="row">
-          <input placeholder="e.g. restarting in 10 minutes" [(ngModel)]="broadcastMsg" name="bmsg" />
-          <button class="primary" (click)="broadcast()" [disabled]="!broadcastMsg">Send</button>
-        </div>
-        @if (broadcastResult()) {
-          <p class="muted small-note">{{ broadcastResult() }}</p>
-        }
-      </div>
-
-      <div class="card">
-        <h2>More commands</h2>
-        <p class="muted">
-          Kick, ban and unban live on the <b>players</b> tab next to the player list. That is the
-          complete vanilla admin surface — item spawning, teleports and other cheats require
-          mods. In-game, admins can authenticate with
-          <code>/AdminPassword &lt;password&gt;</code> in chat and use <code>/Kick</code>,
-          <code>/Ban</code>, <code>/Broadcast</code>, <code>/Save</code>, <code>/ShutDown</code>.
-        </p>
-      </div>
+      @if (feedback()) {
+        <p class="muted small-note">{{ feedback() }}</p>
+      }
     </div>
 
     <div class="card">
@@ -90,17 +54,65 @@ import { Api, Status } from './api.service';
         <p class="muted">Read-only views of what the server reports about itself.</p>
       }
     </div>
+
+    <app-console />
+    <app-settings />
+
+    <dialog #restartDlg class="dlg">
+      <h2>Restart server</h2>
+      <p class="muted">Saves the world, warns players, and comes back up automatically.</p>
+      <label>Warning (seconds)
+        <input type="number" min="0" [(ngModel)]="waittime" name="restart-wait" />
+      </label>
+      <label>Message to players
+        <input [(ngModel)]="message" name="restart-msg" placeholder="Server restarting shortly" />
+      </label>
+      <div class="row dlg-actions">
+        <button (click)="restartDlg.close()">Cancel</button>
+        <button class="primary" (click)="restart(restartDlg)">Restart</button>
+      </div>
+    </dialog>
+
+    <dialog #stopDlg class="dlg">
+      <h2>Stop server</h2>
+      <p class="muted">
+        Saves the world, warns players, then stays stopped until you press Start.
+      </p>
+      <label>Warning (seconds)
+        <input type="number" min="0" [(ngModel)]="waittime" name="stop-wait" />
+      </label>
+      <label>Message to players
+        <input [(ngModel)]="message" name="stop-msg" placeholder="Server shutting down" />
+      </label>
+      <div class="row dlg-actions">
+        <button (click)="stopDlg.close()">Cancel</button>
+        <button class="primary" (click)="stop(stopDlg)">Stop</button>
+      </div>
+    </dialog>
+
+    <dialog #broadcastDlg class="dlg">
+      <h2>Broadcast</h2>
+      <p class="muted">Message shown to everyone currently online.</p>
+      <label>Message
+        <input [(ngModel)]="broadcastMsg" name="bc-msg" placeholder="e.g. restarting in 10 minutes" />
+      </label>
+      <div class="row dlg-actions">
+        <button (click)="broadcastDlg.close()">Cancel</button>
+        <button class="primary" (click)="broadcast(broadcastDlg)" [disabled]="!broadcastMsg">
+          Send
+        </button>
+      </div>
+    </dialog>
   `,
 })
 export class AdminComponent implements OnInit, OnDestroy {
   private api = inject(Api);
   status = signal<Status | null>(null);
   feedback = signal('');
-  broadcastResult = signal('');
   queryOutput = signal('');
-  broadcastMsg = '';
-  message = '';
   waittime = 30;
+  message = '';
+  broadcastMsg = '';
   private timer?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
@@ -122,30 +134,35 @@ export class AdminComponent implements OnInit, OnDestroy {
     return s.online ? 'running' : 'starting / offline';
   }
 
+  open(dlg: HTMLDialogElement): void {
+    this.feedback.set('');
+    dlg.showModal();
+  }
+
   private opts() {
     return { waittime: Number(this.waittime) || 0, message: this.message || undefined };
   }
 
-  restart(): void {
-    if (!confirm(`Save and restart with a ${this.waittime}s warning?`)) return;
+  restart(dlg: HTMLDialogElement): void {
+    dlg.close();
     this.api.lifecycle('restart', this.opts()).subscribe({
       next: (r) => this.done(r.note),
-      error: () => this.feedback.set('failed'),
+      error: () => this.feedback.set('restart failed'),
     });
   }
 
-  stop(): void {
-    if (!confirm(`Save and stop with a ${this.waittime}s warning? The server stays down until you press Start.`)) return;
+  stop(dlg: HTMLDialogElement): void {
+    dlg.close();
     this.api.lifecycle('stop', this.opts()).subscribe({
       next: (r) => this.done(r.note),
-      error: () => this.feedback.set('failed'),
+      error: () => this.feedback.set('stop failed'),
     });
   }
 
   start(): void {
     this.api.lifecycle('start').subscribe({
       next: (r) => this.done(r.note),
-      error: () => this.feedback.set('failed'),
+      error: () => this.feedback.set('start failed'),
     });
   }
 
@@ -157,20 +174,22 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
   }
 
-  save(): void {
+  saveWorld(): void {
     this.api.console('save').subscribe({
       next: () => this.done('world save requested'),
-      error: () => this.feedback.set('failed — server offline?'),
+      error: () => this.feedback.set('save failed — server offline?'),
     });
   }
 
-  broadcast(): void {
-    this.api.console('announce', { message: this.broadcastMsg }).subscribe({
+  broadcast(dlg: HTMLDialogElement): void {
+    const msg = this.broadcastMsg;
+    dlg.close();
+    this.api.console('announce', { message: msg }).subscribe({
       next: () => {
-        this.broadcastResult.set('sent');
         this.broadcastMsg = '';
+        this.done('broadcast sent');
       },
-      error: () => this.broadcastResult.set('failed — server offline?'),
+      error: () => this.feedback.set('broadcast failed — server offline?'),
     });
   }
 

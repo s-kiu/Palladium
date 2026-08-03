@@ -245,6 +245,29 @@ tr.edited td { background: rgba(91, 157, 255, 0.06); }
 .short-key { flex: 0 0 220px; }
 .apply-bar { position: sticky; bottom: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); }
 
+/* ── dialogs ────────────────────────────────────────────────────────────── */
+dialog.dlg {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  width: min(420px, 90vw);
+}
+dialog.dlg::backdrop { background: rgba(0, 0, 0, 0.6); }
+.dlg h2 { margin-bottom: 4px; }
+.dlg p { margin: 0 0 6px; font-size: 0.85rem; }
+.dlg label {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.dlg label input { width: 100%; }
+.dlg-actions { justify-content: flex-end; margin-top: 18px; }
+.spacer { flex: 1; }
+
 /* ── accessibility ──────────────────────────────────────────────────────── */
 a:focus-visible,
 button:focus-visible,
