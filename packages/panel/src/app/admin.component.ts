@@ -14,6 +14,19 @@ import { SettingsComponent } from './settings.component';
         <h2>Server actions</h2>
         <span class="tag">{{ stateLabel() }}</span>
       </div>
+      @if (op(); as o) {
+        <div class="banner info opbanner">
+          @if (o.phase === 'countdown') {
+            <b>{{ opLabel(o.kind) }} in {{ secondsLeft(o.fireAt) }}s</b>
+            @if (o.message) { <span class="muted">“{{ o.message }}”</span> }
+          } @else {
+            <b>{{ opLabel(o.kind) }} in progress</b>
+            <span class="muted">{{
+              o.kind === 'stop' ? 'shutting down…' : 'waiting for the server to come back…'
+            }}</span>
+          }
+        </div>
+      }
       @if (status()?.stopped) {
         <p class="muted">
           The server is stopped and stays stopped — pending updates or restores still run while
@@ -24,12 +37,12 @@ import { SettingsComponent } from './settings.component';
         </div>
       } @else {
         <div class="row wrap">
-          <button class="primary" (click)="open(restartDlg)">Restart…</button>
-          <button (click)="open(stopDlg)">Stop…</button>
-          <button (click)="saveWorld()">Save world</button>
+          <button class="primary" (click)="open(restartDlg)" [disabled]="!!op()">Restart…</button>
+          <button (click)="open(stopDlg)" [disabled]="!!op()">Stop…</button>
+          <button (click)="saveWorld()" [disabled]="!!op()">Save world</button>
           <button (click)="open(broadcastDlg)">Broadcast…</button>
           <span class="spacer"></span>
-          <button class="danger" (click)="kill()" title="immediate kill — no warning, no save">
+          <button class="danger" (click)="kill()" [disabled]="!!op()" title="immediate kill — no warning, no save">
             Force kill
           </button>
         </div>
@@ -110,17 +123,33 @@ export class AdminComponent implements OnInit, OnDestroy {
   status = signal<Status | null>(null);
   feedback = signal('');
   queryOutput = signal('');
+  now = signal(Date.now());
   waittime = 30;
   message = '';
   broadcastMsg = '';
   private timer?: ReturnType<typeof setInterval>;
+  private ticker?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
     this.refresh();
     this.timer = setInterval(() => this.refresh(), 5000);
+    this.ticker = setInterval(() => this.now.set(Date.now()), 1000);
   }
   ngOnDestroy(): void {
     clearInterval(this.timer);
+    clearInterval(this.ticker);
+  }
+
+  op() {
+    return this.status()?.operation ?? null;
+  }
+
+  opLabel(kind: string): string {
+    return kind === 'restart' ? 'Restart' : kind === 'stop' ? 'Stop' : 'Force kill';
+  }
+
+  secondsLeft(fireAt: number): number {
+    return Math.max(0, Math.ceil((fireAt - this.now()) / 1000));
   }
 
   refresh(): void {

@@ -87,6 +87,13 @@ export interface Status {
     uptime?: number;
   } | null;
   stopped: boolean;
+  operation: {
+    kind: 'restart' | 'stop' | 'kill';
+    message?: string;
+    scheduledAt: number;
+    fireAt: number;
+    phase: 'countdown' | 'executing';
+  } | null;
   build: {
     installed: string | null;
     latest: string | null;

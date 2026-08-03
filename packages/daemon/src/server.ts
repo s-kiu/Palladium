@@ -290,10 +290,13 @@ app.get('/api/status', async () => {
       pakList('paks'),
       listBackups(),
     ]);
+  const online = info !== null;
+  const stopped = await exists(path.join(STATE_DIR, 'stop-request'));
   return {
-    online: info !== null,
+    online,
     info,
     metrics,
+    operation: operationView(online, stopped),
     build: {
       installed,
       latest: latest?.id ?? null,
@@ -307,7 +310,7 @@ app.get('/api/status', async () => {
       fastcrashCount: crashes,
       fallbackActive: crashes >= FASTCRASH_LIMIT,
     },
-    stopped: await exists(path.join(STATE_DIR, 'stop-request')),
+    stopped,
     pending: {
       update: await exists(path.join(STATE_DIR, 'update-request')),
       restore: await readOpt(path.join(STATE_DIR, 'restore-request')),
@@ -398,6 +401,7 @@ app.post<{ Body: { message?: string } }>('/api/announce', async (req, reply) => 
 
 app.post('/api/save', async () => {
   await pal('POST', 'save');
+  await panelLog('world save requested');
   return { ok: true };
 });
 
@@ -432,6 +436,7 @@ app.post('/api/backups', async (_req, reply) => {
   await fs.mkdir(BACKUPS_DIR, { recursive: true });
   await execFileP('tar', ['-czf', tmp, '-C', PAL_ROOT, 'saves']);
   await fs.rename(tmp, path.join(BACKUPS_DIR, name));
+  await panelLog(`backup created: ${name}`);
   return { ok: true, name };
 });
 
@@ -445,6 +450,7 @@ app.post<{ Body: { name?: string } }>('/api/backups/restore', async (req, reply)
   }
   await fs.mkdir(STATE_DIR, { recursive: true });
   await fs.writeFile(path.join(STATE_DIR, 'restore-request'), name);
+  await panelLog(`restore scheduled: ${name}`);
   const online = (await palSafe('POST', 'shutdown', {
     waittime: 10,
     message: 'Restoring a world backup — back in ~2 minutes',
@@ -461,6 +467,7 @@ app.post<{ Body: { name?: string } }>('/api/backups/restore', async (req, reply)
 app.post('/api/update', async () => {
   await fs.mkdir(STATE_DIR, { recursive: true });
   await fs.writeFile(path.join(STATE_DIR, 'update-request'), 'update');
+  await panelLog('game update scheduled');
   const online = (await palSafe('POST', 'shutdown', {
     waittime: 30,
     message: 'Server update — back in a few minutes',
@@ -473,6 +480,45 @@ app.post('/api/update', async () => {
       : 'server appears offline; the update runs on its next start',
   };
 });
+
+// ── pending operation & panel audit log ──────────────────────────────────────
+// Admin actions append to the on-volume server log (visible in the panel's
+// log viewer alongside game output) and register a pending operation so the
+// UI can show a live countdown and completion.
+interface PendingOp {
+  kind: 'restart' | 'stop' | 'kill';
+  message?: string;
+  scheduledAt: number;
+  fireAt: number;
+}
+let pendingOp: PendingOp | null = null;
+
+async function panelLog(text: string): Promise<void> {
+  const ts = new Date().toISOString().slice(11, 19);
+  await fs.appendFile(SERVER_LOG, `[panel] ${ts} | ${text}\n`).catch(() => {});
+}
+
+function operationView(online: boolean, stopped: boolean) {
+  if (!pendingOp) return null;
+  const now = Date.now();
+  // stale-op safety net: never show an operation older than 10 minutes
+  if (now > pendingOp.fireAt + 600_000) {
+    pendingOp = null;
+    return null;
+  }
+  if (now < pendingOp.fireAt) {
+    return { ...pendingOp, phase: 'countdown' as const };
+  }
+  const settled =
+    pendingOp.kind === 'stop'
+      ? stopped && !online
+      : online && now > pendingOp.fireAt + 15_000;
+  if (settled) {
+    pendingOp = null;
+    return null;
+  }
+  return { ...pendingOp, phase: 'executing' as const };
+}
 
 // ── server lifecycle ─────────────────────────────────────────────────────────
 // restart = graceful, container brings it back; stop = graceful + park marker
@@ -491,6 +537,10 @@ app.post<{ Body: { action?: string; waittime?: number; message?: string } }>(
             waittime: wait,
             message: msg || `Server restarting in ${wait}s`,
           })) !== null;
+        if (online) {
+          pendingOp = { kind: 'restart', message: msg, scheduledAt: Date.now(), fireAt: Date.now() + wait * 1000 };
+          await panelLog(`restart scheduled — ${wait}s warning${msg ? ` — "${msg}"` : ''}`);
+        }
         return {
           ok: true,
           note: online
@@ -507,6 +557,17 @@ app.post<{ Body: { action?: string; waittime?: number; message?: string } }>(
             waittime: wait,
             message: msg || `Server shutting down in ${wait}s`,
           })) !== null;
+        pendingOp = {
+          kind: 'stop',
+          message: msg,
+          scheduledAt: Date.now(),
+          fireAt: Date.now() + (online ? wait * 1000 : 0),
+        };
+        await panelLog(
+          online
+            ? `stop scheduled — ${wait}s warning${msg ? ` — "${msg}"` : ''} — stays stopped until Start`
+            : 'stop marker set — the server parks instead of launching',
+        );
         return {
           ok: true,
           note: online
@@ -516,10 +577,14 @@ app.post<{ Body: { action?: string; waittime?: number; message?: string } }>(
       }
       case 'start': {
         await fs.rm(stopMarker, { force: true });
+        pendingOp = null;
+        await panelLog('start requested');
         return { ok: true, note: 'starting — follow the console for progress' };
       }
       case 'kill': {
         await pal('POST', 'stop');
+        pendingOp = { kind: 'kill', scheduledAt: Date.now(), fireAt: Date.now() };
+        await panelLog('force kill sent — no save, container restarts the server');
         return { ok: true, note: 'killed — the container restarts it now' };
       }
       default:
@@ -665,6 +730,7 @@ app.put<{ Body: { changes?: Record<string, string | null> } }>(
     for (const [k, v] of Object.entries(overrides)) lines.push(`${k}=${v}`);
     await fs.mkdir(path.dirname(PANEL_SETTINGS_FILE), { recursive: true });
     await fs.writeFile(PANEL_SETTINGS_FILE, lines.join('\n') + '\n');
+    await panelLog(`settings saved: ${Object.keys(changes).length} change(s) — apply on next restart`);
     return settingsState();
   },
 );
@@ -740,6 +806,17 @@ app.post<{ Body: { command?: string; args?: ConsoleArgs } }>('/api/console', asy
   if (!handler) return reply.code(400).send({ error: `unknown command: ${command}` });
   try {
     const result = await handler(req.body?.args ?? {});
+    const a = req.body?.args ?? {};
+    const audit: Record<string, string> = {
+      announce: `broadcast — "${a.message ?? ''}"`,
+      save: 'world save requested',
+      kick: `kick — ${a.userid ?? ''}`,
+      ban: `ban — ${a.userid ?? ''}`,
+      unban: `unban — ${a.userid ?? ''}`,
+      shutdown: `shutdown via console — ${a.waittime ?? 30}s warning`,
+      stop: 'force stop via console',
+    };
+    if (audit[command]) await panelLog(audit[command]);
     return { ok: true, result: result === '' ? 'OK' : result };
   } catch (err) {
     return reply.code(502).send({ error: (err as Error).message });

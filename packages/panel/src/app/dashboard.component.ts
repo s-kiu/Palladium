@@ -19,6 +19,21 @@ import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
           the server runs unmodded until a compatible UE4SS release is pinned.
         </div>
       }
+      @if (s.operation; as o) {
+        <div class="banner info">
+          @if (o.phase === 'countdown') {
+            <b>{{ o.kind === 'restart' ? 'Restart' : o.kind === 'stop' ? 'Stop' : 'Force kill' }}
+              in {{ secondsLeft(o.fireAt) }}s</b>
+            @if (o.message) { <span class="muted">“{{ o.message }}”</span> }
+          } @else {
+            <b>{{ o.kind === 'restart' ? 'Restart' : o.kind === 'stop' ? 'Stop' : 'Force kill' }}
+              in progress</b>
+            <span class="muted">{{
+              o.kind === 'stop' ? 'shutting down…' : 'waiting for the server to come back…'
+            }}</span>
+          }
+        </div>
+      }
       @if (s.pending.update || s.pending.restore) {
         <div class="banner info">
           Pending on next server start:
@@ -108,15 +123,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
   status = signal<Status | null>(null);
   connect = signal<ConnectInfo | null>(null);
   feedback = signal('');
+  now = signal(Date.now());
   private timer?: ReturnType<typeof setInterval>;
+  private ticker?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
     this.refresh();
     this.refreshConnect();
     this.timer = setInterval(() => this.refresh(), 5000);
+    this.ticker = setInterval(() => this.now.set(Date.now()), 1000);
   }
   ngOnDestroy(): void {
     clearInterval(this.timer);
+    clearInterval(this.ticker);
+  }
+
+  secondsLeft(fireAt: number): number {
+    return Math.max(0, Math.ceil((fireAt - this.now()) / 1000));
   }
 
   refresh(): void {
