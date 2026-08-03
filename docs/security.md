@@ -88,6 +88,15 @@ rate-limited. Deliberate design constraints:
   forward-auth) — the panel's login then becomes the second factor.
 - The panel container runs unprivileged (your `PUID:PGID`) and can only see
   what the game container also sees.
+- **Who can reach port 3000?** By default the panel listens on all host
+  addresses, which means: everyone on your LAN — but from the internet only
+  if your router forwards port 3000 to this machine (don't do that). Behind a
+  normal home router with no such forwarding rule, the panel is not
+  internet-reachable. **Self-check:** open `http://<your-public-ip>:3000` from
+  a phone on mobile data (Wi-Fi off) — a timeout means you're fine. On a VPS
+  or any host with a public IP there is no router shielding you: set
+  `PANEL_BIND=127.0.0.1` in `.env` so the panel only listens locally, and use
+  an SSH tunnel or TLS reverse proxy to reach it.
 - **One outbound call**: the Connect card detects the server's public IP via
   `api.ipify.org` (cached 10 min). Disable with `PUBLIC_IP_LOOKUP=false`, or
   set `PUBLIC_IP` explicitly and no lookup ever happens.
