@@ -132,8 +132,15 @@ async function latestBuild(): Promise<{ id: string; checkedAt: number } | null> 
 }
 
 async function fastcrashCount(): Promise<number> {
+  // The counter is keyed to a (loader version, game build) pairing; a count
+  // recorded for a different pairing is stale and must read as zero.
   const raw = await readOpt(path.join(STATE_DIR, 'ue4ss-fastcrash'));
-  const n = Number(raw?.split('|')[1]);
+  if (!raw) return 0;
+  const [ctx, countStr] = raw.split('|');
+  const version = ((await readOpt(path.join(STATE_DIR, 'ue4ss-version'))) ?? '').slice(0, 120);
+  const build = (await installedBuild()) ?? '';
+  if (ctx !== `${version}@${build}`) return 0;
+  const n = Number(countStr);
   return Number.isFinite(n) ? n : 0;
 }
 

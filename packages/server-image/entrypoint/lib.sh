@@ -178,6 +178,17 @@ fastcrash_record() { # <context> → new count on stdout
 
 fastcrash_reset() { rm -f "$STATE_DIR/ue4ss-fastcrash"; }
 
+fastcrash_prune_stale() { # <current-context> — a streak recorded for a pairing
+    local ctx="$1" file="$STATE_DIR/ue4ss-fastcrash" stored=""
+    # that no longer exists is meaningless; drop it so status readers (panel)
+    # see the truth without having to replicate the context comparison.
+    [[ -f "$file" ]] || return 0
+    IFS='|' read -r stored _ <"$file" || true
+    if [[ "$stored" != "$ctx" ]]; then
+        rm -f "$file"
+    fi
+}
+
 valid_mod_name() { [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; }
 
 # ── steam install / update ───────────────────────────────────────────────────

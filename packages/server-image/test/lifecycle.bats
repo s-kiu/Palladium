@@ -181,6 +181,15 @@ mkbackup() { # name [age-days]
     [ "$(fastcrash_count "$CTX_B")" = "0" ]
 }
 
+@test "fastcrash_prune_stale drops counters from a different pairing only" {
+    fastcrash_record "old-loader@100" >/dev/null
+    fastcrash_prune_stale "new-loader@200"
+    [ ! -f "$STATE_DIR/ue4ss-fastcrash" ]
+    fastcrash_record "new-loader@200" >/dev/null
+    fastcrash_prune_stale "new-loader@200"
+    [ "$(fastcrash_count "new-loader@200")" = "1" ]
+}
+
 @test "fastcrash_count survives a corrupt state file" {
     echo "garbage-no-separator" >"$STATE_DIR/ue4ss-fastcrash"
     [ "$(fastcrash_count "x@y")" = "0" ]

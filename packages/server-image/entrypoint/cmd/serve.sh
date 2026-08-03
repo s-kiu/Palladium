@@ -102,6 +102,7 @@ main() {
         fi
     fi
     fc_ctx="$(fastcrash_context)"
+    fastcrash_prune_stale "$fc_ctx"
     if [[ "$use_ue4ss" == "true" ]] && is_true "$MODS_AUTO_FALLBACK"; then
         fc_count="$(fastcrash_count "$fc_ctx")"
         if ((fc_count >= FASTCRASH_LIMIT)); then
