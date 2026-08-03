@@ -103,6 +103,29 @@ rate-limited. Deliberate design constraints:
 - The console tab is a curated allowlist of the game's own REST commands —
   it is not a shell, and nothing it runs leaves the game's API surface.
 
+## Remote access to the panel
+
+Want to administer from outside your network? Three supported paths, easiest
+and safest first:
+
+1. **VPN (recommended)** — install [Tailscale](https://tailscale.com) (or
+   WireGuard) on the server and your devices, then open
+   `http://<server-vpn-ip>:3000` from anywhere. No ports opened, traffic
+   encrypted, nothing public. This is the right choice for almost everyone.
+2. **SSH tunnel** — `ssh -L 3000:localhost:3000 user@server`, then browse
+   `http://localhost:3000`. Nothing stays exposed; ends with your session.
+3. **TLS reverse proxy** — a domain plus Caddy or nginx proxy manager
+   terminating HTTPS in front of the panel, with `PANEL_BIND=127.0.0.1` so
+   the proxy is the only way in (with nginx proxy manager, attach the panel
+   container to the proxy network and target `pal-up-panel:3000`). The
+   panel's login is one password with rate limiting — no 2FA, no lockout —
+   which is fine behind a VPN but thin as the only wall on the open
+   internet, so give the proxy its own auth layer (basic auth or an access
+   list) and let the panel login be the second factor.
+
+Never simply port-forward 3000: that publishes an unencrypted admin login to
+the internet.
+
 ## Reporting
 
 To report a vulnerability, open a GitHub issue marked `[security]` without
