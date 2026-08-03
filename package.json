@@ -1,0 +1,25 @@
+{
+  "name": "pal-up",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Self-hosted, mod-aware Palworld dedicated server for Linux",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/s-kiu/pal-up.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:image": "docker build -t pal-up/palworld-server:dev packages/server-image",
+    "build:panel": "docker build -f packages/daemon/Dockerfile -t pal-up/panel:dev .",
+    "test:image": "packages/server-image/test/run-tests.sh",
+    "test": "npm run test:image",
+    "dev:daemon": "npm run dev --workspace @pal-up/daemon",
+    "dev:panel": "npm run dev --workspace @pal-up/panel"
+  }
+}

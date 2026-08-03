@@ -1,0 +1,14 @@
+# Pinned UE4SS Linux (Palworld fork) release — the mod-loading foundation.
+# Managed by vendor.sh:
+#   ./vendor.sh              fetch the artifact (if absent) and verify it
+#   ./vendor.sh --pin [TAG]  switch to a release and record its checksum
+# "{tag}" inside UE4SS_ARTIFACT is replaced with UE4SS_TAG.
+# An empty UE4SS_SHA256 means unpinned: image builds then omit UE4SS entirely.
+#
+# Upstream: https://github.com/BlackBookOfficial/ue4ss-linux-palworld (MIT)
+# Chosen over generic UE4SS Linux builds because it carries the Palworld
+# struct offsets (MemberVariableLayout.ini) and update-resilience layers.
+UE4SS_REPO=BlackBookOfficial/ue4ss-linux-palworld
+UE4SS_TAG=v1.0.2-palworld-linux
+UE4SS_ARTIFACT=ue4ss-linux-palworld-{tag}.tar.gz
+UE4SS_SHA256=9c472b62a633877acddf2dcaf61826583f0d50b2c4e11723c71da5a4ea81abd9

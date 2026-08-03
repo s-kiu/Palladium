@@ -1,0 +1,61 @@
+# pal-up — modded Palworld dedicated server
+#
+#   cp .env.example .env   # set ADMIN_PASSWORD at minimum
+#   docker compose up -d --build
+
+services:
+  palworld:
+    image: pal-up/palworld-server:dev
+    build:
+      context: packages/server-image
+    container_name: palworld
+    restart: unless-stopped
+    # Graceful stop needs time to: announce shutdown, save, stop, back up.
+    # Must be > SHUTDOWN_WARN_SECONDS + backup time.
+    stop_grace_period: 120s
+    ports:
+      - "${GAME_PORT:-8211}:${GAME_PORT:-8211}/udp"
+      # The admin REST API (:8212) is deliberately NOT published. It is only
+      # reachable from inside this compose network. See docs/security.md.
+    env_file:
+      - .env
+    volumes:
+      # Everything lives under /palworld in one named volume: the ~15 GB Steam
+      # install, saves, config, state. Survives container recreation.
+      - palworld-data:/palworld
+      # User-facing mod folders, bind-mounted from the repo root for drag & drop.
+      - ./mods:/palworld/mods
+      - ./paks:/palworld/paks
+      - ./logicmods:/palworld/logicmods
+      # Backups on the host so they survive even a volume wipe.
+      - ./backups:/palworld/backups
+
+  panel:
+    image: pal-up/panel:dev
+    build:
+      context: .
+      dockerfile: packages/daemon/Dockerfile
+    container_name: pal-up-panel
+    restart: unless-stopped
+    depends_on:
+      - palworld
+    # Same identity as the game server so shared-volume files stay consistent.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # The panel speaks plain HTTP — keep it on your LAN / behind a VPN.
+      - "${PANEL_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      - PALWORLD_HOST=palworld
+    volumes:
+      # Same mapping as the game container: the panel reads state and mods,
+      # writes backups and request markers. It never needs docker.sock.
+      - palworld-data:/palworld
+      - ./mods:/palworld/mods
+      - ./paks:/palworld/paks
+      - ./logicmods:/palworld/logicmods
+      - ./backups:/palworld/backups
+
+volumes:
+  palworld-data:

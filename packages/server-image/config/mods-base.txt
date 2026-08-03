@@ -1,0 +1,6 @@
+; Fallback base for the generated mods.txt, used only when the vendored UE4SS
+; bundle does not ship its own Mods/mods.txt.
+; BPModLoaderMod + BPML_GenericFunctions are required for LogicMods (.pak
+; Blueprint mods) to load.
+BPModLoaderMod : 1
+BPML_GenericFunctions : 1

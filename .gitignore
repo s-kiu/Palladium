@@ -1,0 +1,32 @@
+# deps / build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# local env & secrets
+.env
+*.local
+
+# maintainer working notes — not part of the published repo
+/todo.md
+
+# runtime data created by compose bind mounts (user content, not source)
+/mods/*
+/paks/*
+/logicmods/*
+/backups/*
+!/mods/.gitkeep
+!/paks/.gitkeep
+!/logicmods/.gitkeep
+!/backups/.gitkeep
+/data/
+
+# vendored UE4SS artifacts are fetched by vendor.sh, never committed
+packages/server-image/ue4ss/vendor/*
+!packages/server-image/ue4ss/vendor/.gitkeep
+
+# editor / os noise
+.DS_Store
+*.log
+.idea/
+.vscode/

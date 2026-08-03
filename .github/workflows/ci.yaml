@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          find packages/server-image -name '*.sh' -not -path '*/ue4ss/vendor/*' -print0 \
+            | xargs -0 shellcheck -x
+
+  test-image-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bats unit tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y bats
+          bats packages/server-image/test/
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs: [lint-shell, test-image-scripts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: vendor UE4SS (only if the lock is pinned)
+        id: vendor
+        run: |
+          if grep -q '^UE4SS_SHA256=..*' packages/server-image/ue4ss/ue4ss.lock; then
+            ./packages/server-image/ue4ss/vendor.sh
+            echo "omit=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "UE4SS not pinned yet — building unmodded image"
+            echo "omit=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: docker build
+        run: |
+          docker build \
+            --build-arg UE4SS_OMIT=${{ steps.vendor.outputs.omit }} \
+            -t pal-up/palworld-server:ci \
+            packages/server-image
+      - name: smoke test — entrypoint dispatch works
+        run: |
+          docker run --rm pal-up/palworld-server:ci help
+          docker run --rm pal-up/palworld-server:ci check-update || test $? -eq 2
+
+  build-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (daemon + Angular panel)
+        run: docker build -f packages/daemon/Dockerfile -t pal-up/panel:ci .

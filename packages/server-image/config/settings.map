@@ -1,0 +1,57 @@
+# settings.map — env var → PalWorldSettings.ini OptionSettings key.
+# Format:  ENV_NAME|IniKey|type|default
+#   type:    str  (quoted), bool (True/False), raw (verbatim: numbers, enums, tuples)
+#   default: "-" = optional (omit from the ini when the env var is unset);
+#            anything else (including empty) is emitted as the default value.
+# Keys not listed here can always be set with OPT_<IniKey>=<verbatim value>.
+
+# identity & access
+SERVER_NAME|ServerName|str|Palworld Server (pal-up)
+SERVER_DESCRIPTION|ServerDescription|str|
+ADMIN_PASSWORD|AdminPassword|str|
+SERVER_PASSWORD|ServerPassword|str|
+MAX_PLAYERS|ServerPlayerMaxNum|raw|32
+COOP_MAX_PLAYERS|CoopPlayerMaxNum|raw|-
+USE_AUTH|bUseAuth|bool|true
+BAN_LIST_URL|BanListURL|str|https://api.palworldgame.com/api/banlist.txt
+REGION|Region|str|-
+
+# network & admin surfaces
+PUBLIC_IP|PublicIP|str|
+PUBLIC_PORT|PublicPort|raw|8211
+REST_API_ENABLED|RESTAPIEnabled|bool|true
+REST_API_PORT|RESTAPIPort|raw|8212
+RCON_ENABLED|RCONEnabled|bool|false
+RCON_PORT|RCONPort|raw|25575
+CROSSPLAY_PLATFORMS|CrossplayPlatforms|raw|-
+
+# world & difficulty
+DIFFICULTY|Difficulty|raw|-
+DEATH_PENALTY|DeathPenalty|raw|-
+HARDCORE|bHardcore|bool|-
+PAL_LOST|bPalLost|bool|-
+PVP|bIsPvP|bool|-
+MULTIPLAY|bIsMultiplay|bool|-
+INVADER_ENEMY|bEnableInvaderEnemy|bool|-
+FAST_TRAVEL|bEnableFastTravel|bool|-
+
+# rates
+EXP_RATE|ExpRate|raw|-
+PAL_CAPTURE_RATE|PalCaptureRate|raw|-
+PAL_SPAWN_NUM_RATE|PalSpawnNumRate|raw|-
+DAY_TIME_SPEED_RATE|DayTimeSpeedRate|raw|-
+NIGHT_TIME_SPEED_RATE|NightTimeSpeedRate|raw|-
+WORK_SPEED_RATE|WorkSpeedRate|raw|-
+ITEM_WEIGHT_RATE|ItemWeightRate|raw|-
+ENEMY_DROP_ITEM_RATE|EnemyDropItemRate|raw|-
+PAL_DAMAGE_RATE_ATTACK|PalDamageRateAttack|raw|-
+PAL_DAMAGE_RATE_DEFENSE|PalDamageRateDefense|raw|-
+PLAYER_DAMAGE_RATE_ATTACK|PlayerDamageRateAttack|raw|-
+PLAYER_DAMAGE_RATE_DEFENSE|PlayerDamageRateDefense|raw|-
+PAL_EGG_HATCHING_TIME|PalEggDefaultHatchingTime|raw|-
+
+# limits
+BASE_CAMP_MAX_NUM|BaseCampMaxNum|raw|-
+BASE_CAMP_WORKER_MAX_NUM|BaseCampWorkerMaxNum|raw|-
+GUILD_PLAYER_MAX_NUM|GuildPlayerMaxNum|raw|-
+DROP_ITEM_MAX_NUM|DropItemMaxNum|raw|-

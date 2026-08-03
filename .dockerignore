@@ -1,0 +1,12 @@
+# keep the panel-image build context lean (context = repo root)
+.git
+.env
+backups
+mods
+paks
+logicmods
+node_modules
+packages/*/node_modules
+packages/panel/dist
+packages/daemon/dist
+packages/server-image/ue4ss/vendor

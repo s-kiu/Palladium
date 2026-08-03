@@ -1,0 +1,7 @@
+{
+  "name": "@pal-up/shared",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Schemas and types shared between the pal-up daemon and panel",
+  "license": "AGPL-3.0-only"
+}
