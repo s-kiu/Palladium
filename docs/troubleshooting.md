@@ -48,8 +48,11 @@ Checklist, in order:
    about skipped names.
 2. Is it actually a *server-side* mod? Client-visual mods must be installed
    on players' machines ([mods.md](mods.md)).
-3. Lua structure right? `mods/<Name>/scripts/main.lua` — an extra nesting
-   level from unzipping (`mods/CoolMod/CoolMod/scripts/…`) is the #1 cause.
+3. Lua structure right? `mods/<Name>/Scripts/main.lua` — unzip mishaps are
+   the #1 cause, in both directions: an extra nesting level
+   (`mods/CoolMod/CoolMod/Scripts/…`), or a flat archive that dumped
+   `Scripts/` and `Info.json` loose into `mods/` — create the mod folder and
+   move them inside. A zip file itself in `mods/` is ignored.
 4. UE4SS actually active? Startup log must say `starting PalServer WITH
    UE4SS`. If it says the image was built without UE4SS, rebuild the image —
    the checksum pin in `packages/server-image/ue4ss/ue4ss.lock` must be
