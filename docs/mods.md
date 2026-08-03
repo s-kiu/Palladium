@@ -37,9 +37,11 @@ This kills the classic "my mods.txt reset after restart" problem: the file is
 *supposed* to be regenerated — from state you control. Power users who want
 exotic load orders set `MODS_TXT_MODE=manual` and own the file themselves.
 
-Note: a `enabled.txt` file *inside* a mod folder force-enables it in UE4SS
-regardless of `mods.txt` — some mods ship one. Delete it from your copy in
-`./mods` if you want `.disabled` to work for that mod.
+Note: some mods ship an `enabled.txt` that would force-enable them in UE4SS
+regardless of `mods.txt`. In managed mode pal-up strips that file from the
+synced copy so the enable/disable toggle always wins (your folder in `./mods`
+is left as downloaded). In `MODS_TXT_MODE=manual`, `enabled.txt` is preserved
+and behaves as UE4SS defines.
 
 ## Linux caveats (read before reporting a broken mod)
 

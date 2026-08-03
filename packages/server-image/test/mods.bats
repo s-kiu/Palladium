@@ -41,6 +41,16 @@ mkmod() { mkdir -p "$USER_MODS_DIR/$1/scripts"; echo "-- $1" >"$USER_MODS_DIR/$1
     [ ! -d "$TARGET/Beta" ]
 }
 
+@test "sync_lua_mods strips shipped enabled.txt so mods.txt stays authoritative" {
+    mkmod Alpha
+    touch "$USER_MODS_DIR/Alpha/enabled.txt"
+    sync_lua_mods "$USER_MODS_DIR" "$TARGET" "$MANIFEST"
+    [ ! -e "$TARGET/Alpha/enabled.txt" ]          # stripped from the copy
+    [ -e "$USER_MODS_DIR/Alpha/enabled.txt" ]     # source untouched
+    MODS_TXT_MODE=manual sync_lua_mods "$USER_MODS_DIR" "$TARGET" "$MANIFEST"
+    [ -e "$TARGET/Alpha/enabled.txt" ]            # preserved in manual mode
+}
+
 @test "sync_lua_mods never deletes folders it did not create" {
     mkdir -p "$TARGET/BPModLoaderMod"    # bundled UE4SS mod, not user-managed
     mkmod Alpha

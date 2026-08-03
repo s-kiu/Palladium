@@ -533,6 +533,14 @@ sync_lua_mods() { # <user-mods-dir> <target-Mods-dir> <manifest-file>
         fi
         current+=("$name")
         rsync -a --delete "$d" "$target/$name/"
+        # Some mods ship an enabled.txt, which makes UE4SS load them no matter
+        # what mods.txt says — silently defeating the .disabled toggle. Under
+        # managed mods.txt, strip it from the synced copy so mods.txt is the
+        # single source of truth (the source folder is left untouched).
+        if [[ "${MODS_TXT_MODE:-managed}" == "managed" && -e "$target/$name/enabled.txt" ]]; then
+            rm -f "$target/$name/enabled.txt"
+            log "stripped enabled.txt from mod '$name' — mods.txt governs enablement"
+        fi
     done
     # Remove mods synced on a previous boot that are gone from the source now,
     # but never touch folders this sync did not create (UE4SS bundled mods).
