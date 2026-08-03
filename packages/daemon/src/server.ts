@@ -326,21 +326,67 @@ app.get('/api/status', async () => {
 // ── players & admin ──────────────────────────────────────────────────────────
 app.get('/api/players', async () => (await palSafe('GET', 'players')) ?? { players: [] });
 
+// The game maintains the authoritative ban list on disk; the panel remembers
+// names for bans it issued itself so the list stays human-readable.
+const BANLIST_FILE = path.join(PAL_ROOT, 'saves', 'SaveGames', 'banlist.txt');
+const PANEL_BANS_FILE = path.join(STATE_DIR, 'panel-bans.json');
+
+async function readBanMeta(): Promise<Record<string, { name?: string; at?: number }>> {
+  try {
+    return JSON.parse((await readOpt(PANEL_BANS_FILE)) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+async function writeBanMeta(meta: Record<string, { name?: string; at?: number }>): Promise<void> {
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.writeFile(PANEL_BANS_FILE, JSON.stringify(meta, null, 2));
+}
+
+app.get('/api/bans', async () => {
+  const raw = await readOpt(BANLIST_FILE);
+  const meta = await readBanMeta();
+  // banlist.txt lines are "steamid,playerUID" — the steam id is what the
+  // REST unban endpoint and the panel metadata key on.
+  const bans = (raw?.split('\n') ?? [])
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const userid = line.split(',')[0].trim();
+      return {
+        userid,
+        name: meta[userid]?.name ?? null,
+        bannedAt: meta[userid]?.at ?? null,
+      };
+    });
+  return { bans };
+});
+
 app.post<{ Body: { userid?: string; message?: string } }>('/api/players/kick', async (req, reply) => {
   if (!req.body?.userid) return reply.code(400).send({ error: 'userid required' });
   await pal('POST', 'kick', { userid: req.body.userid, message: req.body.message ?? 'Kicked by admin' });
   return { ok: true };
 });
 
-app.post<{ Body: { userid?: string; message?: string } }>('/api/players/ban', async (req, reply) => {
-  if (!req.body?.userid) return reply.code(400).send({ error: 'userid required' });
-  await pal('POST', 'ban', { userid: req.body.userid, message: req.body.message ?? 'Banned by admin' });
-  return { ok: true };
-});
+app.post<{ Body: { userid?: string; message?: string; name?: string } }>(
+  '/api/players/ban',
+  async (req, reply) => {
+    if (!req.body?.userid) return reply.code(400).send({ error: 'userid required' });
+    await pal('POST', 'ban', { userid: req.body.userid, message: req.body.message ?? 'Banned by admin' });
+    const meta = await readBanMeta();
+    meta[req.body.userid] = { name: req.body.name, at: Date.now() };
+    await writeBanMeta(meta);
+    return { ok: true };
+  },
+);
 
 app.post<{ Body: { userid?: string } }>('/api/players/unban', async (req, reply) => {
   if (!req.body?.userid) return reply.code(400).send({ error: 'userid required' });
   await pal('POST', 'unban', { userid: req.body.userid });
+  const meta = await readBanMeta();
+  delete meta[req.body.userid];
+  await writeBanMeta(meta);
   return { ok: true };
 });
 

@@ -1,12 +1,11 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Api, Player } from './api.service';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { Api, BanEntry, Player } from './api.service';
 
 @Component({
   selector: 'app-players',
   standalone: true,
-  imports: [FormsModule, DecimalPipe],
+  imports: [DecimalPipe, DatePipe],
   template: `
     <div class="card">
       <h2>Online players</h2>
@@ -39,20 +38,39 @@ import { Api, Player } from './api.service';
     </div>
 
     <div class="card">
-      <h2>Unban</h2>
-      <div class="row">
-        <input placeholder="steam_00000000000000000" [(ngModel)]="unbanId" name="unban" class="mono" />
-        <button (click)="unban()" [disabled]="!unbanId">Unban</button>
-      </div>
-      <p class="muted">User IDs appear in the table above while a player is online — note them before banning.</p>
+      <h2>Banned players</h2>
+      @if (bans().length === 0) {
+        <p class="muted">No banned players.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr><th>Name</th><th>User ID</th><th>Banned</th><th></th></tr>
+          </thead>
+          <tbody>
+            @for (b of bans(); track b.userid) {
+              <tr>
+                <td>{{ b.name ?? '—' }}</td>
+                <td class="mono">{{ b.userid }}</td>
+                <td>{{ b.bannedAt ? (b.bannedAt | date: 'yyyy-MM-dd HH:mm') : '—' }}</td>
+                <td class="actions">
+                  <button (click)="unban(b)">unban</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="muted small-note">
+          Includes bans issued in-game; names are known only for bans made from this panel.
+        </p>
+      }
     </div>
   `,
 })
 export class PlayersComponent implements OnInit, OnDestroy {
   private api = inject(Api);
   players = signal<Player[]>([]);
+  bans = signal<BanEntry[]>([]);
   feedback = signal('');
-  unbanId = '';
   private timer?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
@@ -67,6 +85,10 @@ export class PlayersComponent implements OnInit, OnDestroy {
     this.api.players().subscribe({
       next: (r) => this.players.set(r.players ?? []),
       error: () => this.players.set([]),
+    });
+    this.api.bans().subscribe({
+      next: (r) => this.bans.set(r.bans ?? []),
+      error: () => {},
     });
   }
 
@@ -85,17 +107,21 @@ export class PlayersComponent implements OnInit, OnDestroy {
       'Banned by admin',
     );
     if (message === null) return;
-    this.api.ban(p.userId, message).subscribe({
-      next: () => this.feedback.set(`banned ${p.name} (${p.userId})`),
+    this.api.ban(p.userId, message, p.name).subscribe({
+      next: () => {
+        this.feedback.set(`banned ${p.name} (${p.userId})`);
+        this.refresh();
+      },
       error: () => this.feedback.set('ban failed'),
     });
   }
 
-  unban(): void {
-    this.api.unban(this.unbanId.trim()).subscribe({
+  unban(b: BanEntry): void {
+    if (!confirm(`Unban ${b.name ?? b.userid}?`)) return;
+    this.api.unban(b.userid).subscribe({
       next: () => {
-        this.feedback.set(`unbanned ${this.unbanId.trim()}`);
-        this.unbanId = '';
+        this.feedback.set(`unbanned ${b.name ?? b.userid}`);
+        this.refresh();
       },
       error: () => this.feedback.set('unban failed'),
     });

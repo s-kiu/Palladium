@@ -71,7 +71,7 @@ main {
 }
 
 /* every view lays its cards out on the same 16px rhythm */
-app-dashboard, app-players, app-mods, app-backups, app-console, app-admin {
+app-dashboard, app-players, app-mods, app-backups, app-console, app-admin, app-settings {
   display: grid;
   gap: 16px;
   align-content: start;

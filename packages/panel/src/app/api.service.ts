@@ -60,6 +60,12 @@ export interface ConnectInfo {
   lookupEnabled: boolean;
 }
 
+export interface BanEntry {
+  userid: string;
+  name: string | null;
+  bannedAt: number | null;
+}
+
 export interface Player {
   name: string;
   playerId: string;
@@ -127,11 +133,14 @@ export class Api {
   kick(userid: string, message: string) {
     return this.http.post('/api/players/kick', { userid, message });
   }
-  ban(userid: string, message: string) {
-    return this.http.post('/api/players/ban', { userid, message });
+  ban(userid: string, message: string, name?: string) {
+    return this.http.post('/api/players/ban', { userid, message, name });
   }
   unban(userid: string) {
     return this.http.post('/api/players/unban', { userid });
+  }
+  bans() {
+    return this.http.get<{ bans: BanEntry[] }>('/api/bans');
   }
   announce(message: string) {
     return this.http.post('/api/announce', { message });
