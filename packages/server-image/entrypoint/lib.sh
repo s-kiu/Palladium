@@ -481,6 +481,10 @@ install_ue4ss() {
             fi
             cp -f "$ini" "$SERVER_DIR/$name"
         done
+        # Signature overrides are version-locked to the loader — always mirror.
+        if [[ -d "$UE4SS_STAGE/UE4SS_Signatures" ]]; then
+            rsync -a --delete "$UE4SS_STAGE/UE4SS_Signatures/" "$SERVER_DIR/UE4SS_Signatures/"
+        fi
         mkdir -p "$UE4SS_MODS_TARGET"
         if [[ -d "$UE4SS_STAGE/Mods" ]]; then
             # Bundled mods (BPModLoader, shared libs, …) are version-locked to

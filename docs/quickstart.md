@@ -81,12 +81,6 @@ keep port 3000 on your LAN or behind a VPN, never open it to the internet.
 
 ## 3. Install a mod
 
-> **Heads-up:** mods are currently non-functional on the latest Palworld
-> build — the UE4SS Linux port doesn't support it yet
-> ([upstream issue](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/1))
-> and the server automatically runs unmodded until a compatible release is
-> pinned. The steps below are unchanged once that lands.
-
 Three folders in the project root, one per mod type
 (details: [mods.md](mods.md)):
 

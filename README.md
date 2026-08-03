@@ -4,8 +4,13 @@
 
 Palworld's official mod system supports **Windows** dedicated servers only. pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container — mod loading, folder routing, config generation, safe updates, and backups, all driven by three drop-in folders and one `.env` file.
 
-> [!WARNING]
-> **Playing with mods is currently not possible.** The UE4SS Linux port does not yet support the current Palworld build 24466863 (v1.0.2.101103) — the loader crashes on startup ([upstream issue](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/1), fixes in progress). pal-up detects this and automatically runs the server **unmodded**, so everything else — server, panel, players, backups, updates — works normally. Mod support returns as soon as a compatible UE4SS release is published; updating then is a single version-pin bump and rebuild.
+> [!NOTE]
+> Mod loading currently ships via the community-maintained
+> [UE4SS build v1.0.3-palworld-linux](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux),
+> which carries the Linux stability fixes for the current Palworld build while
+> they are merged upstream ([details](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11)).
+> The pin lives in [ue4ss.lock](packages/server-image/ue4ss/ue4ss.lock) and
+> will move back to an upstream release once one includes the fixes.
 
 ## Features
 

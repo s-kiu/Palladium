@@ -73,9 +73,13 @@ cp "$LIB" "$DST/libUE4SS.so"
 # MemberVariableLayout.ini, ...) and any build metadata.
 find "$ROOT" -maxdepth 1 -type f \( -name '*.ini' -o -name 'BUILD_INFO*' \) \
     -exec cp {} "$DST/" \;
-if [[ -d "$ROOT/Mods" ]]; then
-    cp -r "$ROOT/Mods" "$DST/Mods"
-fi
+# Bundled mods and signature overrides (UE4SS_Signatures carries Lua-side
+# function-address fixes, e.g. the FName::ToString leak fix).
+for dir in Mods UE4SS_Signatures; do
+    if [[ -d "$ROOT/$dir" ]]; then
+        cp -r "$ROOT/$dir" "$DST/$dir"
+    fi
+done
 
 printf '%s %s\n' "$TAG" "$SHA" >"$DST/.version"
 rm -rf "$WORK"

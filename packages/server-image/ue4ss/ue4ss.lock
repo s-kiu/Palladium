@@ -5,10 +5,12 @@
 # "{tag}" inside UE4SS_ARTIFACT is replaced with UE4SS_TAG.
 # An empty UE4SS_SHA256 means unpinned: image builds then omit UE4SS entirely.
 #
-# Upstream: https://github.com/BlackBookOfficial/ue4ss-linux-palworld (MIT)
-# Chosen over generic UE4SS Linux builds because it carries the Palworld
-# struct offsets (MemberVariableLayout.ini) and update-resilience layers.
-UE4SS_REPO=BlackBookOfficial/ue4ss-linux-palworld
-UE4SS_TAG=v1.0.2-palworld-linux
+# Current pin: the Qiiks fork release — carries the full set of Linux
+# stability fixes for Palworld build 24466863 (upstream
+# BlackBookOfficial/ue4ss-linux-palworld issues #1/#11; fixes are being
+# upstreamed, switch back to an upstream release once one ships them).
+# The sha256 below is the digest GitHub publishes for the release asset.
+UE4SS_REPO=Qiiks/ue4ss-linux-palworld
+UE4SS_TAG=v1.0.3-palworld-linux
 UE4SS_ARTIFACT=ue4ss-linux-palworld-{tag}.tar.gz
-UE4SS_SHA256=9c472b62a633877acddf2dcaf61826583f0d50b2c4e11723c71da5a4ea81abd9
+UE4SS_SHA256=59becf74f69537e2d675eb2d1b61285251e8a7285d147dbdc62388d093b5c716
