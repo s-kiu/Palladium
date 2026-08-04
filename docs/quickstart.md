@@ -4,6 +4,14 @@ Tested target: Ubuntu 24.04, x86_64. Any Linux with Docker ≥ 24 and the
 compose plugin works the same way. **Not** supported: ARM (Raspberry Pi) — the
 UE4SS Linux build is x86_64 only.
 
+**Windows host?** Works through Docker Desktop (the containers run in its
+WSL2 Linux VM). Three rules for a good time: clone the repo *inside* the WSL
+filesystem (e.g. `~/pal-up` in your Ubuntu distro, not `C:\...` — bind-mounted
+folders are slow and permission-quirky otherwise); give WSL enough memory for
+the 16 GB recommendation (`.wslconfig` → `memory=16GB`, then `wsl --shutdown`);
+and allow `8211/udp` through Windows Defender Firewall when it asks. The
+dashboard's "host" resources then describe the WSL VM, not all of Windows.
+
 ## 0. Requirements
 
 - 4+ CPU cores, **16 GB RAM recommended** (the server eats memory over time)

@@ -1,0 +1,8 @@
+# Everything in this repo is consumed by Linux containers — enforce LF so
+# Windows checkouts (core.autocrlf) can't corrupt shell scripts or configs.
+* text=auto eol=lf
+
+# binaries, defensively
+*.png binary
+*.tar.gz binary
+*.zip binary
