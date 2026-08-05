@@ -822,6 +822,154 @@ app.get<{ Querystring: { lines?: string } }>('/api/logs', async (req) => {
   }
 });
 
+// ── in-game event bridge ─────────────────────────────────────────────────────
+// UE4SS Lua has no sockets, so the in-game agent publishes events by appending
+// JSON lines to a file on the shared volume. The daemon is the public face of
+// that stream: it re-exposes it over HTTP and drives chat commands from it.
+//
+// Cursors are byte offsets. The game container truncates the file at boot, so
+// a cursor is only meaningful within one server run; a cursor past the end of
+// the file means the run ended and the reader rewinds to the start.
+const BRIDGE_EVENTS = path.join(PAL_ROOT, 'logs', 'bridge-events.jsonl');
+const BRIDGE_WINDOW = 262_144; // bytes served per request, caps response size
+
+interface BridgeEvent {
+  v: number;
+  at: number;
+  type: string;
+  player?: string;
+  userid?: string;
+  message?: string;
+}
+
+async function readBridge(
+  since: number,
+  limit: number,
+): Promise<{ events: BridgeEvent[]; cursor: number }> {
+  let size: number;
+  try {
+    size = (await fs.stat(BRIDGE_EVENTS)).size;
+  } catch {
+    return { events: [], cursor: 0 }; // no agent installed, or not booted yet
+  }
+  const from = Number.isFinite(since) && since >= 0 && since <= size ? since : 0;
+  const want = Math.min(size - from, BRIDGE_WINDOW);
+  if (want <= 0) return { events: [], cursor: from };
+
+  const fh = await fs.open(BRIDGE_EVENTS, 'r');
+  let buf: Buffer;
+  try {
+    buf = Buffer.alloc(want);
+    const { bytesRead } = await fh.read(buf, 0, want, from);
+    buf = buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
+  }
+
+  const events: BridgeEvent[] = [];
+  let cursor = from;
+  let idx = 0;
+  while (events.length < limit) {
+    const nl = buf.indexOf(0x0a, idx);
+    if (nl === -1) break; // trailing partial line: leave it for the next read
+    const line = buf.subarray(idx, nl).toString('utf8').trim();
+    idx = nl + 1;
+    cursor = from + idx;
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line);
+      // Advance past anything unrecognised rather than stalling on it: one
+      // torn line must not wedge the stream for every reader behind it.
+      if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string') {
+        events.push(parsed as BridgeEvent);
+      }
+    } catch { /* malformed line — skipped, cursor already moved past it */ }
+  }
+  // A full window with no line break at all can only be corruption; skip it so
+  // the cursor cannot get stuck.
+  if (idx === 0 && buf.length === BRIDGE_WINDOW) cursor = from + buf.length;
+  return { events, cursor };
+}
+
+app.get<{ Querystring: { since?: string; limit?: string } }>('/api/bridge/events', async (req) => {
+  const since = Math.max(0, Number(req.query.since ?? 0) || 0);
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 500);
+  return readBridge(since, limit);
+});
+
+// ── chat command routing ─────────────────────────────────────────────────────
+// Routing lives here, not in the mod: the in-game agent stays a plain event
+// source, so a new command is a table entry plus a daemon restart rather than a
+// Lua change plus a game restart.
+const COMMAND_PREFIX = '!';
+const COMMAND_COOLDOWN_MS = 2000;
+
+interface ChatCommand {
+  run: (event: BridgeEvent, args: string) => Promise<unknown>;
+  audit: (event: BridgeEvent, args: string) => string;
+}
+
+const CHAT_COMMANDS: Record<string, ChatCommand> = {
+  ping: {
+    run: () => pal('POST', 'announce', { message: 'pong' }),
+    audit: (e) => `chat !ping from ${e.player || 'unknown'} — announced "pong"`,
+  },
+};
+
+// Chat is untrusted input: one command per player per cooldown window, so a
+// spamming client cannot turn the broadcast endpoint into an amplifier.
+const lastCommandAt = new Map<string, number>();
+
+function commandAllowed(key: string, now: number): boolean {
+  const previous = lastCommandAt.get(key);
+  if (previous !== undefined && now - previous < COMMAND_COOLDOWN_MS) return false;
+  lastCommandAt.set(key, now);
+  if (lastCommandAt.size > 256) {
+    for (const [k, at] of lastCommandAt) {
+      if (now - at >= COMMAND_COOLDOWN_MS) lastCommandAt.delete(k);
+    }
+  }
+  return true;
+}
+
+async function routeChat(event: BridgeEvent): Promise<void> {
+  const text = (event.message ?? '').trim();
+  if (!text.startsWith(COMMAND_PREFIX)) return;
+  const [word, ...rest] = text.slice(COMMAND_PREFIX.length).split(/\s+/);
+  const command = CHAT_COMMANDS[word.toLowerCase()];
+  if (!command) return;
+  if (!commandAllowed(event.userid || event.player || 'unknown', Date.now())) return;
+  const args = rest.join(' ');
+  try {
+    await command.run(event, args);
+    await panelLog(command.audit(event, args));
+  } catch (err) {
+    await panelLog(`chat !${word} failed: ${(err as Error).message}`);
+  }
+}
+
+// The poller is the only consumer that must never miss an event, so it holds
+// its own cursor. It starts at the current end of file: a daemon restart must
+// not re-execute commands that were already answered.
+let bridgeCursor = 0;
+let bridgePolling = false;
+
+async function pollBridge(): Promise<void> {
+  if (bridgePolling) return;
+  bridgePolling = true;
+  try {
+    const { events, cursor } = await readBridge(bridgeCursor, 200);
+    bridgeCursor = cursor;
+    for (const event of events) {
+      if (event.type === 'chat') await routeChat(event);
+    }
+  } catch (err) {
+    app.log.warn({ err }, 'bridge poll failed');
+  } finally {
+    bridgePolling = false;
+  }
+}
+
 // ── admin console: the full vanilla (REST) command surface ───────────────────
 type ConsoleArgs = { message?: string; userid?: string; waittime?: number };
 const CONSOLE_COMMANDS: Record<string, (a: ConsoleArgs) => Promise<unknown>> = {
@@ -871,5 +1019,8 @@ app.setNotFoundHandler((req, reply) => {
   }
   return reply.code(404).send({ error: 'not found' });
 });
+
+bridgeCursor = await fs.stat(BRIDGE_EVENTS).then((st) => st.size, () => 0);
+setInterval(() => void pollBridge(), 1000).unref();
 
 await app.listen({ host: '0.0.0.0', port: PANEL_PORT });
