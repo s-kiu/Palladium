@@ -245,8 +245,9 @@ or even looking a UFunction path up with `StaticFindObject`, takes the server
 down. The agent refuses them outright. Consequences: `player.leave` is derived
 from the REST player list (a few seconds' delay), and Pal-capture events are
 not available. Capabilities marked `experimental` in the reference use engine
-calls that are plausible but not yet proven against a live player; the fastcrash
-guard (three rapid crashes → unmodded boot) is the safety net while they are.
+calls that are unproven against a live player, and may fail with
+`not_supported` rather than doing nothing quietly; the fastcrash guard (three
+rapid crashes → unmodded boot) is the safety net around them.
 
 Everything outside the agent keys on the envelope and the manifest, not on
 engine internals. If an event type stops appearing after a game patch,

@@ -1,8 +1,13 @@
-# pal-up
+# pal-up + Palladium
 
-**A modded Palworld dedicated server for Linux, in one `docker compose up`.**
+**A modded Palworld dedicated server for Linux in one `docker compose up` — and a modding API for building on top of it.**
 
-Palworld's official mod system supports **Windows** dedicated servers only. pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container — mod loading, folder routing, config generation, safe updates, and backups, all driven by three drop-in folders and one `.env` file.
+Two halves of one project:
+
+- **pal-up** — the server. Palworld's official mod system supports **Windows** dedicated servers only, so pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container: mod loading, folder routing, config generation, safe updates, backups and a web panel, driven by three drop-in folders and one `.env` file.
+- **[Palladium](mods/Palladium)** — the modding framework. A UE4SS Lua mod that publishes in-game events (chat, joins, deaths, pal spawns) and executes actions (message, give item, teleport, heal, stats, spawn) so external programs in any language can react to the server and act on it. It ships inside pal-up with a full GUI, and is [released standalone](https://github.com/s-kiu/pal-up/releases) for servers not running pal-up.
+
+If you just want a Palworld server that runs mods, use pal-up. If you want to *build* something — a Discord relay, a shop bot, an event-driven mod — that is what Palladium is for, and the panel gives you a UI for all of it before you write a line of code.
 
 > [!NOTE]
 > Mod loading currently ships via the community-maintained
@@ -21,6 +26,7 @@ Palworld's official mod system supports **Windows** dedicated servers only. pal-
 - **Config from env** — `PalWorldSettings.ini` is generated from `.env` (40+ mapped settings, `OPT_<IniKey>` passthrough for everything else), and `config/persist/` pins any file the game keeps resetting.
 - **Admin without ceremony** — a `pal-up` CLI inside the container: player list, broadcast, kick/ban, save-now, update check, backup management, all against the server's local REST API.
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: connect addresses for your players, live server status, game version and one-click updates, online players with kick/ban/unban, loaded mods and LogicMods with enable/disable toggles, backups with one-click create and rollback, and an admin page bundling server controls (restart/stop/broadcast with player warnings), the live server log, read-only server state, and a grouped, searchable settings editor with diff-before-apply. Sessions persist via cookie until you sign out. The panel needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
+- **A modding API with a GUI** — [Palladium](mods/Palladium) turns the server into a platform: subscribe to in-game events over HTTP, send actions back, from any language. The panel's **Palladium** page renders every capability as a form with searchable pickers (2,400+ items, 750+ pal species, tier-coloured traits, saved locations, known players), a filterable live event stream, and a stats editor for players and pals. Its **permissions** page adds groups, roles and per-player overrides that other mods can register their own nodes into.
 
 ## Quickstart
 
@@ -63,22 +69,34 @@ docker compose restart palworld
 
 Folder conventions, Linux caveats, and how mods survive game updates: [docs/mods.md](docs/mods.md).
 
-## Building on top of it
+## Palladium — building on top of it
 
-Chat, joins and deaths are published as a JSON event stream — readable as a file
-on the data volume or over HTTP from the panel — and actions go back the other
-way, so an outside process can hand a player an item or message them privately.
-Type `!ping` in game and the server broadcasts `pong`; the panel's **bridge**
-page shows the live stream, the hooks behind it, and every player id ever seen.
+[Palladium](mods/Palladium) is the in-game half: a UE4SS Lua mod that publishes
+events and executes actions. The panel is the other half, exposing both over
+HTTP with tokens, a database and permissions. Together they make the server
+programmable.
 
-That is the seam for bots, Discord relays, and anything else that wants to react
-to what happens on the server. Contract and endpoints:
-[docs/bridge.md](docs/bridge.md). Three runnable examples — a starter-kit
-greeter, a death feed, and extra chat commands added without touching the
-server: [examples/bridge/](examples/bridge).
+**Events**: `player.chat`, `player.join` (with `firstEver`), `player.death`
+(with killer), `player.respawn`, `player.leave`, `npc.spawn`.
+**Actions**: message, give item, teleport, heal, read/set stats, tags, spawn and
+inspect pals, plus permissions, groups and saved locations.
 
-The in-game half is a normal UE4SS mod, [mods/Palladium](mods/Palladium),
-published as a standalone download for servers not running pal-up.
+Everything goes through one verb, from any language:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -X POST http://localhost:3000/api/bridge/call \
+  -H 'content-type: application/json' \
+  -d '{"type":"player.give_item","target":"<player id>","data":{"item":"PalSphere","count":5}}'
+```
+
+Type `!ping` in game and the server broadcasts `pong`. Grant a group the
+`chatshop.kit` node and only its members can use `!kit`. Constrain a permission
+to *"may spawn, but only Lamball below level 20"* and the server enforces it.
+
+- Protocol and endpoints: [docs/bridge.md](docs/bridge.md)
+- Every capability, generated from one manifest: [docs/bridge-reference.md](docs/bridge-reference.md)
+- Runnable examples — starter-kit greeter, death feed, chat commands: [examples/bridge/](examples/bridge)
+- The mod on its own, for servers not running pal-up: [mods/Palladium](mods/Palladium)
 
 ## Everyday operations
 
@@ -104,7 +122,8 @@ docker compose start palworld
 pal-up/
 ├── compose.yaml              # the one command
 ├── .env.example              # all server & container settings
-├── mods/                     # ← drop UE4SS Lua mods here (Palladium ships in it)
+├── mods/
+│   └── Palladium/            # the modding framework (ships here, released standalone)
 ├── examples/bridge/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here
