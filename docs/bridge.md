@@ -6,168 +6,143 @@ bridge closes both gaps: a Lua mod running under UE4SS publishes in-game events
 onto the shared data volume and executes actions handed back to it, and the
 panel re-exposes both over HTTP.
 
-Two integration surfaces, pick whichever fits your tool:
+The full list of events and actions — with parameters, stability and which
+runtime serves them — is generated from one manifest and lives in
+[bridge-reference.md](bridge-reference.md). This page is the protocol; runnable
+examples live in [`examples/bridge/`](../examples/bridge).
 
-| Surface | Where | Good for |
-|---|---|---|
-| Event file | `/palworld/logs/bridge-events.jsonl` on the `palworld-data` volume | sidecar containers, anything that can tail a file |
-| Panel API | port 3000, `/api/bridge/*` | anything that speaks HTTP |
+## The envelope
 
-Runnable examples of all of it live in [`examples/bridge/`](../examples/bridge).
-
-## Events
-
-`PalBridgeAgent` (in `./mods/`, a normal Lua mod — disable it with
-`touch mods/PalBridgeAgent/.disabled`) appends one JSON object per line:
+Every message, in both directions, is one shape:
 
 ```json
-{"v":1,"at":1785900289,"type":"chat","player":"Ashen","userid":"1122AABB-...","message":"hello"}
+{
+  "v": 2,
+  "at": 1785941621,
+  "kind": "event",
+  "type": "player.death",
+  "subject": { "kind": "player", "id": "F8EAA197000000000000000000000000", "name": "Löyly" },
+  "data": { "killer": { "kind": "player", "id": "1122…", "name": "Bo" } }
+}
 ```
 
-Every line carries `v`, `at` and `type`; the rest depends on the type.
+- `kind` is `event` or `result`; results add `id` (matching your call), `ok`,
+  and `error` when `ok` is false.
+- `subject` is the entity the message is about — always the same shape, always
+  the same id. A player's `id` is their `PlayerUId` as 32 hex digits,
+  byte-identical to the `playerId` in the game's own REST API. A subject can
+  carry `position` when known.
+- `data` is the per-type payload. Whatever the type, "who and where" never
+  moves — a consumer that only reads `subject` need not know the type at all.
+- Fields are only ever added within an envelope version, never removed or
+  retyped. Match on `v`, ignore what you don't know.
 
-| Field | Meaning |
-|---|---|
-| `v` | Schema version. Fields are only ever added, never removed or retyped, so match on `v` and ignore what you don't know. |
-| `at` | Unix epoch seconds, server clock. |
-| `type` | Event kind, see below. |
+## Authentication
 
-| Type | Extra fields | When |
-|---|---|---|
-| `ready` | `agent`, `version`, `schema`, `actions` | The agent loaded. Its absence is what "no bridge" means. |
-| `hook` | `hook`, `target`, `ok`, `state` | One per engine hook, reporting whether it registered. |
-| `chat` | `player`, `userid`, `message` | A player sent a chat message. |
-| `join` | `player`, `userid`, `initial` | A player's character finished initialising. `initial` is false when they already joined earlier in this same server run. |
-| `death` | `player`, `userid`, and `killer`/`killerUserid` when another player did it | A player died. Pals dying are not reported. |
-| `leave` | `player`, `userid`, `source` | A player disconnected. |
-| `action` | `id`, `action`, `userid`, `ok`, `detail` | The outcome of a request you sent. |
-
-`player` is `Unknown` and `userid` is `""` when the game did not supply them.
-`message` is capped at 512 characters.
-
-`userid` is the player's `PlayerUId` rendered as 32 hex digits — byte-identical
-to the `playerId` the game's own REST API reports, so events join directly to
-`/api/players` with no translation. (Note that the REST `userId` field is a
-different thing: the platform account, `steam_…`.)
-
-The file is emptied when the server boots, exactly like `logs/server.log`. It is
-append-only within a run. Chat text is player input: treat it as untrusted, and
-expect control characters to arrive JSON-escaped (`\n`, `\u0007`).
-
-Two processes append to it: the agent, and the panel for `leave` events (which
-carry `source: "rest"` — see *What the engine allows* below). Both write whole
-lines, so a reader tailing it never sees a torn record.
-
-## The panel API
-
-Authenticated like every other panel endpoint (sign in at `/api/login`, the
-session cookie carries from there).
-
-### Reading events
+Programs use **API tokens** — created on the panel's admin page, sent as one
+header, revocable, scoped:
 
 ```
-GET /api/bridge/events?since=<byte-offset>&limit=<1..500>&type=chat,join
+Authorization: Bearer palup_…
+```
+
+`read` tokens can follow events and run queries; `write` is needed for anything
+that changes the game. Tokens can only reach `/api/bridge/*` — panel
+administration stays with the browser session, so a leaked token cannot mint
+tokens or restart the server. The cookie login also works on every bridge
+endpoint (that is how the panel itself calls them).
+
+## Reading events
+
+```
+GET /api/bridge/events?since=<byte-offset>&limit=<1..500>&type=player.chat,player.join
 ```
 
 ```json
-{"events": [ ... ], "cursor": 216}
+{"events": [ … ], "cursor": 216}
 ```
 
-`cursor` is a byte offset into the event file. Pass it back as `since` to get
-only what arrived after your last call — the endpoint holds no per-client state,
-so cursors survive a panel restart. Two rules to implement:
+`cursor` is a byte offset into the event file; pass it back as `since`. The
+endpoint holds no per-client state, so cursors survive a panel restart. Rules:
 
-- A cursor past the end of the file means the server rebooted and the file was
-  emptied. The endpoint rewinds to the start and returns the new run from its
-  beginning; a cursor in the response *lower* than the one you sent is your
-  signal to discard what you had.
-- Responses are capped at 256 KiB and at `limit` events, so keep calling until
+- The event file is emptied when the game server boots. A cursor past the end
+  rewinds to the start, and a response `cursor` *lower* than the one you sent is
+  your signal to discard buffered state from the old run.
+- Responses are capped at 256 KiB and `limit` events — keep calling until
   `cursor` stops advancing.
+- `type` filters without affecting the cursor. Unparseable lines are skipped.
 
-`type` filters the returned events without affecting the cursor, so a narrow
-reader still advances past everything it skipped. Unparseable lines are skipped
-rather than returned — one bad line cannot stall the stream.
+`player.join` events served over HTTP are enriched from the panel's database
+with `firstEver`, `firstSeen` and `joins` — the file alone cannot know them,
+because it starts empty every boot.
 
-### What is running
+## Calling into the game
 
-```
-GET /api/bridge/status
-```
-
-Reports the agent's name and version, which actions it accepts, every hook it
-registered with its live/failed state, and the event types seen so far. This is
-what the panel's **bridge** page is built from, so a hook added to the mod shows
-up in the UI with no panel change.
-
-### Who has been here
+One verb, whatever the capability:
 
 ```
-GET /api/bridge/players
+POST /api/bridge/call
+{"type": "player.give_item", "target": "F8EAA197…", "data": {"item": "PalSphere", "count": 5}}
 ```
 
-Every user id the bridge has ever seen, with `name`, `firstSeen`, `lastSeen`,
-`joins` and `online`. Kept across restarts — the event file starts empty every
-boot, so this is the only place a first-seen date lives.
+The answer is a result envelope. HTTP status is about the *protocol* (unknown
+type, bad params, missing scope, timeout); `ok` inside the envelope is about
+the *game* ("player not online"). A call that reaches the game and fails there
+is HTTP 200 with `ok: false`.
 
-### Sending actions
+Discovery is part of the API:
 
 ```
-POST /api/bridge/actions   {"action": "give_item", "userid": "...", "item": "PalSphere", "count": 5}
+GET /api/bridge/schema
 ```
 
-The request is queued for the agent, which executes it on the game thread and
-reports back; the call returns when the outcome is known, or 504 after 6
-seconds. Consult `status.actions` rather than hardcoding the list.
+returns every capability with its parameters, stability, and — the part no
+static list can give you — whether it is `live` right now: engine hooks move
+between game builds, and the agent reports which ones actually registered.
+Generic clients (the panel's own bridge page is one) render forms straight from
+this.
 
-| Action | Parameters | Notes |
-|---|---|---|
-| `give_item` | `userid`, `item`, `count` | The player must be online. Item ids are the game's *internal* names, which often differ from what the game displays — bread is `Pan`, medical supplies are `Medicines`. An id that does not exist is not reported as an error, the grant just does nothing, so take ids from a datamined item list. |
-| `message` | `userid`, `text` | Private message to one player. |
+## Storage
 
-```json
-{"id": "501ce780...", "ok": false, "detail": "player not online", "event": { ... }}
-```
+The panel keeps a SQLite database on the data volume (`.state/bridge.db`):
+players ever seen, join/leave sessions, per-player tags, API tokens, and an
+audit log of every call. That is what powers `firstEver`, the tags
+capabilities, and `GET /api/bridge/players`. Nothing external ever touches the
+database directly — it is served only through the capabilities.
 
-Every execution is also recorded in the server log with a `[panel]` prefix.
+Tags are the persistence primitive for scripts: `player.set_tag` /
+`player.get_tag` / `player.delete_tag` survive restarts, so "already got the
+starter kit" needs no database on the script's side.
 
 ## Chat commands
 
-The panel watches the stream and answers commands typed in game. A message
-starting with `!` is matched against its table; anything unrecognised is ignored
-and passes through as an ordinary chat event.
+The panel answers `!ping` itself (broadcasts `pong`, one command per player per
+2 s). Everything beyond that belongs outside: read `player.chat`, call actions
+— [`chat-shop.mjs`](../examples/bridge/chat-shop.mjs) adds `!kit`, `!heal`,
+`!gold` and `!deaths` without touching mod, daemon or panel.
 
-| Command | Effect |
-|---|---|
-| `!ping` | Broadcasts `pong` to everyone online. |
+## The two doors that are not HTTP
 
-Each player may trigger one built-in command every 2 seconds. Adding more
-commands does not require touching the panel — read the stream and call the
-actions API, which is what [`examples/bridge/chat-shop.mjs`](../examples/bridge/chat-shop.mjs)
-does.
+- **The event file itself**: `/palworld/logs/bridge-events.jsonl` on the
+  `palworld-data` volume, for sidecars that prefer tailing a file. Same
+  envelope, minus the daemon's join enrichment. Two writers append to it — the
+  agent, and the panel for `player.leave` (marked `source: "rest"`) — always
+  whole lines.
+- **The action queue**: `.state/bridge-actions.jsonl`, tab-separated
+  `key=value` requests consumed by the agent. This is the daemon's private
+  channel; write to it only if you are replacing the daemon.
 
 ## What the engine allows
 
-The agent hooks three native engine functions, verified against Palworld
-`v1.0.2.101103` (Steam build 24466863):
+Hook targets must be native (`/Script/…`) functions: Blueprint (`/Game/…`)
+targets fault this UE4SS build rather than failing cleanly — registering one,
+or even looking a UFunction path up with `StaticFindObject`, takes the server
+down. The agent refuses them outright. Consequences: `player.leave` is derived
+from the REST player list (a few seconds' delay), and Pal-capture events are
+not available. Capabilities marked `experimental` in the reference use engine
+calls that are plausible but not yet proven against a live player; the fastcrash
+guard (three rapid crashes → unmodded boot) is the safety net while they are.
 
-| Event | Hooked function |
-|---|---|
-| `chat` | `/Script/Pal.PalPlayerController:EnterChat_Receive` |
-| `join` | `/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter` |
-| `death` | `/Script/Pal.PalCharacter:OnDeadCharacter` |
-
-Blueprint functions — anything under `/Game/` — cannot be hooked on this UE4SS
-build, and attempting it is not merely ineffective: registering against a
-Blueprint class before the game has loaded it faults the process, and so does
-looking a UFunction path up with `StaticFindObject`. The agent therefore refuses
-non-native targets outright. That rules out the Blueprint route to disconnect
-and Pal-capture events; `leave` instead comes from the panel watching the game's
-own player list, which is why it carries `source: "rest"` and arrives within a
-few seconds rather than instantly. Pal captures are not available.
-
-Engine function names move between game builds. If an event type stops
-appearing after a patch, `GET /api/bridge/status` and `server/UE4SS.log` both
-report which hooks registered. Failures inside the agent are logged there and
-the event is dropped; the game is never taken down by them.
-
-Everything outside the agent keys on the schema above, not on engine internals.
+Everything outside the agent keys on the envelope and the manifest, not on
+engine internals. If an event type stops appearing after a game patch,
+`/api/bridge/schema` and `server/UE4SS.log` both say which hook died.

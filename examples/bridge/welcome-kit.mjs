@@ -1,13 +1,12 @@
-// Scenario 1 — starter kit on first join.
+// Scenario 1 — starter kit on first join, exactly once, ever.
 //
-// Watches for join events and hands first-time players a kit, with a private
-// message explaining it. Returning players get a shorter greeting and nothing
-// else, so the kit cannot be farmed by reconnecting.
+//   PALUP_TOKEN=palup_... node examples/bridge/welcome-kit.mjs
 //
-//   ADMIN_PASSWORD=... node examples/bridge/welcome-kit.mjs
-//
-// The "have they been here before" question is answered by the player registry,
-// which outlives server restarts — the event stream alone could not answer it.
+// Two server-side facts make this script five real lines: the join event
+// arrives with `firstEver` already computed (the panel's database outlives
+// reboots), and the kit-claimed flag is a tag on the player, so a crash between
+// the give and the restart cannot hand out a second kit — and a second copy of
+// this script cannot either.
 
 import { connect } from './lib.mjs';
 
@@ -21,29 +20,33 @@ const KIT = [
 ];
 
 const bridge = await connect();
+console.log('watching for joins…');
 
-// Anyone already in the registry has played here before, whatever this run says.
-const seen = new Set((await bridge.players()).players.map((p) => p.userid));
-console.log(`registry knows ${seen.size} player(s); watching for joins…`);
+for await (const event of bridge.follow({ types: ['player.join'] })) {
+  const { subject, data } = event;
 
-for await (const event of bridge.follow({ types: ['join'] })) {
-  const { player, userid } = event;
-  const returning = seen.has(userid);
-  seen.add(userid);
-
-  if (returning) {
-    await bridge.action('message', { userid, text: `Welcome back, ${player}.` });
-    console.log(`${player}: returning player, greeted`);
+  if (!data.firstEver) {
+    await bridge.call('player.message', subject.id, { text: `Welcome back, ${subject.name}.` });
+    console.log(`${subject.name}: returning (join #${data.joins}), greeted`);
     continue;
   }
 
-  await bridge.action('message', {
-    userid,
-    text: `Welcome to the server, ${player}! Here is a starter kit.`,
+  const claimed = await bridge.call('player.get_tag', subject.id, { key: 'starter_kit' });
+  if (claimed.data.value !== null) continue; // crashed mid-kit last time, half-given: stay safe
+
+  await bridge.call('player.message', subject.id, {
+    text: `Welcome to the server, ${subject.name}! Here is a starter kit.`,
   });
+  let allOk = true;
   for (const { item, count } of KIT) {
-    const result = await bridge.action('give_item', { userid, item, count });
-    console.log(`${player}: ${item} x${count} → ${result.ok ? 'ok' : `FAILED (${result.detail})`}`);
+    const r = await bridge.call('player.give_item', subject.id, { item, count });
+    console.log(`${subject.name}: ${item} x${count} → ${r.ok ? 'ok' : `FAILED (${r.error})`}`);
+    allOk &&= r.ok;
   }
-  await bridge.announce(`${player} just joined for the first time — say hi!`);
+  if (allOk) {
+    await bridge.call('player.set_tag', subject.id, { key: 'starter_kit', value: String(Date.now()) });
+    await bridge.call('server.announce', null, {
+      message: `${subject.name} just joined for the first time — say hi!`,
+    });
+  }
 }

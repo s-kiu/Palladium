@@ -5,7 +5,7 @@
 // calling the same API, which is the whole argument for the bridge: a new
 // command needs no mod change, no daemon change and no restart.
 //
-//   ADMIN_PASSWORD=... node examples/bridge/chat-shop.mjs
+//   PALUP_TOKEN=palup_... node examples/bridge/chat-shop.mjs
 //
 // Chat is untrusted input. Commands are matched exactly, arguments are never
 // interpreted, and each player is held to one command every few seconds.
@@ -19,25 +19,33 @@ const deaths = new Map();
 const COMMANDS = {
   '!kit': {
     help: 'a handful of spheres and food',
-    async run(bridge, { userid, player }) {
+    async run(bridge, { subject }) {
       for (const [item, count] of [['PalSphere', 5], ['Pan', 3]]) {
-        const r = await bridge.action('give_item', { userid, item, count });
-        if (!r.ok) return `could not hand out ${item}: ${r.detail}`;
+        const r = await bridge.call('player.give_item', subject.id, { item, count });
+        if (!r.ok) return `could not hand out ${item}: ${r.error}`;
       }
-      return `${player}, your kit is in your inventory.`;
+      return `${subject.name}, your kit is in your inventory.`;
     },
   },
   '!heal': {
-    help: 'a couple of medical supplies',
-    async run(bridge, { userid }) {
-      const r = await bridge.action('give_item', { userid, item: 'Medicines', count: 2 });
-      return r.ok ? 'Medicine added to your inventory.' : `no luck: ${r.detail}`;
+    help: 'full HP, plus a couple of medical supplies',
+    async run(bridge, { subject }) {
+      await bridge.call('player.heal', subject.id, {});
+      const r = await bridge.call('player.give_item', subject.id, { item: 'Medicines', count: 2 });
+      return r.ok ? 'Patched up.' : `no luck: ${r.error}`;
+    },
+  },
+  '!gold': {
+    help: 'how much gold you carry',
+    async run(bridge, { subject }) {
+      const r = await bridge.call('player.count_item', subject.id, { item: 'Money' });
+      return r.ok ? `You carry ${r.data.count} gold.` : `could not check: ${r.error}`;
     },
   },
   '!deaths': {
     help: 'how many times you have died this session',
-    async run(_bridge, { userid }) {
-      const n = deaths.get(userid) ?? 0;
+    async run(_bridge, { subject }) {
+      const n = deaths.get(subject.id) ?? 0;
       return n === 0 ? 'You have not died yet. Bold.' : `You have died ${n} time(s).`;
     },
   },
@@ -46,30 +54,31 @@ const COMMANDS = {
 const bridge = await connect();
 console.log(`serving ${Object.keys(COMMANDS).join(' ')}`);
 
-for await (const event of bridge.follow({ types: ['chat', 'death'] })) {
-  if (event.type === 'death') {
-    deaths.set(event.userid, (deaths.get(event.userid) ?? 0) + 1);
+for await (const event of bridge.follow({ types: ['player.chat', 'player.death'] })) {
+  const { subject } = event;
+  if (event.type === 'player.death') {
+    deaths.set(subject.id, (deaths.get(subject.id) ?? 0) + 1);
     continue;
   }
 
-  const word = (event.message ?? '').trim().split(/\s+/)[0].toLowerCase();
+  const word = String(event.data.message ?? '').trim().split(/\s+/)[0].toLowerCase();
   const command = COMMANDS[word];
   if (!command) {
     if (word === '!help') {
       const list = Object.entries(COMMANDS).map(([k, v]) => `${k} — ${v.help}`).join(' | ');
-      await bridge.action('message', { userid: event.userid, text: list });
+      await bridge.call('player.message', subject.id, { text: list });
     }
     continue;
   }
 
   const now = Date.now();
-  if (now - (lastUsed.get(event.userid) ?? 0) < COOLDOWN_MS) {
-    await bridge.action('message', { userid: event.userid, text: 'Slow down a moment.' });
+  if (now - (lastUsed.get(subject.id) ?? 0) < COOLDOWN_MS) {
+    await bridge.call('player.message', subject.id, { text: 'Slow down a moment.' });
     continue;
   }
-  lastUsed.set(event.userid, now);
+  lastUsed.set(subject.id, now);
 
-  console.log(`${event.player} used ${word}`);
+  console.log(`${subject.name} used ${word}`);
   const reply = await command.run(bridge, event);
-  await bridge.action('message', { userid: event.userid, text: reply });
+  await bridge.call('player.message', subject.id, { text: reply });
 }
