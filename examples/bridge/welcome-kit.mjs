@@ -11,9 +11,13 @@
 
 import { connect } from './lib.mjs';
 
+// Item ids are the game's internal names, which are not the names shown in
+// game: bread is `Pan`, medical supplies are `Medicines`. A wrong id is not
+// rejected — the grant simply does nothing — so check ids against a datamined
+// item list rather than guessing them.
 const KIT = [
   { item: 'PalSphere', count: 10 },
-  { item: 'Bread', count: 5 },
+  { item: 'Pan', count: 5 },
 ];
 
 const bridge = await connect();

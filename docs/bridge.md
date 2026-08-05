@@ -116,7 +116,7 @@ seconds. Consult `status.actions` rather than hardcoding the list.
 
 | Action | Parameters | Notes |
 |---|---|---|
-| `give_item` | `userid`, `item`, `count` | Item ids are the game's internal names. The player must be online. |
+| `give_item` | `userid`, `item`, `count` | The player must be online. Item ids are the game's *internal* names, which often differ from what the game displays — bread is `Pan`, medical supplies are `Medicines`. An id that does not exist is not reported as an error, the grant just does nothing, so take ids from a datamined item list. |
 | `message` | `userid`, `text` | Private message to one player. |
 
 ```json

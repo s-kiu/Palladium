@@ -20,7 +20,7 @@ const COMMANDS = {
   '!kit': {
     help: 'a handful of spheres and food',
     async run(bridge, { userid, player }) {
-      for (const [item, count] of [['PalSphere', 5], ['Bread', 3]]) {
+      for (const [item, count] of [['PalSphere', 5], ['Pan', 3]]) {
         const r = await bridge.action('give_item', { userid, item, count });
         if (!r.ok) return `could not hand out ${item}: ${r.detail}`;
       }
@@ -30,7 +30,7 @@ const COMMANDS = {
   '!heal': {
     help: 'a couple of medical supplies',
     async run(bridge, { userid }) {
-      const r = await bridge.action('give_item', { userid, item: 'Medicine', count: 2 });
+      const r = await bridge.action('give_item', { userid, item: 'Medicines', count: 2 });
       return r.ok ? 'Medicine added to your inventory.' : `no luck: ${r.detail}`;
     },
   },
