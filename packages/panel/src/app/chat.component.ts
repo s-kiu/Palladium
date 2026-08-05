@@ -30,6 +30,7 @@ import { Api, BridgeEvent } from './api.service';
         @for (e of lines(); track $index) {
           <div class="chatline">
             <span class="chat-time">{{ time(e.at) }}</span>
+            @if (showRoles() && e.subject?.role) { <span class="chat-role">[{{ e.subject?.role }}]</span> }
             <span class="chat-player">{{ e.subject?.name || 'unknown' }}</span>
             <span class="chat-text">{{ e.data['message'] }}</span>
           </div>
@@ -45,6 +46,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   @ViewChild('stream') stream?: ElementRef<HTMLDivElement>;
 
   lines = signal<BridgeEvent[]>([]);
+  showRoles = signal(false);
   placeholder = signal('loading chat…');
   private cursor = 0;
   private timer?: ReturnType<typeof setInterval>;
@@ -54,6 +56,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private static readonly KEEP = 300;
 
   ngOnInit(): void {
+    this.api.bridgeOptions().subscribe({ next: (o) => this.showRoles.set(o.chatRoles), error: () => {} });
     this.refresh();
     this.timer = setInterval(() => this.refresh(), 3000);
   }

@@ -7,8 +7,9 @@ import { ModsComponent } from './mods.component';
 import { BackupsComponent } from './backups.component';
 import { AdminComponent } from './admin.component';
 import { BridgeComponent } from './bridge.component';
+import { PermissionsComponent } from './permissions.component';
 
-type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'admin';
+type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'permissions' | 'admin';
 
 @Component({
   selector: 'app-root',
@@ -20,6 +21,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'admin';
     ModsComponent,
     BackupsComponent,
     BridgeComponent,
+    PermissionsComponent,
     AdminComponent,
   ],
   template: `
@@ -44,6 +46,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'admin';
           @case ('mods') { <app-mods /> }
           @case ('backups') { <app-backups /> }
           @case ('bridge') { <app-bridge /> }
+          @case ('permissions') { <app-permissions /> }
           @case ('admin') { <app-admin /> }
         }
       </main>
@@ -62,7 +65,7 @@ export class AppComponent implements OnInit, OnDestroy {
     'players',
     'mods',
     'backups',
-    ...(this.bridgeUp() ? (['bridge'] as Tab[]) : []),
+    ...(this.bridgeUp() ? (['bridge', 'permissions'] as Tab[]) : []),
     'admin',
   ]);
   private timer?: ReturnType<typeof setInterval>;
@@ -88,7 +91,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.bridgeStatus().subscribe({
       next: (s) => {
         this.bridgeUp.set(s.available);
-        if (!s.available && this.tab() === 'bridge') this.tab.set('dashboard');
+        if (!s.available && (this.tab() === 'bridge' || this.tab() === 'permissions')) this.tab.set('dashboard');
       },
       error: () => this.bridgeUp.set(false),
     });

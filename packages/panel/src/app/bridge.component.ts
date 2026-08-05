@@ -42,6 +42,40 @@ interface PickOption {
   imports: [FormsModule],
   template: `
     <div class="card">
+      <details>
+        <summary class="getting-started-summary">
+          <b>Build on this server</b>
+          <span class="muted"> — events in, actions out, from any language. Click for the 3-step setup.</span>
+        </summary>
+        <ol class="getting-started">
+          <li>
+            Create an API token on the <b>admin</b> page (read for feeds, read+write for bots
+            that act), and send it as <code>Authorization: Bearer palup_…</code>.
+          </li>
+          <li>
+            Follow events by cursor — new events arrive with a growing <code>cursor</code>,
+            and a smaller one means the server rebooted:
+            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" \
+  "http://this-host:3000/api/bridge/events?since=0&amp;type=player.join,player.chat"</pre>
+          </li>
+          <li>
+            Act through one verb — every form on this page is exactly this call:
+            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" -X POST http://this-host:3000/api/bridge/call \
+  -H "content-type: application/json" \
+  -d '{{ '{' }}"type":"player.give_item","target":"&lt;player id&gt;","data":{{ '{' }}"item":"PalSphere","count":5{{ '}' }}{{ '}' }}'</pre>
+          </li>
+        </ol>
+        <p class="muted small-note">
+          <code>GET /api/bridge/schema</code> lists every capability with parameters and live
+          state. Full contract:
+          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
+          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
+          <a href="https://github.com/s-kiu/pal-up/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
+        </p>
+      </details>
+    </div>
+
+    <div class="card">
       <div class="row spread">
         <h2>Bridge agent</h2>
         <span class="tag">{{ agentLabel() }}</span>

@@ -218,6 +218,7 @@ td.actions button + button { margin-left: 6px; }
 .chatlog { min-height: 120px; white-space: normal; }
 .chatline { display: flex; gap: 10px; align-items: baseline; }
 .chat-time { color: var(--muted); flex: none; }
+.chat-role { color: var(--warn); flex: none; font-size: 12px; }
 .chat-player { color: var(--accent); flex: none; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-text { white-space: pre-wrap; word-break: break-word; }
 
@@ -254,6 +255,20 @@ p.err { color: var(--danger); }
 .action-row:first-of-type { border-top: none; }
 .action-name { font-weight: 600; }
 .action-row input { max-width: 260px; }
+.entry-row { padding: 4px 0; }
+.getting-started-summary { cursor: pointer; font-size: 13.5px; }
+.getting-started { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 13.5px; }
+.getting-started pre {
+  background: #0b0d10;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+.getting-started a, .small-note a { color: var(--accent); }
+app-permissions { display: grid; gap: 16px; align-content: start; }
 .small-tags { font-size: 11px; color: var(--muted); max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .banner .mono { display: block; margin-top: 6px; user-select: all; word-break: break-all; }
 

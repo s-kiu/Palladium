@@ -80,7 +80,24 @@ export interface BridgeSubject {
   kind: string;
   id?: string;
   name?: string;
+  role?: string;
   position?: { x: number; y: number; z: number };
+}
+
+export interface PermGroup {
+  name: string;
+  tag: string;
+  weight: number;
+  isDefault: boolean;
+  entries: { node: string; effect: string; constraints: unknown }[];
+  members: number;
+}
+
+export interface PermNode {
+  node: string;
+  mod: string;
+  description: string;
+  default: string;
 }
 
 export interface BridgeEvent {
@@ -299,6 +316,12 @@ export class Api {
   }
   revokeToken(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/tokens/${id}`);
+  }
+  bridgeOptions() {
+    return this.http.get<{ chatRoles: boolean }>('/api/bridge/options');
+  }
+  setBridgeOptions(chatRoles: boolean) {
+    return this.http.put<{ chatRoles: boolean }>('/api/bridge/options', { chatRoles });
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });

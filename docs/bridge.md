@@ -114,6 +114,44 @@ Tags are the persistence primitive for scripts: `player.set_tag` /
 `player.get_tag` / `player.delete_tag` survive restarts, so "already got the
 starter kit" needs no database on the script's side.
 
+## Permissions
+
+Two layers, deliberately separate. Token scopes answer "may this *program* talk
+to the API"; permission nodes answer "may this *player* do this". Nodes are
+dotted strings with wildcards, resolved per player:
+
+1. the player's own overrides (`permission.grant`) win outright,
+2. then their groups, highest `weight` first,
+3. then the default group everyone is in,
+4. then the node's registered default — deny, if nobody registered it.
+
+Within one source, an exact node beats `chatshop.*` beats `*`, and deny beats
+allow on ties.
+
+**Mods own their nodes.** A mod calls `permission.register` on startup —
+idempotent, namespaced by its name, each node with a description and a default
+— and its nodes appear on the panel's permissions page the moment it has run
+once. `permission.check` is the one question everything asks; the panel's
+groups and overrides UI is just a client for the same capabilities.
+
+**Constraints make one node fine-grained.** An entry can carry per-parameter
+matchers — `{"species": {"in": ["SheepBall"]}}`, `{"x": {"min": 0, "max":
+1000}}` — so "may spawn, but only Lamball" or "may teleport, but only inside
+the hub" is one grant, not a list. Enforcement is server-side: pass `as:
+<playerId>` on any `/api/bridge/call` and the daemon resolves the capability
+type as a node for that player, matches the call's own parameters against the
+winning entry's constraints, and answers `ok: false, error:
+"permission_denied…"` instead of executing. Built-in capabilities register
+under the `bridge` mod with default deny, so acting on behalf of a player
+always needs an explicit grant.
+
+**Roles.** A group can carry a `tag` (`VIP`, `ADMIN`); a player's role is the
+tag of their highest-weight tagged group. It rides on served events as
+`subject.role`, and the panel's chat card shows `[ROLE]` before names when the
+option is on. The in-game chat itself cannot be rewritten — the hook only
+observes messages — so the role is visible everywhere the bridge renders chat,
+not inside the game client.
+
 ## Chat commands
 
 The panel answers `!ping` itself (broadcasts `pong`, one command per player per
