@@ -4,7 +4,7 @@
 #   docker build -f packages/daemon/Dockerfile -t pal-up/panel:dev .
 
 # ── Stage 1: build the Angular panel ─────────────────────────────────────────
-FROM node:22-alpine AS panel
+FROM node:24-alpine AS panel
 WORKDIR /panel
 COPY packages/panel/package*.json ./
 RUN npm ci --no-audit --no-fund
@@ -12,7 +12,7 @@ COPY packages/panel/ ./
 RUN npm run build
 
 # ── Stage 2: compile the daemon ──────────────────────────────────────────────
-FROM node:22-alpine AS daemon
+FROM node:24-alpine AS daemon
 WORKDIR /daemon
 COPY packages/daemon/package*.json ./
 RUN npm ci --no-audit --no-fund
@@ -20,7 +20,7 @@ COPY packages/daemon/ ./
 RUN npm run build && npm ci --omit=dev --no-audit --no-fund
 
 # ── Stage 3: runtime ─────────────────────────────────────────────────────────
-FROM node:22-alpine
+FROM node:24-alpine
 # tar: used to create world backups on the shared volume
 RUN apk add --no-cache tar
 WORKDIR /app
