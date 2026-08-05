@@ -1,0 +1,16 @@
+{
+  "ModName": "PalBridge Agent",
+  "PackageName": "PalBridgeAgent",
+  "Version": "1.1.0",
+  "DebugMode": false,
+  "Author": "pal-up",
+  "Dependencies": ["UE4SS"],
+  "Tags": ["UE4SS", "Server", "Integration"],
+  "InstallRule": [
+    {
+      "Type": "Lua",
+      "IsServer": true,
+      "Targets": ["./Scripts"]
+    }
+  ]
+}

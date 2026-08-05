@@ -16,6 +16,8 @@ dist/
 /logicmods/*
 /backups/*
 !/mods/.gitkeep
+# PalBridgeAgent is this project's own mod, not user content — it ships here.
+!/mods/PalBridgeAgent/
 !/paks/.gitkeep
 !/logicmods/.gitkeep
 !/backups/.gitkeep
