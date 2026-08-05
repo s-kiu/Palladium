@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'mods/PalBridgeAgent/**'
+      - 'mods/Palladium/**'
       - '.github/workflows/mod-release.yaml'
 
 permissions:
@@ -24,12 +24,12 @@ jobs:
       - name: read the mod version
         id: mod
         run: |
-          version="$(jq -er '.Version' mods/PalBridgeAgent/Info.json)"
+          version="$(jq -er '.Version' mods/Palladium/Info.json)"
           case "$version" in
             *[!0-9.a-zA-Z-]*|'') echo "refusing unsafe version string: $version" >&2; exit 1 ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=palbridgeagent-v$version" >> "$GITHUB_OUTPUT"
+          echo "tag=palladium-v$version" >> "$GITHUB_OUTPUT"
 
       - name: skip if this version was already released
         id: check
@@ -47,17 +47,17 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
-          find mods/PalBridgeAgent -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+          find mods/Palladium -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
 
       - name: package
         if: steps.check.outputs.exists == 'false'
         run: |
           # Archive root is the mod folder itself, so unzipping into ./mods (or
           # a server's Mods directory) lands it at the path UE4SS expects.
-          zip -r "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" mods/PalBridgeAgent \
+          zip -r "Palladium-${{ steps.mod.outputs.version }}.zip" mods/Palladium \
             -x '*/.disabled'
-          sha256sum "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" \
-            > "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip.sha256"
+          sha256sum "Palladium-${{ steps.mod.outputs.version }}.zip" \
+            > "Palladium-${{ steps.mod.outputs.version }}.zip.sha256"
 
       - name: publish
         if: steps.check.outputs.exists == 'false'
@@ -65,11 +65,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.mod.outputs.tag }}" \
-            --title "PalBridge Agent ${{ steps.mod.outputs.version }}" \
-            --notes "UE4SS Lua mod that publishes in-game events and executes actions for external tools.
+            --title "Palladium ${{ steps.mod.outputs.version }}" \
+            --notes "The Palladium agent: a UE4SS Lua mod that publishes in-game events and executes actions for external tools.
 
-          Drop the \`mods/PalBridgeAgent\` folder from the archive into your server's UE4SS \`Mods\` directory (pal-up users: into \`./mods\`) and restart.
+          Drop the \`mods/Palladium\` folder from the archive into your server's UE4SS \`Mods\` directory (pal-up users: into \`./mods\`) and restart.
 
           Event contract and HTTP API: [docs/bridge.md](https://github.com/${{ github.repository }}/blob/main/docs/bridge.md)" \
-            "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" \
-            "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip.sha256"
+            "Palladium-${{ steps.mod.outputs.version }}.zip" \
+            "Palladium-${{ steps.mod.outputs.version }}.zip.sha256"

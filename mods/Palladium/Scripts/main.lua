@@ -1,4 +1,4 @@
--- PalBridgeAgent — the in-game half of the pal-up bridge.
+-- Palladium — the in-game half of the pal-up bridge.
 --
 -- Publishes engine events onto the shared volume as JSON lines, and executes
 -- actions handed to it the same way. UE4SS Lua has no sockets, so files on the
@@ -21,7 +21,7 @@
 --   - never StaticFindObject a UFunction path: same fault
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
-local MOD = "PalBridgeAgent"
+local MOD = "Palladium"
 local VERSION = "2.0.0"
 
 local CAPS = require("generated/capabilities")

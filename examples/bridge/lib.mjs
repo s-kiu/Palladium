@@ -90,7 +90,7 @@ export async function connect(opts = {}) {
   const bridge = await new Bridge().login(opts);
   const schema = await bridge.schema();
   if (!schema.agent.ready) {
-    throw new Error('the bridge agent is not loaded — check that mods/PalBridgeAgent is enabled');
+    throw new Error('the bridge agent is not loaded — check that mods/Palladium is enabled');
   }
   const live = schema.capabilities.filter((c) => c.kind === 'event' && c.live).map((c) => c.type);
   console.log(`connected: ${schema.agent.name} v${schema.agent.version} — live events: ${live.join(', ')}`);

@@ -91,7 +91,7 @@ pal-up's own config generation — your file always wins.
 ## Mods that talk to the outside world
 
 UE4SS Lua has no network access, so a mod that wants to reach anything outside
-the game process has to go through a file on the shared volume. `PalBridgeAgent`
+the game process has to go through a file on the shared volume. `Palladium`
 ships that route for in-game events and the panel serves them over HTTP — see
 [docs/bridge.md](bridge.md) if you are writing a tool rather than a mod.
 

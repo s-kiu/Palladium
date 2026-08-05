@@ -77,7 +77,7 @@ to what happens on the server. Contract and endpoints:
 greeter, a death feed, and extra chat commands added without touching the
 server: [examples/bridge/](examples/bridge).
 
-The in-game half is a normal UE4SS mod, [mods/PalBridgeAgent](mods/PalBridgeAgent),
+The in-game half is a normal UE4SS mod, [mods/Palladium](mods/Palladium),
 published as a standalone download for servers not running pal-up.
 
 ## Everyday operations
@@ -104,7 +104,7 @@ docker compose start palworld
 pal-up/
 ├── compose.yaml              # the one command
 ├── .env.example              # all server & container settings
-├── mods/                     # ← drop UE4SS Lua mods here (PalBridgeAgent ships in it)
+├── mods/                     # ← drop UE4SS Lua mods here (Palladium ships in it)
 ├── examples/bridge/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here

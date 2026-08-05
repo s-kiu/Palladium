@@ -1,4 +1,4 @@
-# PalBridge Agent
+# Palladium
 
 A UE4SS Lua mod for **Palworld Linux dedicated servers**. It publishes in-game
 events to a file and executes actions written back to another one, which gives
@@ -8,7 +8,7 @@ transport available.
 
 ## Install
 
-Drop the `PalBridgeAgent` folder into your server's UE4SS `Mods` directory (on
+Drop the `Palladium` folder into your server's UE4SS `Mods` directory (on
 [pal-up](https://github.com/s-kiu/pal-up), into `./mods`) and restart the server.
 `server/UE4SS.log` will show each hook registering.
 

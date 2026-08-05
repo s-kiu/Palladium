@@ -57,7 +57,7 @@ ${luaActions.join('\n')}
 
 // ── daemon table ─────────────────────────────────────────────────────────────
 const ts = `// ${HEADER}
-export type ParamType = 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subject';
+export type ParamType = 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subject' | 'json';
 
 export interface ParamSpec {
   type: ParamType;
@@ -142,7 +142,7 @@ for (const [ns, list] of byNamespace) {
 
 // ── write ────────────────────────────────────────────────────────────────────
 const outputs = [
-  [join(ROOT, 'mods/PalBridgeAgent/Scripts/generated/capabilities.lua'), lua],
+  [join(ROOT, 'mods/Palladium/Scripts/generated/capabilities.lua'), lua],
   [join(ROOT, 'packages/daemon/src/generated/capabilities.ts'), ts],
   [join(ROOT, 'docs/bridge-reference.md'), md],
 ];
