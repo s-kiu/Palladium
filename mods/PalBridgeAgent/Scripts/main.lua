@@ -4,46 +4,43 @@
 -- actions handed to it the same way. UE4SS Lua has no sockets, so files on the
 -- volume are the only transport in either direction.
 --
---   out: /palworld/logs/bridge-events.jsonl    JSON, one object per line
+--   out: /palworld/logs/bridge-events.jsonl    JSON envelope, one per line
 --   in:  /palworld/.state/bridge-actions.jsonl tab-separated key=value lines
 --
--- Both files are emptied by serve.sh at boot, so offsets into them are only
--- meaningful within one server run.
+-- Both files are emptied by serve.sh at boot; offsets are per-run.
 --
--- Event schema v1: every line carries v, at and type; the remaining fields
--- depend on type. Fields are only ever added, never removed or retyped.
+-- Envelope v2 — every line is {v, at, kind, type, subject?, data}; results add
+-- id, ok, error. Which events exist and what parameters actions take is NOT
+-- decided here: Scripts/generated/capabilities.lua is generated from
+-- packages/shared/bridge-capabilities.json, and this file only implements
+-- handlers for what that table declares. Engine hook names live in the
+-- manifest too, so a game patch is a manifest edit, not a code hunt.
 --
--- Hooks are the fragile part by design — engine function names move between
--- game builds. Each one registers independently and reports itself as a `hook`
--- event, so a name that goes stale costs that one event type and nothing else.
--- Targets below verified against Palworld v1.0.2.101103 (Steam build 24466863).
+-- Rules that keep the game alive, learned the hard way:
+--   - native (/Script/) hook targets only: Blueprint targets fault the process
+--   - never StaticFindObject a UFunction path: same fault
+--   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "PalBridgeAgent"
-local VERSION = "1.1.1"
-local SCHEMA_VERSION = 1
+local VERSION = "2.0.0"
+
+local CAPS = require("generated/capabilities")
 
 local PAL_ROOT = os.getenv("PAL_ROOT") or "/palworld"
 local EVENT_FILE = PAL_ROOT .. "/logs/bridge-events.jsonl"
 local ACTION_FILE = PAL_ROOT .. "/.state/bridge-actions.jsonl"
 
--- Player input reaches the event file through chat, so every string written is
--- capped. The caps also bound the size of a single line for readers.
 local MAX_TEXT = 512
-
 local HOOK_RETRY_MS = 2000
 local HOOK_RETRY_LIMIT = 15
 local ACTION_POLL_MS = 500
--- Character parameters re-initialise on respawn as well as on connect; a
--- second init for a player already known is a respawn, not a join.
 local JOIN_DEDUP_SECONDS = 30
-local MAX_ITEM_COUNT = 9999
+local NPC_EVENTS_PER_SECOND = 20
 
 local function info(text)
     print(string.format("[%s] %s\n", MOD, text))
 end
 
--- Nothing the bridge does may propagate into the game thread: report once to
--- UE4SS.log and carry on.
 local function guard(what, fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then
@@ -53,9 +50,6 @@ local function guard(what, fn, ...)
 end
 
 -- ── JSON ────────────────────────────────────────────────────────────────────
--- The UE4SS Lua runtime has no JSON library. Events are flat objects of
--- strings, numbers and booleans, so an escaper and a value formatter are the
--- whole encoder.
 local ESCAPES = {
     ['"'] = '\\"', ["\\"] = "\\\\", ["\b"] = "\\b", ["\f"] = "\\f",
     ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t",
@@ -72,6 +66,8 @@ local function json_string(value, limit)
     return '"' .. text .. '"'
 end
 
+-- Values in data pairs: strings, numbers, booleans, or {raw=<json>} for a
+-- pre-encoded object (a nested subject).
 local function json_value(value)
     local kind = type(value)
     if kind == "boolean" then return value and "true" or "false" end
@@ -79,12 +75,21 @@ local function json_value(value)
         if value % 1 == 0 then return string.format("%d", value) end
         return string.format("%.6g", value)
     end
+    if kind == "table" and value.raw then return value.raw end
     return json_string(value)
 end
 
+local function json_pairs(fields)
+    local parts = {}
+    for _, field in ipairs(fields or {}) do
+        if field[2] ~= nil then
+            parts[#parts + 1] = json_string(field[1], 32) .. ":" .. json_value(field[2])
+        end
+    end
+    return table.concat(parts, ",")
+end
+
 -- ── event file ──────────────────────────────────────────────────────────────
--- Single writer, one line per io.write, handle closed immediately: short
--- appends to a local file land atomically enough for readers tailing it.
 local function append_line(line)
     local file, err = io.open(EVENT_FILE, "a")
     if not file then
@@ -94,28 +99,33 @@ local function append_line(line)
     file:close()
 end
 
--- `fields` is an ordered list of {key, value} so lines stay stable and
--- diffable rather than following Lua's table iteration order.
-local function emit(event_type, fields)
+local function emit(kind, event_type, subject_json, data_fields, extra_fields)
     local parts = {
-        '{"v":', tostring(SCHEMA_VERSION),
+        '{"v":', tostring(CAPS.envelope),
         ',"at":', string.format("%d", os.time()),
-        ',"type":', json_string(event_type, 32),
+        ',"kind":', json_string(kind, 16),
+        ',"type":', json_string(event_type, 48),
     }
-    for _, field in ipairs(fields or {}) do
-        parts[#parts + 1] = "," .. json_string(field[1], 32) .. ":" .. json_value(field[2])
+    local extra = json_pairs(extra_fields)
+    if extra ~= "" then parts[#parts + 1] = "," .. extra end
+    if subject_json then
+        parts[#parts + 1] = ',"subject":' .. subject_json
     end
-    parts[#parts + 1] = "}\n"
+    parts[#parts + 1] = ',"data":{' .. json_pairs(data_fields) .. "}}\n"
     append_line(table.concat(parts))
 end
 
-local function publish(event_type, fields)
-    guard("emit " .. event_type, emit, event_type, fields)
+local function publish(event_type, subject_json, data_fields)
+    guard("emit " .. event_type, emit, "event", event_type, subject_json, data_fields)
+end
+
+local function publish_result(id, action_type, ok, err, subject_json, data_fields)
+    guard("emit result", emit, "result", action_type, subject_json, data_fields, {
+        { "id", id }, { "ok", ok == true }, { "error", err },
+    })
 end
 
 -- ── engine value extraction ─────────────────────────────────────────────────
--- Hook parameters arrive wrapped, and payload shapes vary with the game build,
--- so every access is probed rather than assumed.
 local function unwrap(param)
     if param == nil then return nil end
     local ok, value = pcall(function() return param:get() end)
@@ -147,13 +157,8 @@ local function player_name(state)
     return (state and to_text(member(state, "PlayerNamePrivate"))) or "Unknown"
 end
 
--- PlayerUId is an FGuid of four words. The game's own REST API reports the same
--- value as 32 hex digits with no separators, so render it identically: an event
--- can then be joined to /v1/api/players without translating anything.
---
--- The words read back signed, so a word with the high bit set arrives negative
--- and sign-extends to sixteen digits under %08X. The modulo brings it back into
--- unsigned 32-bit range.
+-- PlayerUId as 32 hex digits — byte-identical to the REST API's playerId. The
+-- words read back signed; the modulo undoes the sign extension.
 local ZERO_UID = string.rep("0", 32)
 
 local function hex32(word)
@@ -177,10 +182,34 @@ local function state_of(character)
     return nil
 end
 
+-- ── subjects ────────────────────────────────────────────────────────────────
+local function position_json(location)
+    if type(location) ~= "table" and type(location) ~= "userdata" then return nil end
+    local x, y, z = member(location, "X"), member(location, "Y"), member(location, "Z")
+    if type(x) ~= "number" then return nil end
+    return string.format(',"position":{"x":%.1f,"y":%.1f,"z":%.1f}', x, y or 0, z or 0)
+end
+
+local function player_subject(state)
+    return '{"kind":"player","id":' .. json_string(player_userid(state), 64)
+        .. ',"name":' .. json_string(player_name(state), 64) .. "}"
+end
+
+local function pal_subject(species, location)
+    local pos = location and position_json(location) or ""
+    return '{"kind":"pal","name":' .. json_string(species, 64) .. (pos or "") .. "}"
+end
+
+local BRIDGE_SUBJECT = '{"kind":"bridge","id":"' .. MOD .. '"}'
+
 -- ── session tracking ────────────────────────────────────────────────────────
--- Character parameters re-initialise on respawn too, so joins are deduplicated
--- against who is already known to be on.
-local online = {} -- userid → { name, at }
+-- The character-init hook fires on connect AND on respawn after death. The
+-- agent has seen the death, so: death arms a respawn flag; an init with the
+-- flag set is a respawn; an init shortly after another is engine noise; the
+-- rest are joins.
+local online = {}            -- userid → last event epoch
+local seen_this_run = {}     -- userid → true
+local expecting_respawn = {} -- userid → true after a death
 
 -- ── hook handlers ───────────────────────────────────────────────────────────
 local MESSAGE_FIELDS = { "Message", "message", "Text", "ChatMessage" }
@@ -210,41 +239,40 @@ local function on_chat(context, first, second)
         return
     end
     local state = state_of(controller)
-    publish("chat", {
-        { "player", player_name(state) },
-        { "userid", player_userid(state) },
-        { "message", message },
-    })
+    publish("player.chat", player_subject(state), { { "message", message } })
 end
 
-local function on_join(context)
+local function on_character_init(context)
     local character = unwrap(context)
     if not valid(character) then return end
     local state = state_of(character)
     if not state then
-        -- PlayerState is attached a moment after the character initialises.
+        -- PlayerState attaches a moment after the character initialises.
         if type(ExecuteWithDelay) == "function" then
-            ExecuteWithDelay(50, function() guard("join retry", on_join, context) end)
+            ExecuteWithDelay(50, function() guard("join retry", on_character_init, context) end)
         end
         return
     end
 
-    local name, userid = player_name(state), player_userid(state)
+    local userid = player_userid(state)
     local now = os.time()
-    local known = online[userid]
-    if known and (now - known.at) < JOIN_DEDUP_SECONDS then
-        known.at = now
+
+    if expecting_respawn[userid] then
+        expecting_respawn[userid] = nil
+        online[userid] = now
+        publish("player.respawn", player_subject(state), {})
+        return
+    end
+    if online[userid] and (now - online[userid]) < JOIN_DEDUP_SECONDS then
+        online[userid] = now
         return
     end
 
-    -- `initial` is scoped to this server run; the panel keeps the persistent
-    -- first-seen record because the event file starts empty every boot.
-    publish("join", {
-        { "player", name },
-        { "userid", userid },
-        { "initial", known == nil },
+    online[userid] = now
+    publish("player.join", player_subject(state), {
+        { "firstThisRun", seen_this_run[userid] == nil },
     })
-    online[userid] = { name = name, at = now }
+    seen_this_run[userid] = true
 end
 
 local function on_death(_, event)
@@ -256,30 +284,93 @@ local function on_death(_, event)
     local victim_state = state_of(victim)
     if not victim_state then return end
 
-    local fields = {
-        { "player", player_name(victim_state) },
-        { "userid", player_userid(victim_state) },
-    }
-    -- Attribution is best-effort: the last attacker may be a pal, the world, or
-    -- already gone by the time this fires.
+    local userid = player_userid(victim_state)
+    expecting_respawn[userid] = true
+
+    local data = {}
     local attacker = member(dead_info, "LastAttacker")
     if valid(attacker) then
         local ok, controller = pcall(GetOwnerController, attacker)
         if ok and valid(controller) then
             local killer_state = member(controller, "PlayerState")
             if valid(killer_state) then
-                fields[#fields + 1] = { "killer", player_name(killer_state) }
-                fields[#fields + 1] = { "killerUserid", player_userid(killer_state) }
+                data[#data + 1] = { "killer", { raw = player_subject(killer_state) } }
             end
         end
     end
-    publish("death", fields)
+    publish("player.death", player_subject(victim_state), data)
 end
 
--- ── actions ─────────────────────────────────────────────────────────────────
--- Requests are written by the panel, never by players. The format is
--- tab-separated key=value rather than JSON so that parsing them needs no
--- parser: there is no structure here for a malformed line to exploit.
+-- Fires for every character parameter init near players — the world spawning.
+-- Player characters are filtered by their empty CharacterID / IsPlayer flag,
+-- and the whole thing is throttled: on a busy server this is the loudest hook.
+local npc_bucket, npc_bucket_count = 0, 0
+
+local function on_param_init(context)
+    local component = unwrap(context)
+    if component == nil then return end
+    local parameter = member(component, "IndividualParameter")
+    if not valid(parameter) then return end
+    local save = member(parameter, "SaveParameter")
+    if save == nil then return end
+    if member(save, "IsPlayer") == true then return end
+    local species = to_text(member(save, "CharacterID"))
+    if not species or species == "None" or species == "" then return end
+
+    local now = os.time()
+    if now ~= npc_bucket then
+        npc_bucket, npc_bucket_count = now, 0
+    end
+    npc_bucket_count = npc_bucket_count + 1
+    if npc_bucket_count > NPC_EVENTS_PER_SECOND then return end
+
+    local location = nil
+    local owner_ok, owner = pcall(function() return component:GetOwner() end)
+    if owner_ok and valid(owner) then
+        local loc_ok, loc = pcall(function() return owner:K2_GetActorLocation() end)
+        if loc_ok then location = loc end
+    end
+
+    local level = member(save, "Level")
+    publish("npc.spawn", pal_subject(species, location), {
+        { "species", species },
+        { "level", type(level) == "number" and level or 0 },
+        { "rare", member(save, "IsRarePal") == true },
+    })
+end
+
+-- ── action parameter validation (specs come from the generated table) ───────
+local function validate(specs, raw)
+    local out = {}
+    for _, spec in ipairs(specs or {}) do
+        local value = raw[spec.name]
+        if value == nil or value == "" then
+            if spec.required then return nil, "invalid_params: missing " .. spec.name end
+            value = spec.default
+        end
+        if value ~= nil then
+            if spec.kind == "int" or spec.kind == "number" then
+                value = tonumber(value)
+                if value == nil then return nil, "invalid_params: " .. spec.name .. " not a number" end
+                if spec.kind == "int" then value = math.floor(value) end
+                if spec.min and value < spec.min then return nil, "invalid_params: " .. spec.name .. " out of range" end
+                if spec.max and value > spec.max then return nil, "invalid_params: " .. spec.name .. " out of range" end
+            elseif spec.kind == "bool" then
+                value = (value == true or value == "true" or value == "1")
+            elseif spec.kind == "item_id" then
+                value = tostring(value)
+                if not value:match("^[%w_]+$") then return nil, "invalid_params: bad " .. spec.name end
+            else
+                value = tostring(value)
+                if spec.max_len and #value > spec.max_len then value = value:sub(1, spec.max_len) end
+            end
+        end
+        out[spec.name] = value
+    end
+    return out
+end
+
+-- ── action implementations ──────────────────────────────────────────────────
 local PalUtility
 
 local function pal_utility()
@@ -302,64 +393,173 @@ local function find_player_state(userid)
     return nil
 end
 
-local ACTIONS = {}
-
-function ACTIONS.give_item(request)
-    local item = request.item or ""
-    if not item:match("^[%w_]+$") then return false, "invalid item id" end
-    local count = math.floor(tonumber(request.count) or 1)
-    if count < 1 or count > MAX_ITEM_COUNT then return false, "count out of range" end
-
-    local state = find_player_state(request.userid)
-    if not state then return false, "player not online" end
-    local inventory = state:GetInventoryData()
-    if not inventory then return false, "no inventory data" end
-
-    inventory:AddItem_ServerInternal(FName(item), count, false, 0.0, true)
-    return true, string.format("%s x%d", item, count)
+local function pawn_of(state)
+    local controller = member(state, "GetPlayerController")
+        and state:GetPlayerController() or nil
+    if not valid(controller) then return nil, nil end
+    local pawn = member(controller, "Pawn")
+    if not valid(pawn) then return controller, nil end
+    return controller, pawn
 end
 
-function ACTIONS.message(request)
-    local text = (request.text or ""):sub(1, MAX_TEXT)
-    if text == "" then return false, "empty message" end
+-- Each handler: (state, params) → ok, error?, data_fields?
+local IMPL = {}
 
-    local state = find_player_state(request.userid)
-    if not state then return false, "player not online" end
+IMPL["player.message"] = function(state, p)
     local util = pal_utility()
     local world = FindFirstOf("World")
-    if not util or not valid(world) then return false, "world not ready" end
-
+    if not util or not valid(world) then return false, "not_supported" end
     local uid = member(state, "PlayerUId")
-    if uid == nil then return false, "no player uid" end
-    util:SendSystemToPlayerChat(world, text, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
-    return true, "delivered"
+    if uid == nil then return false, "player_offline" end
+    util:SendSystemToPlayerChat(world, p.text, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
+    return true, nil, {}
 end
 
+IMPL["player.give_item"] = function(state, p)
+    local inventory = state:GetInventoryData()
+    if not inventory then return false, "player_offline" end
+    inventory:AddItem_ServerInternal(FName(p.item), p.count, false, 0.0, true)
+    return true, nil, { { "item", p.item }, { "count", p.count } }
+end
+
+IMPL["player.teleport"] = function(state, p)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local ok, moved = pcall(function()
+        return pawn:K2_TeleportTo({ X = p.x, Y = p.y, Z = p.z }, { Pitch = 0, Yaw = 0, Roll = 0 })
+    end)
+    if not ok then return false, "not_supported" end
+    if moved == false then return false, "teleport_blocked" end
+    return true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z } }
+end
+
+IMPL["player.heal"] = function(state)
+    local util = pal_utility()
+    local _, pawn = pawn_of(state)
+    if not util or not pawn then return false, "player_offline" end
+    local world = FindFirstOf("World")
+    -- Signature unproven on this build: probe the two plausible shapes.
+    local ok = pcall(function() util:FullRecoveryHP(world, pawn) end)
+    if not ok then
+        ok = pcall(function() util:FullRecoveryHP(pawn) end)
+    end
+    if not ok then return false, "not_supported" end
+    return true, nil, {}
+end
+
+local function item_count(state, item)
+    local inventory = state:GetInventoryData()
+    if not inventory then return nil, "player_offline" end
+    local ok, count = pcall(function() return inventory:GetItemStackCount(FName(item)) end)
+    if not ok or type(count) ~= "number" then
+        ok, count = pcall(function() return inventory:CountItemNum(FName(item)) end)
+    end
+    if not ok or type(count) ~= "number" then return nil, "not_supported" end
+    return count
+end
+
+IMPL["player.count_item"] = function(state, p)
+    local count, err = item_count(state, p.item)
+    if count == nil then return false, err end
+    return true, nil, { { "item", p.item }, { "count", count } }
+end
+
+IMPL["player.has_item"] = function(state, p)
+    local count, err = item_count(state, p.item)
+    if count == nil then return false, err end
+    return true, nil, { { "item", p.item }, { "has", count >= p.count }, { "count", count } }
+end
+
+IMPL["pal.spawn"] = function(state, p)
+    local util = pal_utility()
+    local controller, pawn = pawn_of(state)
+    if not util or not valid(controller) then return false, "player_offline" end
+    local manager = util:GetNPCManager(controller)
+    if not valid(manager) then return false, "spawn_failed" end
+    local controller_class = member(manager, "NPCAIControllerBaseClass")
+    if not valid(controller_class) then return false, "spawn_failed" end
+
+    local location
+    if p.x and p.y and p.z then
+        location = { X = p.x, Y = p.y, Z = p.z }
+    else
+        if not pawn then return false, "player_offline" end
+        local at = pawn:K2_GetActorLocation()
+        location = { X = at.X + 300, Y = at.Y, Z = at.Z + 100 }
+    end
+
+    local handle = manager:SpawnNPCForServer({
+        ControllerClass = controller_class,
+        CharacterID = FName(p.species),
+        Level = p.level,
+        Location = location,
+        Yaw = 0.0,
+        Squad = nil,
+    }, nil)
+    if not valid(handle) then return false, "spawn_failed" end
+
+    -- Rarity and traits apply to the individual parameter once it exists.
+    if p.rare or (p.traits and p.traits ~= "") then
+        local function configure(attempt)
+            if not valid(handle) then return end
+            local parameter = handle:TryGetIndividualParameter()
+            if not valid(parameter) then
+                if attempt < 5 and type(ExecuteWithDelay) == "function" then
+                    ExecuteWithDelay(250, function() configure(attempt + 1) end)
+                end
+                return
+            end
+            pcall(function()
+                if p.rare then
+                    parameter.SaveParameter.IsRarePal = true
+                    parameter.SaveParameterMirror.IsRarePal = true
+                end
+                for trait in tostring(p.traits or ""):gmatch("[%w_]+") do
+                    parameter:AddPassiveSkill(FName(trait), FName("None"))
+                end
+                parameter:OnRep_SaveParameter()
+            end)
+            if p.rare then
+                pcall(function()
+                    local actor = handle:TryGetIndividualActor()
+                    if valid(actor) then actor:SetActorScale3D({ X = 1.5, Y = 1.5, Z = 1.5 }) end
+                end)
+            end
+        end
+        if type(ExecuteWithDelay) == "function" then
+            ExecuteWithDelay(500, function() guard("pal.spawn configure", configure, 1) end)
+        end
+    end
+    return true, nil, { { "species", p.species }, { "level", p.level } }
+end
+
+-- ── action dispatch ─────────────────────────────────────────────────────────
 local function run_action(request)
-    local handler = ACTIONS[request.action or ""]
-    if not handler then
-        publish("action", {
-            { "id", request.id or "" },
-            { "action", request.action or "" },
-            { "ok", false },
-            { "detail", "unknown action" },
-        })
+    local action_type = request.action or ""
+    local spec = CAPS.actions[action_type]
+    local handler = IMPL[action_type]
+    if not spec or not handler then
+        publish_result(request.id or "", action_type, false, "unknown_action", nil, {})
         return
     end
-    -- Everything below touches UObjects, which is only legal on the game
-    -- thread; the result is published from inside that callback.
+    local params, invalid = validate(spec.params, request)
+    if not params then
+        publish_result(request.id or "", action_type, false, invalid, nil, {})
+        return
+    end
+
     local function execute()
-        local ok, result, detail = pcall(handler, request)
-        if not ok then
-            result, detail = false, tostring(result)
+        local state = find_player_state(request.userid)
+        if not state then
+            publish_result(request.id or "", action_type, false, "player_offline", nil, {})
+            return
         end
-        publish("action", {
-            { "id", request.id or "" },
-            { "action", request.action },
-            { "userid", request.userid or "" },
-            { "ok", result == true },
-            { "detail", tostring(detail or "") },
-        })
+        local ok, result, err, data = pcall(handler, state, params)
+        if not ok then
+            publish_result(request.id or "", action_type, false, tostring(result), player_subject(state), {})
+            return
+        end
+        publish_result(request.id or "", action_type, result == true, err, player_subject(state), data)
     end
     if type(ExecuteInGameThread) == "function" then
         ExecuteInGameThread(execute)
@@ -395,74 +595,70 @@ local function poll_actions()
     file:close()
 end
 
--- ── registration ────────────────────────────────────────────────────────────
--- Native targets only — see `supported` above for why. Leave events come from
--- the panel watching the game's own player list instead; nothing in /Script/
--- exposes a disconnect that can be hooked here.
-local HOOKS = {
-    { name = "chat", target = "/Script/Pal.PalPlayerController:EnterChat_Receive", handler = on_chat },
-    { name = "join", target = "/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter", handler = on_join },
-    { name = "death", target = "/Script/Pal.PalCharacter:OnDeadCharacter", handler = on_death },
+-- ── hook registration (targets come from the generated table) ───────────────
+local HOOK_IMPL = {
+    ["/Script/Pal.PalPlayerController:EnterChat_Receive"] = on_chat,
+    ["/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter"] = on_character_init,
+    ["/Script/Pal.PalCharacter:OnDeadCharacter"] = on_death,
+    ["/Script/Pal.PalCharacterParameterComponent:OnInitialize_AfterSetIndividualParameter"] = on_param_init,
 }
 
--- Blueprint function targets (/Game/...) are not hookable on this UE4SS build,
--- and finding that out the wrong way costs the server: RegisterHook against a
--- Blueprint class that is not loaded yet faults the process, which pcall cannot
--- catch, and once the class *is* loaded RegisterHook rejects it anyway. Looking
--- a UFunction path up with StaticFindObject faults just the same. So the rule
--- is native targets only, enforced here rather than left to a future edit.
-local function supported(target)
-    return target:sub(1, 6) ~= "/Game/"
-end
-
-local function announce_hook(hook, ok, state)
-    publish("hook", {
-        { "hook", hook.name },
-        { "target", hook.target },
-        { "ok", ok },
-        { "state", state },
+local function announce_hook(event_type, target, ok)
+    publish("bridge.hook", BRIDGE_SUBJECT, {
+        { "hook", event_type }, { "target", target }, { "ok", ok },
     })
 end
 
-local function register(hook, attempt)
-    if not supported(hook.target) then
-        announce_hook(hook, false, "unsupported")
-        info(string.format("hook '%s' skipped: %s is not a native target", hook.name, hook.target))
+local function supported(target)
+    return target:sub(1, 6) ~= "/Game/" -- Blueprint targets fault this loader
+end
+
+local function register(target, types, attempt)
+    if not supported(target) or not HOOK_IMPL[target] then
+        for _, t in ipairs(types) do announce_hook(t, target, false) end
+        info("hook skipped, no native implementation for " .. target)
         return
     end
-    local ok = pcall(RegisterHook, hook.target, function(...)
-        guard(hook.name .. " event", hook.handler, ...)
+    local handler = HOOK_IMPL[target]
+    local ok = pcall(RegisterHook, target, function(...)
+        guard("hook " .. target, handler, ...)
     end)
     if ok then
-        announce_hook(hook, true, "live")
-        info(string.format("hook '%s' registered on %s", hook.name, hook.target))
+        for _, t in ipairs(types) do announce_hook(t, target, true) end
+        info(string.format("hook registered on %s (%s)", target, table.concat(types, ", ")))
         return
     end
     if attempt < HOOK_RETRY_LIMIT and type(ExecuteWithDelay) == "function" then
-        ExecuteWithDelay(HOOK_RETRY_MS, function() register(hook, attempt + 1) end)
+        ExecuteWithDelay(HOOK_RETRY_MS, function() register(target, types, attempt + 1) end)
         return
     end
-    announce_hook(hook, false, "failed")
-    info(string.format("hook '%s' could NOT be registered on %s", hook.name, hook.target))
+    for _, t in ipairs(types) do announce_hook(t, target, false) end
+    info("hook could NOT be registered on " .. target)
 end
 
--- Create the event file at load so consumers can tail it before anything
--- happens in game.
-guard("event file init", append_line, "")
-
-publish("ready", {
-    { "agent", MOD },
-    { "version", VERSION },
-    { "schema", SCHEMA_VERSION },
-    { "actions", "give_item,message" },
-})
-
--- Give UE4SS a moment to finish standing up before touching the object system.
 local function register_all()
-    for _, hook in ipairs(HOOKS) do
-        guard("hook registration", register, hook, 1)
+    -- Several event types can share one engine hook; register each hook once.
+    local by_target, order = {}, {}
+    for _, event in ipairs(CAPS.events) do
+        if not by_target[event.hook] then
+            by_target[event.hook] = {}
+            order[#order + 1] = event.hook
+        end
+        table.insert(by_target[event.hook], event.type)
+    end
+    for _, target in ipairs(order) do
+        guard("hook registration", register, target, by_target[target], 1)
     end
 end
+
+-- ── boot ────────────────────────────────────────────────────────────────────
+guard("event file init", append_line, "")
+
+publish("bridge.ready", BRIDGE_SUBJECT, {
+    { "agent", MOD },
+    { "version", VERSION },
+    { "envelope", CAPS.envelope },
+})
 
 if type(ExecuteWithDelay) == "function" then
     ExecuteWithDelay(1000, register_all)
@@ -479,5 +675,4 @@ else
     info("LoopAsync unavailable — actions cannot be executed")
 end
 
--- UE4SS.log is not written as UTF-8; keep diagnostics ASCII-only.
-info(string.format("v%s loaded, events -> %s", VERSION, EVENT_FILE))
+info(string.format("v%s loaded (envelope %d), events -> %s", VERSION, CAPS.envelope, EVENT_FILE))

@@ -20,13 +20,16 @@ beyond UE4SS itself.
 `/palworld/logs/bridge-events.jsonl` — one JSON object per line, appended:
 
 ```json
-{"v":1,"at":1785900289,"type":"chat","player":"Ashen","userid":"F8EAA197000...","message":"hello"}
-{"v":1,"at":1785900301,"type":"join","player":"Ashen","userid":"F8EAA197000...","initial":true}
-{"v":1,"at":1785900420,"type":"death","player":"Ashen","userid":"F8EAA197000...","killer":"Bo"}
+{"v":2,"at":1785942430,"kind":"event","type":"player.chat","subject":{"kind":"player","id":"F8EAA197000...","name":"Ashen"},"data":{"message":"hello"}}
+{"v":2,"at":1785942431,"kind":"event","type":"player.join","subject":{"kind":"player","id":"F8EAA197000...","name":"Ashen"},"data":{"firstThisRun":true}}
 ```
 
-`userid` is `PlayerUId` as 32 hex digits, the same rendering the game's REST
-API uses for `playerId`, so events can be joined to it directly.
+Envelope v2: every line is `{v, at, kind, type, subject, data}`; action results
+add `id`, `ok`, `error`. The subject id is `PlayerUId` as 32 hex digits, the
+same rendering the game's REST API uses for `playerId`, so events join to it
+directly. Which events exist — and which engine hooks produce them — comes from
+`Scripts/generated/capabilities.lua`, generated from the capability manifest in
+the pal-up repo; this mod implements handlers for what that table declares.
 
 Set `PAL_ROOT` to move both paths off `/palworld`.
 
@@ -41,8 +44,8 @@ request per line. There is no JSON parser in the UE4SS Lua runtime, and a format
 with no structure has nothing to exploit:
 
 ```
-id=abc123	action=give_item	userid=1122AABB-...	item=PalSphere	count=5
-id=abc124	action=message	userid=1122AABB-...	text=welcome back
+id=abc123	action=player.give_item	userid=F8EAA197000...	item=PalSphere	count=5
+id=abc124	action=player.message	userid=F8EAA197000...	text=welcome back
 ```
 
 Each request produces an `action` event carrying the same `id`, so the caller
