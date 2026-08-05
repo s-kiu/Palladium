@@ -1,0 +1,75 @@
+name: mod-release
+
+# The agent is a normal UE4SS Lua mod: people running a Palworld server without
+# pal-up should be able to download and drop it in. Every push to main that
+# touches it publishes a release, keyed on the version in Info.json — bump that
+# to cut a release, leave it alone and the run is a no-op.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mods/PalBridgeAgent/**'
+      - '.github/workflows/mod-release.yaml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: read the mod version
+        id: mod
+        run: |
+          version="$(jq -er '.Version' mods/PalBridgeAgent/Info.json)"
+          case "$version" in
+            *[!0-9.a-zA-Z-]*|'') echo "refusing unsafe version string: $version" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=palbridgeagent-v$version" >> "$GITHUB_OUTPUT"
+
+      - name: skip if this version was already released
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.mod.outputs.tag }}" >/dev/null 2>&1; then
+            echo "already released — bump Version in Info.json to cut a new one"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: syntax-check the Lua
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+          find mods/PalBridgeAgent -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+
+      - name: package
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          # Archive root is the mod folder itself, so unzipping into ./mods (or
+          # a server's Mods directory) lands it at the path UE4SS expects.
+          zip -r "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" mods/PalBridgeAgent \
+            -x '*/.disabled'
+          sha256sum "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" \
+            > "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip.sha256"
+
+      - name: publish
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.mod.outputs.tag }}" \
+            --title "PalBridge Agent ${{ steps.mod.outputs.version }}" \
+            --notes "UE4SS Lua mod that publishes in-game events and executes actions for external tools.
+
+          Drop the \`mods/PalBridgeAgent\` folder from the archive into your server's UE4SS \`Mods\` directory (pal-up users: into \`./mods\`) and restart.
+
+          Event contract and HTTP API: [docs/bridge.md](https://github.com/${{ github.repository }}/blob/main/docs/bridge.md)" \
+            "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip" \
+            "PalBridgeAgent-${{ steps.mod.outputs.version }}.zip.sha256"
