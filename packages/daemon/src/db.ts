@@ -75,6 +75,42 @@ export class BridgeDb {
         rare      INTEGER NOT NULL DEFAULT 0,
         last_at   INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS perm_nodes (
+        node           TEXT PRIMARY KEY,
+        mod            TEXT NOT NULL,
+        description    TEXT NOT NULL DEFAULT '',
+        default_effect TEXT NOT NULL DEFAULT 'deny',
+        registered_at  INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS perm_groups (
+        name       TEXT PRIMARY KEY,
+        tag        TEXT NOT NULL DEFAULT '',
+        weight     INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS perm_group_entries (
+        grp         TEXT NOT NULL,
+        node        TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        constraints TEXT,
+        PRIMARY KEY (grp, node)
+      );
+      CREATE TABLE IF NOT EXISTS perm_user_groups (
+        userid TEXT NOT NULL,
+        grp    TEXT NOT NULL,
+        PRIMARY KEY (userid, grp)
+      );
+      CREATE TABLE IF NOT EXISTS perm_user_entries (
+        userid      TEXT NOT NULL,
+        node        TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        constraints TEXT,
+        PRIMARY KEY (userid, node)
+      );
+      CREATE TABLE IF NOT EXISTS bridge_options (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS audit (
         id     INTEGER PRIMARY KEY AUTOINCREMENT,
         at     INTEGER NOT NULL,
@@ -259,6 +295,243 @@ export class BridgeDb {
     return Number(res.changes) > 0;
   }
 
+  // ── permissions ────────────────────────────────────────────────────────────
+  // Model: dotted nodes with wildcards, registered by the mod that owns them
+  // (with a default), granted through groups and per-user overrides. An entry
+  // can carry constraints — per-parameter matchers like {"species":{"in":[…]}}
+  // — which is how "may spawn, but only Lamball" stays one permission rather
+  // than a species-long list of them.
+  //
+  // Resolution order is what makes it predictable: user entries beat group
+  // entries, groups are consulted by weight (highest first) then the default
+  // group, and within one source a more specific node beats a wildcard with
+  // deny winning ties. No entry anywhere → the node's registered default →
+  // deny if nobody registered it.
+
+  ensureDefaultGroup(): void {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM perm_groups WHERE is_default = 1')
+      .get() as { n: number };
+    if (Number(row.n) === 0) {
+      this.db.prepare(
+        "INSERT OR IGNORE INTO perm_groups (name, tag, weight, is_default) VALUES ('default', '', 0, 1)",
+      ).run();
+    }
+  }
+
+  registerNodes(
+    mod: string,
+    nodes: { node: string; description?: string; default?: string }[],
+  ): number {
+    let count = 0;
+    for (const n of nodes) {
+      this.db.prepare(`
+        INSERT INTO perm_nodes (node, mod, description, default_effect, registered_at)
+        VALUES (?, ?, ?, ?, unixepoch())
+        ON CONFLICT(node) DO UPDATE SET
+          mod = excluded.mod,
+          description = excluded.description,
+          default_effect = excluded.default_effect
+      `).run(n.node, mod, n.description ?? '', n.default === 'allow' ? 'allow' : 'deny');
+      count += 1;
+    }
+    return count;
+  }
+
+  nodes(): { node: string; mod: string; description: string; default: string }[] {
+    const rows = this.db.prepare('SELECT * FROM perm_nodes ORDER BY mod, node').all() as
+      Record<string, unknown>[];
+    return rows.map((r) => ({
+      node: String(r.node),
+      mod: String(r.mod),
+      description: String(r.description),
+      default: String(r.default_effect),
+    }));
+  }
+
+  groupCreate(name: string, tag: string, weight: number): void {
+    this.db.prepare('INSERT INTO perm_groups (name, tag, weight) VALUES (?, ?, ?)')
+      .run(name, tag, weight);
+  }
+
+  groupUpdate(name: string, tag: string, weight: number): boolean {
+    const res = this.db.prepare('UPDATE perm_groups SET tag = ?, weight = ? WHERE name = ?')
+      .run(tag, weight, name);
+    return Number(res.changes) > 0;
+  }
+
+  groupDelete(name: string): boolean {
+    const row = this.db.prepare('SELECT is_default FROM perm_groups WHERE name = ?').get(name) as
+      { is_default: number } | undefined;
+    if (!row || Number(row.is_default) === 1) return false;
+    this.db.prepare('DELETE FROM perm_groups WHERE name = ?').run(name);
+    this.db.prepare('DELETE FROM perm_group_entries WHERE grp = ?').run(name);
+    this.db.prepare('DELETE FROM perm_user_groups WHERE grp = ?').run(name);
+    return true;
+  }
+
+  groups(): {
+    name: string; tag: string; weight: number; isDefault: boolean;
+    entries: { node: string; effect: string; constraints: unknown }[];
+    members: number;
+  }[] {
+    const rows = this.db.prepare('SELECT * FROM perm_groups ORDER BY weight DESC, name').all() as
+      Record<string, unknown>[];
+    return rows.map((g) => {
+      const name = String(g.name);
+      const entries = (this.db.prepare('SELECT * FROM perm_group_entries WHERE grp = ? ORDER BY node')
+        .all(name) as Record<string, unknown>[]).map((e) => ({
+          node: String(e.node),
+          effect: String(e.effect),
+          constraints: e.constraints ? JSON.parse(String(e.constraints)) : null,
+        }));
+      const members = this.db.prepare('SELECT COUNT(*) AS n FROM perm_user_groups WHERE grp = ?')
+        .get(name) as { n: number };
+      return {
+        name,
+        tag: String(g.tag),
+        weight: Number(g.weight),
+        isDefault: Number(g.is_default) === 1,
+        entries,
+        members: Number(members.n),
+      };
+    });
+  }
+
+  groupExists(name: string): boolean {
+    return this.db.prepare('SELECT 1 FROM perm_groups WHERE name = ?').get(name) !== undefined;
+  }
+
+  groupSetEntry(grp: string, node: string, effect: string, constraints: unknown): void {
+    this.db.prepare(`
+      INSERT INTO perm_group_entries (grp, node, effect, constraints) VALUES (?, ?, ?, ?)
+      ON CONFLICT(grp, node) DO UPDATE SET effect = excluded.effect, constraints = excluded.constraints
+    `).run(grp, node, effect, constraints ? JSON.stringify(constraints) : null);
+  }
+
+  groupRemoveEntry(grp: string, node: string): boolean {
+    return Number(this.db.prepare('DELETE FROM perm_group_entries WHERE grp = ? AND node = ?')
+      .run(grp, node).changes) > 0;
+  }
+
+  groupAssign(userid: string, grp: string): void {
+    this.db.prepare('INSERT OR IGNORE INTO perm_user_groups (userid, grp) VALUES (?, ?)').run(userid, grp);
+  }
+
+  groupUnassign(userid: string, grp: string): boolean {
+    return Number(this.db.prepare('DELETE FROM perm_user_groups WHERE userid = ? AND grp = ?')
+      .run(userid, grp).changes) > 0;
+  }
+
+  userGroups(userid: string): string[] {
+    return (this.db.prepare(`
+      SELECT g.name FROM perm_user_groups ug JOIN perm_groups g ON g.name = ug.grp
+      WHERE ug.userid = ? ORDER BY g.weight DESC, g.name
+    `).all(userid) as { name: string }[]).map((r) => r.name);
+  }
+
+  userEntries(userid: string): { node: string; effect: string; constraints: unknown }[] {
+    return (this.db.prepare('SELECT * FROM perm_user_entries WHERE userid = ? ORDER BY node')
+      .all(userid) as Record<string, unknown>[]).map((e) => ({
+        node: String(e.node),
+        effect: String(e.effect),
+        constraints: e.constraints ? JSON.parse(String(e.constraints)) : null,
+      }));
+  }
+
+  userSetEntry(userid: string, node: string, effect: string, constraints: unknown): void {
+    this.db.prepare(`
+      INSERT INTO perm_user_entries (userid, node, effect, constraints) VALUES (?, ?, ?, ?)
+      ON CONFLICT(userid, node) DO UPDATE SET effect = excluded.effect, constraints = excluded.constraints
+    `).run(userid, node, effect, constraints ? JSON.stringify(constraints) : null);
+  }
+
+  userRemoveEntry(userid: string, node: string): boolean {
+    return Number(this.db.prepare('DELETE FROM perm_user_entries WHERE userid = ? AND node = ?')
+      .run(userid, node).changes) > 0;
+  }
+
+  // The one answer everything consults. Returns the winning effect, where it
+  // came from, and the winning allow's constraints for the caller to enforce.
+  resolve(userid: string, node: string): {
+    allowed: boolean;
+    source: string;
+    constraints: unknown;
+  } {
+    const sources: { label: string; entries: { node: string; effect: string; constraints: unknown }[] }[] = [];
+    sources.push({ label: 'user', entries: this.userEntries(userid) });
+    for (const grp of this.userGroups(userid)) {
+      const entries = (this.db.prepare('SELECT * FROM perm_group_entries WHERE grp = ?')
+        .all(grp) as Record<string, unknown>[]).map((e) => ({
+          node: String(e.node),
+          effect: String(e.effect),
+          constraints: e.constraints ? JSON.parse(String(e.constraints)) : null,
+        }));
+      sources.push({ label: `group:${grp}`, entries });
+    }
+    const defaultGroup = this.db.prepare('SELECT name FROM perm_groups WHERE is_default = 1')
+      .get() as { name: string } | undefined;
+    if (defaultGroup) {
+      const entries = (this.db.prepare('SELECT * FROM perm_group_entries WHERE grp = ?')
+        .all(defaultGroup.name) as Record<string, unknown>[]).map((e) => ({
+          node: String(e.node),
+          effect: String(e.effect),
+          constraints: e.constraints ? JSON.parse(String(e.constraints)) : null,
+        }));
+      sources.push({ label: `group:${defaultGroup.name}`, entries });
+    }
+
+    for (const source of sources) {
+      let best: { specificity: number; effect: string; constraints: unknown } | null = null;
+      for (const entry of source.entries) {
+        const spec = nodeMatch(entry.node, node);
+        if (spec === null) continue;
+        if (
+          best === null ||
+          spec > best.specificity ||
+          (spec === best.specificity && entry.effect === 'deny')
+        ) {
+          best = { specificity: spec, effect: entry.effect, constraints: entry.constraints };
+        }
+      }
+      if (best) {
+        return { allowed: best.effect === 'allow', source: source.label, constraints: best.constraints };
+      }
+    }
+
+    const registered = this.db.prepare('SELECT default_effect FROM perm_nodes WHERE node = ?')
+      .get(node) as { default_effect: string } | undefined;
+    if (registered) {
+      return { allowed: registered.default_effect === 'allow', source: 'default', constraints: null };
+    }
+    return { allowed: false, source: 'unregistered', constraints: null };
+  }
+
+  // Highest-weight group with a tag among the player's groups — the [ROLE].
+  roleTag(userid: string): string | null {
+    const row = this.db.prepare(`
+      SELECT g.tag FROM perm_user_groups ug JOIN perm_groups g ON g.name = ug.grp
+      WHERE ug.userid = ? AND g.tag != '' ORDER BY g.weight DESC LIMIT 1
+    `).get(userid) as { tag: string } | undefined;
+    if (row) return row.tag;
+    const dflt = this.db.prepare("SELECT tag FROM perm_groups WHERE is_default = 1 AND tag != ''")
+      .get() as { tag: string } | undefined;
+    return dflt?.tag ?? null;
+  }
+
+  // ── options ────────────────────────────────────────────────────────────────
+  optionGet(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM bridge_options WHERE key = ?').get(key) as
+      { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  optionSet(key: string, value: string): void {
+    this.db.prepare(`
+      INSERT INTO bridge_options (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(key, value);
+  }
+
   // ── audit ──────────────────────────────────────────────────────────────────
   audit(actor: string, type: string, target: string | null, ok: boolean, detail: string): void {
     this.db.prepare(
@@ -306,4 +579,16 @@ export class BridgeDb {
 
 function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
+}
+
+// Wildcard node matching. Returns a specificity (higher wins) or null:
+// exact match beats "chatshop.*" beats "*".
+function nodeMatch(pattern: string, node: string): number | null {
+  if (pattern === node) return 1000;
+  if (pattern === '*') return 0;
+  if (pattern.endsWith('.*')) {
+    const prefix = pattern.slice(0, -1); // keep the dot
+    if (node.startsWith(prefix)) return pattern.split('.').length;
+  }
+  return null;
 }

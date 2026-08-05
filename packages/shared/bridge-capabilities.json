@@ -474,6 +474,352 @@
         "server_offline",
         "invalid_params"
       ]
+    },
+    {
+      "type": "permission.register",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "A mod registers the permission nodes it owns, namespaced by its name, each with a description and a default effect. Registration is idempotent — call it on every startup.",
+      "params": {
+        "mod": {
+          "type": "string",
+          "required": true,
+          "maxLen": 32
+        },
+        "nodes": {
+          "type": "json",
+          "required": true
+        }
+      },
+      "returns": {
+        "registered": "int"
+      },
+      "errors": [
+        "invalid_params"
+      ]
+    },
+    {
+      "type": "permission.check",
+      "kind": "query",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "read",
+      "summary": "May this player do this? Resolves user overrides, then groups by weight, then the default group; deny beats allow. With `where`, the winning entry's constraints are also enforced — 'may spawn, but only Lamball' is one node plus a constraint.",
+      "params": {
+        "node": {
+          "type": "string",
+          "required": true,
+          "maxLen": 128
+        },
+        "where": {
+          "type": "json"
+        }
+      },
+      "returns": {
+        "allowed": "bool",
+        "source": "string",
+        "constraints": "json"
+      },
+      "errors": [
+        "invalid_params"
+      ]
+    },
+    {
+      "type": "permission.grant",
+      "kind": "action",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Set a per-player override: allow or deny a node for this player, optionally constrained ({\"species\":{\"in\":[…]}}, {\"x\":{\"min\":0,\"max\":1000}}). Player overrides beat every group.",
+      "params": {
+        "node": {
+          "type": "string",
+          "required": true,
+          "maxLen": 128
+        },
+        "effect": {
+          "type": "string",
+          "default": "allow",
+          "maxLen": 8
+        },
+        "constraints": {
+          "type": "json"
+        }
+      },
+      "returns": {
+        "node": "string",
+        "effect": "string"
+      },
+      "errors": [
+        "invalid_params"
+      ]
+    },
+    {
+      "type": "permission.revoke",
+      "kind": "action",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Remove a per-player override, so groups decide again.",
+      "params": {
+        "node": {
+          "type": "string",
+          "required": true,
+          "maxLen": 128
+        }
+      },
+      "returns": {
+        "node": "string"
+      },
+      "errors": [
+        "invalid_params"
+      ]
+    },
+    {
+      "type": "permission.nodes",
+      "kind": "query",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "read",
+      "summary": "Every registered node, grouped by the mod that registered it, with defaults.",
+      "params": {},
+      "returns": {
+        "nodes": "json"
+      },
+      "errors": []
+    },
+    {
+      "type": "permission.player",
+      "kind": "query",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "read",
+      "summary": "A player's permission state: their groups, their overrides, and their role tag.",
+      "params": {},
+      "returns": {
+        "groups": "json",
+        "entries": "json",
+        "role": "string|null"
+      },
+      "errors": []
+    },
+    {
+      "type": "group.create",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Create a permission group. tag is the [ROLE] shown in chat when enabled; weight orders groups when a player has several (highest wins).",
+      "params": {
+        "name": {
+          "type": "item_id",
+          "required": true
+        },
+        "tag": {
+          "type": "string",
+          "maxLen": 16
+        },
+        "weight": {
+          "type": "int",
+          "min": 0,
+          "max": 1000,
+          "default": 0
+        }
+      },
+      "returns": {
+        "name": "item_id"
+      },
+      "errors": [
+        "invalid_params",
+        "exists"
+      ]
+    },
+    {
+      "type": "group.update",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Change a group's tag or weight.",
+      "params": {
+        "name": {
+          "type": "item_id",
+          "required": true
+        },
+        "tag": {
+          "type": "string",
+          "maxLen": 16
+        },
+        "weight": {
+          "type": "int",
+          "min": 0,
+          "max": 1000,
+          "default": 0
+        }
+      },
+      "returns": {
+        "name": "item_id"
+      },
+      "errors": [
+        "unknown_group"
+      ]
+    },
+    {
+      "type": "group.delete",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Delete a group (the default group cannot be deleted).",
+      "params": {
+        "name": {
+          "type": "item_id",
+          "required": true
+        }
+      },
+      "returns": {
+        "name": "item_id"
+      },
+      "errors": [
+        "unknown_group"
+      ]
+    },
+    {
+      "type": "group.set_entry",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Set one node entry on a group: allow or deny, optionally constrained. Wildcards work ('chatshop.*', '*').",
+      "params": {
+        "group": {
+          "type": "item_id",
+          "required": true
+        },
+        "node": {
+          "type": "string",
+          "required": true,
+          "maxLen": 128
+        },
+        "effect": {
+          "type": "string",
+          "default": "allow",
+          "maxLen": 8
+        },
+        "constraints": {
+          "type": "json"
+        }
+      },
+      "returns": {
+        "group": "item_id",
+        "node": "string"
+      },
+      "errors": [
+        "unknown_group",
+        "invalid_params"
+      ]
+    },
+    {
+      "type": "group.remove_entry",
+      "kind": "action",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Remove a node entry from a group.",
+      "params": {
+        "group": {
+          "type": "item_id",
+          "required": true
+        },
+        "node": {
+          "type": "string",
+          "required": true,
+          "maxLen": 128
+        }
+      },
+      "returns": {
+        "group": "item_id",
+        "node": "string"
+      },
+      "errors": [
+        "unknown_group"
+      ]
+    },
+    {
+      "type": "group.assign",
+      "kind": "action",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Put a player into a group.",
+      "params": {
+        "group": {
+          "type": "item_id",
+          "required": true
+        }
+      },
+      "returns": {
+        "group": "item_id"
+      },
+      "errors": [
+        "unknown_group",
+        "unknown_player"
+      ]
+    },
+    {
+      "type": "group.unassign",
+      "kind": "action",
+      "runtime": "daemon",
+      "target": "player",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "write",
+      "summary": "Take a player out of a group.",
+      "params": {
+        "group": {
+          "type": "item_id",
+          "required": true
+        }
+      },
+      "returns": {
+        "group": "item_id"
+      },
+      "errors": [
+        "unknown_group"
+      ]
+    },
+    {
+      "type": "group.list",
+      "kind": "query",
+      "runtime": "daemon",
+      "since": "2.1.0",
+      "stability": "stable",
+      "scope": "read",
+      "summary": "All groups with their entries, weights, tags and member counts.",
+      "params": {},
+      "returns": {
+        "groups": "json"
+      },
+      "errors": []
     }
   ]
 }

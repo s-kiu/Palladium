@@ -886,6 +886,19 @@ app.delete<{ Params: { id: string } }>('/api/tokens/:id', async (req, reply) => 
   return { ok: true };
 });
 
+// Panel display options (the chat [ROLE] toggle). Cookie session only — this
+// is panel configuration, not part of the bridge API surface.
+app.get('/api/bridge/options', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+});
+
+app.put<{ Body: { chatRoles?: boolean } }>('/api/bridge/options', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  bridgeDb.optionSet('chat_roles', req.body?.chatRoles ? 'on' : 'off');
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+});
+
 // ── in-game event bridge ─────────────────────────────────────────────────────
 // UE4SS Lua has no sockets, so the in-game agent talks to the rest of the world
 // through two files on the shared volume: it appends envelope-v2 events to one
@@ -906,6 +919,7 @@ interface Subject {
   kind: string;
   id?: string;
   name?: string;
+  role?: string;
   position?: { x: number; y: number; z: number };
 }
 
@@ -1044,19 +1058,25 @@ function ingest(event: BridgeEvent): void {
 // The events file is what the agent knows; firstEver/joins live in the daemon's
 // database, so they are attached when a join is served. HTTP door only.
 function enrich(event: BridgeEvent): BridgeEvent {
-  if (event.kind !== 'event' || event.type !== 'player.join') return event;
+  let out = event;
   const userid = String(event.subject?.id ?? '');
-  if (!userid) return event;
-  const player = bridgeDb.player(userid);
-  return {
-    ...event,
-    data: {
-      ...event.data,
-      firstEver: bridgeDb.isFirstSession(userid, Number(event.at) || 0),
-      firstSeen: player?.firstSeen ?? event.at,
-      joins: player?.joins ?? 1,
-    },
-  };
+  if (event.subject?.kind === 'player' && userid) {
+    const role = roleOf(userid);
+    if (role) out = { ...out, subject: { ...out.subject!, role } };
+  }
+  if (event.kind === 'event' && event.type === 'player.join' && userid) {
+    const player = bridgeDb.player(userid);
+    out = {
+      ...out,
+      data: {
+        ...out.data,
+        firstEver: bridgeDb.isFirstSession(userid, Number(event.at) || 0),
+        firstSeen: player?.firstSeen ?? event.at,
+        joins: player?.joins ?? 1,
+      },
+    };
+  }
+  return out;
 }
 
 app.get<{ Querystring: { since?: string; limit?: string; type?: string } }>(
@@ -1171,7 +1191,7 @@ function scopeAllowed(req: import('fastify').FastifyRequest, needed: string): bo
   return scopes.includes('*') || scopes.includes(needed);
 }
 
-type Validated = Record<string, string | number | boolean>;
+type Validated = Record<string, string | number | boolean | unknown>;
 
 function validateParams(
   specs: Record<string, import('./generated/capabilities.js').ParamSpec> | undefined,
@@ -1205,6 +1225,11 @@ function validateParams(
         params[name] = s;
         break;
       }
+      case 'json':
+        // Structured values for daemon-runtime capabilities only — agent
+        // actions cross the tab-separated queue and never declare this type.
+        (params as Record<string, unknown>)[name] = value;
+        break;
       default: {
         let s = String(value);
         if (spec.maxLen && s.length > spec.maxLen) s = s.slice(0, spec.maxLen);
@@ -1257,7 +1282,158 @@ const DAEMON_IMPL: Record<
     bridgeDb.deleteTag(target, String(p.key));
     return { ok: true, data: { key: p.key } };
   },
+  'permission.register': (_t, p) => {
+    const mod = String(p.mod).toLowerCase();
+    if (!/^[a-z0-9_-]{2,32}$/.test(mod)) return { ok: false, error: 'invalid_params: mod', data: {} };
+    const raw = Array.isArray(p.nodes) ? (p.nodes as unknown[]) : null;
+    if (!raw || raw.length === 0 || raw.length > 100) {
+      return { ok: false, error: 'invalid_params: nodes must be a non-empty array (max 100)', data: {} };
+    }
+    const nodes: { node: string; description?: string; default?: string }[] = [];
+    for (const entry of raw) {
+      const n = entry as { node?: unknown; description?: unknown; default?: unknown };
+      const node = String(n.node ?? '');
+      // A mod may only register nodes under its own name — that is what keeps
+      // one mod from quietly redefining another's permissions.
+      if (!/^[a-z0-9_.-]{3,128}$/i.test(node) || !node.startsWith(mod + '.')) {
+        return { ok: false, error: `invalid_params: node '${node}' must start with '${mod}.'`, data: {} };
+      }
+      nodes.push({
+        node,
+        description: String(n.description ?? '').slice(0, 200),
+        default: n.default === 'allow' ? 'allow' : 'deny',
+      });
+    }
+    const registered = bridgeDb.registerNodes(mod, nodes);
+    permCacheBust();
+    return { ok: true, data: { registered } };
+  },
+  'permission.check': (target, p) => {
+    const resolved = bridgeDb.resolve(target, String(p.node));
+    let allowed = resolved.allowed;
+    let violation: string | null = null;
+    if (allowed && p.where !== undefined && resolved.constraints) {
+      violation = matchConstraints(resolved.constraints, p.where as Record<string, unknown>);
+      if (violation) allowed = false;
+    }
+    return {
+      ok: true,
+      data: {
+        allowed,
+        source: resolved.source,
+        constraints: resolved.constraints,
+        ...(violation ? { violated: violation } : {}),
+      },
+    };
+  },
+  'permission.grant': (target, p) => {
+    const effect = p.effect === 'deny' ? 'deny' : 'allow';
+    bridgeDb.userSetEntry(target, String(p.node), effect, p.constraints ?? null);
+    permCacheBust();
+    return { ok: true, data: { node: p.node, effect } };
+  },
+  'permission.revoke': (target, p) => {
+    bridgeDb.userRemoveEntry(target, String(p.node));
+    permCacheBust();
+    return { ok: true, data: { node: p.node } };
+  },
+  'permission.nodes': () => ({ ok: true, data: { nodes: bridgeDb.nodes() } }),
+  'permission.player': (target) => ({
+    ok: true,
+    data: {
+      groups: bridgeDb.userGroups(target),
+      entries: bridgeDb.userEntries(target),
+      role: bridgeDb.roleTag(target),
+    },
+  }),
+  'group.create': (_t, p) => {
+    if (bridgeDb.groupExists(String(p.name))) return { ok: false, error: 'exists', data: {} };
+    bridgeDb.groupCreate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0);
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.update': (_t, p) => {
+    if (!bridgeDb.groupUpdate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0)) {
+      return { ok: false, error: 'unknown_group', data: {} };
+    }
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.delete': (_t, p) => {
+    if (!bridgeDb.groupDelete(String(p.name))) return { ok: false, error: 'unknown_group', data: {} };
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.set_entry': (_t, p) => {
+    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
+    const effect = p.effect === 'deny' ? 'deny' : 'allow';
+    bridgeDb.groupSetEntry(String(p.group), String(p.node), effect, p.constraints ?? null);
+    permCacheBust();
+    return { ok: true, data: { group: p.group, node: p.node } };
+  },
+  'group.remove_entry': (_t, p) => {
+    if (!bridgeDb.groupRemoveEntry(String(p.group), String(p.node))) {
+      return { ok: false, error: 'unknown_group', data: {} };
+    }
+    permCacheBust();
+    return { ok: true, data: { group: p.group, node: p.node } };
+  },
+  'group.assign': (target, p) => {
+    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
+    if (!bridgeDb.player(target)) return { ok: false, error: 'unknown_player', data: {} };
+    bridgeDb.groupAssign(target, String(p.group));
+    permCacheBust();
+    return { ok: true, data: { group: p.group } };
+  },
+  'group.unassign': (target, p) => {
+    bridgeDb.groupUnassign(target, String(p.group));
+    permCacheBust();
+    return { ok: true, data: { group: p.group } };
+  },
+  'group.list': () => ({ ok: true, data: { groups: bridgeDb.groups() } }),
 };
+
+// Constraint matchers: {"param": {"equals": v} | {"in": [...]} | {"min": n, "max": n}}.
+// All listed params must satisfy their matcher; a constrained param missing
+// from the request is a violation, not a pass.
+function matchConstraints(
+  constraints: unknown,
+  where: Record<string, unknown>,
+): string | null {
+  if (typeof constraints !== 'object' || constraints === null) return null;
+  for (const [param, rawMatcher] of Object.entries(constraints as Record<string, unknown>)) {
+    const matcher = rawMatcher as { equals?: unknown; in?: unknown[]; min?: number; max?: number };
+    const value = where[param];
+    if (value === undefined) return `${param} is constrained but missing`;
+    if (matcher.equals !== undefined && String(value) !== String(matcher.equals)) {
+      return `${param} must equal ${matcher.equals}`;
+    }
+    if (Array.isArray(matcher.in) && !matcher.in.map(String).includes(String(value))) {
+      return `${param} not in the allowed set`;
+    }
+    const n = Number(value);
+    if (matcher.min !== undefined && (!Number.isFinite(n) || n < matcher.min)) {
+      return `${param} below ${matcher.min}`;
+    }
+    if (matcher.max !== undefined && (!Number.isFinite(n) || n > matcher.max)) {
+      return `${param} above ${matcher.max}`;
+    }
+  }
+  return null;
+}
+
+// Role tags are read on every served event; cache per player, dropped on any
+// permission mutation.
+const roleCache = new Map<string, string | null>();
+
+function permCacheBust(): void {
+  roleCache.clear();
+}
+
+function roleOf(userid: string): string | null {
+  if (!roleCache.has(userid)) roleCache.set(userid, bridgeDb.roleTag(userid));
+  return roleCache.get(userid) ?? null;
+}
 
 // Handlers for runtime "game-rest" — proxied to the game's own admin API.
 const REST_IMPL: Record<string, (p: Validated) => Promise<void>> = {
@@ -1299,7 +1475,7 @@ function awaitAction(id: string, timeoutMs: number): Promise<BridgeEvent | null>
   });
 }
 
-app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown> } }>(
+app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown>; as?: string } }>(
   '/api/bridge/call',
   async (req, reply) => {
     const type = req.body?.type ?? '';
@@ -1317,7 +1493,27 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
     const checked = validateParams(cap.params, req.body?.data ?? {});
     if (!checked.ok) return reply.code(400).send({ error: checked.error });
 
-    const actor = req.principal?.kind === 'token' ? `token:${req.principal.name}` : 'panel';
+    let actor = req.principal?.kind === 'token' ? `token:${req.principal.name}` : 'panel';
+
+    // `as` makes the call on behalf of a player: the capability type becomes a
+    // permission node checked against that player, with the validated params as
+    // the constraint context. This is how "may spawn, but only Lamball" is
+    // enforced server-side rather than trusted to every mod.
+    const asPlayer = String(req.body?.as ?? '');
+    if (asPlayer) {
+      if (!ID_RE.test(asPlayer)) return reply.code(400).send({ error: 'as must be a 32-hex player id' });
+      const resolved = bridgeDb.resolve(asPlayer, type);
+      let denied = !resolved.allowed ? 'permission_denied' : null;
+      if (!denied && resolved.constraints) {
+        const violation = matchConstraints(resolved.constraints, checked.params as Record<string, unknown>);
+        if (violation) denied = `permission_denied: ${violation}`;
+      }
+      actor = `${actor} as:${asPlayer.slice(0, 8)}`;
+      if (denied) {
+        bridgeDb.audit(actor, type, target || null, false, denied);
+        return resultEnvelope(type, false, denied, playerSubject(asPlayer), {});
+      }
+    }
     let result: BridgeEvent;
 
     if (cap.runtime === 'agent') {
@@ -1540,6 +1736,15 @@ app.setNotFoundHandler((req, reply) => {
   return reply.code(404).send({ error: 'not found' });
 });
 
+bridgeDb.ensureDefaultGroup();
+// Every callable capability is also a permission node (checked when a call is
+// made on behalf of a player). Default deny: acting as a player needs an
+// explicit grant, which is the entire point of the system.
+bridgeDb.registerNodes('bridge', [...ACTIONS.keys()].map((t) => ({
+  node: t,
+  description: `call ${t} on behalf of a player`,
+  default: 'deny',
+})));
 await hydrateBridge();
 setInterval(() => void pollBridge(true), 1000).unref();
 setInterval(() => void pollPlayers(), 5000).unref();

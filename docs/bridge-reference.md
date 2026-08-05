@@ -51,3 +51,27 @@ actually live on the running server.
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
 | `server.announce` | action | game-rest | stable | 1.0.0 | `message` · string · required | Broadcast a message to everyone online, via the game's own REST API. |
+
+## permission.*
+
+| Type | Kind | Runtime | Stability | Since | Fields | Summary |
+|---|---|---|---|---|---|---|
+| `permission.register` | action | daemon | stable | 2.1.0 | `mod` · string · required<br>`nodes` · json · required | A mod registers the permission nodes it owns, namespaced by its name, each with a description and a default effect. Registration is idempotent — call it on every startup. |
+| `permission.check` | query | daemon | stable | 2.1.0 | `node` · string · required<br>`where` · json | May this player do this? Resolves user overrides, then groups by weight, then the default group; deny beats allow. With `where`, the winning entry's constraints are also enforced — 'may spawn, but only Lamball' is one node plus a constraint. |
+| `permission.grant` | action | daemon | stable | 2.1.0 | `node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json | Set a per-player override: allow or deny a node for this player, optionally constrained ({"species":{"in":[…]}}, {"x":{"min":0,"max":1000}}). Player overrides beat every group. |
+| `permission.revoke` | action | daemon | stable | 2.1.0 | `node` · string · required | Remove a per-player override, so groups decide again. |
+| `permission.nodes` | query | daemon | stable | 2.1.0 | _none_ | Every registered node, grouped by the mod that registered it, with defaults. |
+| `permission.player` | query | daemon | stable | 2.1.0 | _none_ | A player's permission state: their groups, their overrides, and their role tag. |
+
+## group.*
+
+| Type | Kind | Runtime | Stability | Since | Fields | Summary |
+|---|---|---|---|---|---|---|
+| `group.create` | action | daemon | stable | 2.1.0 | `name` · item_id · required<br>`tag` · string<br>`weight` · int · default 0 · 0…1000 | Create a permission group. tag is the [ROLE] shown in chat when enabled; weight orders groups when a player has several (highest wins). |
+| `group.update` | action | daemon | stable | 2.1.0 | `name` · item_id · required<br>`tag` · string<br>`weight` · int · default 0 · 0…1000 | Change a group's tag or weight. |
+| `group.delete` | action | daemon | stable | 2.1.0 | `name` · item_id · required | Delete a group (the default group cannot be deleted). |
+| `group.set_entry` | action | daemon | stable | 2.1.0 | `group` · item_id · required<br>`node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json | Set one node entry on a group: allow or deny, optionally constrained. Wildcards work ('chatshop.*', '*'). |
+| `group.remove_entry` | action | daemon | stable | 2.1.0 | `group` · item_id · required<br>`node` · string · required | Remove a node entry from a group. |
+| `group.assign` | action | daemon | stable | 2.1.0 | `group` · item_id · required | Put a player into a group. |
+| `group.unassign` | action | daemon | stable | 2.1.0 | `group` · item_id · required | Take a player out of a group. |
+| `group.list` | query | daemon | stable | 2.1.0 | _none_ | All groups with their entries, weights, tags and member counts. |
