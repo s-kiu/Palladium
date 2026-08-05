@@ -83,6 +83,41 @@ export interface BridgeEvent {
   player?: string;
   userid?: string;
   message?: string;
+  [key: string]: unknown;
+}
+
+export interface BridgeHook {
+  hook: string;
+  target: string;
+  ok: boolean;
+}
+
+export interface BridgeStatus {
+  available: boolean;
+  agent: string | null;
+  version: string | null;
+  schema: number | null;
+  actions: string[];
+  hooks: BridgeHook[];
+  eventTypes: string[];
+  lastEventAt: number;
+  online: boolean;
+}
+
+export interface BridgePlayer {
+  userid: string;
+  name: string;
+  firstSeen: number;
+  lastSeen: number;
+  joins: number;
+  online: boolean;
+}
+
+export interface BridgeActionResult {
+  id: string;
+  ok: boolean;
+  detail: string;
+  event: BridgeEvent;
 }
 
 export interface Status {
@@ -187,6 +222,15 @@ export class Api {
     return this.http.get<{ events: BridgeEvent[]; cursor: number }>('/api/bridge/events', {
       params: { since, limit },
     });
+  }
+  bridgeStatus() {
+    return this.http.get<BridgeStatus>('/api/bridge/status');
+  }
+  bridgePlayers() {
+    return this.http.get<{ players: BridgePlayer[] }>('/api/bridge/players');
+  }
+  bridgeAction(action: string, params: Record<string, unknown>) {
+    return this.http.post<BridgeActionResult>('/api/bridge/actions', { action, ...params });
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });
