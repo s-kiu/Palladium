@@ -32,6 +32,9 @@ main() {
     # game's) is visible to the web panel.
     : >"$SERVER_LOG"
     export SERVER_LOG_ACTIVE="$SERVER_LOG"
+    # Same lifecycle for the bridge event stream: consumers hold byte offsets
+    # into it, which only stay meaningful for as long as one server run.
+    : >"$BRIDGE_EVENTS"
 
     # Admin stop: while the stop marker exists the container parks here instead
     # of launching the game. Update/restore requests still run while parked —

@@ -22,6 +22,11 @@ SERVER_DIR="$PAL_ROOT/server"
 SAVES_DIR="$PAL_ROOT/saves"
 LOGS_DIR="$PAL_ROOT/logs"
 SERVER_LOG="$LOGS_DIR/server.log"
+# Event stream published by the in-game bridge agent, consumed by the panel and
+# by external tools. Cursors into it are byte offsets, so it is only ever
+# appended to during a run and truncated at boot alongside the server log.
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
+BRIDGE_EVENTS="$LOGS_DIR/bridge-events.jsonl"
 CONFIG_DIR="$PAL_ROOT/config"
 USER_MODS_DIR="$PAL_ROOT/mods"
 USER_PAKS_DIR="$PAL_ROOT/paks"

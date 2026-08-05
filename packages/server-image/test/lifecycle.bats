@@ -118,6 +118,16 @@ mkbackup() { # name [age-days]
     ! grep -q "unmirrored line" "$BATS_TEST_TMPDIR/panel.log"
 }
 
+@test "bridge event stream shares the server log's directory and boot lifecycle" {
+    [ "$BRIDGE_EVENTS" = "$LOGS_DIR/bridge-events.jsonl" ]
+    [ "$(dirname "$BRIDGE_EVENTS")" = "$(dirname "$SERVER_LOG")" ]
+    ensure_runtime_dirs
+    [ -d "$LOGS_DIR" ]
+    # Readers hold byte offsets into the stream, so serve.sh empties it at boot
+    # exactly as it does the server log.
+    grep -q '^\s*: >"\$BRIDGE_EVENTS"' "$PKG_DIR/entrypoint/cmd/serve.sh"
+}
+
 # ── panel request markers ────────────────────────────────────────────────────
 
 @test "restore request marker round-trips a world" {
