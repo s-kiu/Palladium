@@ -63,6 +63,14 @@ docker compose restart palworld
 
 Folder conventions, Linux caveats, and how mods survive game updates: [docs/mods.md](docs/mods.md).
 
+## Building on top of it
+
+In-game chat is published as a JSON event stream — readable as a file on the
+data volume or over HTTP from the panel — and chat commands are answered from
+there: type `!ping` in game and the server broadcasts `pong`. That is the seam
+for bots, Discord relays, and anything else that wants to react to what happens
+on the server. Contract and endpoint: [docs/bridge.md](docs/bridge.md).
+
 ## Everyday operations
 
 ```bash
@@ -96,7 +104,7 @@ pal-up/
 │   ├── daemon/               # panel backend (Fastify + TypeScript)
 │   ├── panel/                # web UI (Angular)
 │   └── shared/               # shared schemas & types
-├── docs/                     # quickstart, mods, security, troubleshooting
+├── docs/                     # quickstart, mods, bridge, security, troubleshooting
 └── .github/workflows/        # CI: shellcheck, bats, image build
 ```
 
