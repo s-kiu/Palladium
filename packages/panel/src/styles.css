@@ -214,6 +214,11 @@ td.actions button + button { margin-left: 6px; }
   margin: 0;
 }
 .logview.small { height: auto; max-height: 240px; margin-top: 10px; }
+.chatlog { min-height: 120px; white-space: normal; }
+.chatline { display: flex; gap: 10px; align-items: baseline; }
+.chat-time { color: var(--muted); flex: none; }
+.chat-player { color: var(--accent); flex: none; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-text { white-space: pre-wrap; word-break: break-word; }
 .follow { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .follow input { flex: none; accent-color: var(--accent); }
 

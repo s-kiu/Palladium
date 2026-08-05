@@ -1,13 +1,14 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api, Status } from './api.service';
+import { ChatComponent } from './chat.component';
 import { ConsoleComponent } from './console.component';
 import { SettingsComponent } from './settings.component';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [FormsModule, ConsoleComponent, SettingsComponent],
+  imports: [FormsModule, ChatComponent, ConsoleComponent, SettingsComponent],
   template: `
     <div class="card">
       <div class="row spread">
@@ -68,6 +69,7 @@ import { SettingsComponent } from './settings.component';
       }
     </div>
 
+    <app-chat />
     <app-console />
     <app-settings />
 

@@ -76,6 +76,15 @@ export interface Player {
   [k: string]: unknown;
 }
 
+export interface BridgeEvent {
+  v: number;
+  at: number;
+  type: string;
+  player?: string;
+  userid?: string;
+  message?: string;
+}
+
 export interface Status {
   online: boolean;
   info: { version: string; servername: string; description: string } | null;
@@ -173,6 +182,11 @@ export class Api {
   }
   logs(lines = 300) {
     return this.http.get<{ lines: string[] }>('/api/logs', { params: { lines } });
+  }
+  bridgeEvents(since: number, limit = 200) {
+    return this.http.get<{ events: BridgeEvent[]; cursor: number }>('/api/bridge/events', {
+      params: { since, limit },
+    });
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });
