@@ -22,12 +22,22 @@ SERVER_DIR="$PAL_ROOT/server"
 SAVES_DIR="$PAL_ROOT/saves"
 LOGS_DIR="$PAL_ROOT/logs"
 SERVER_LOG="$LOGS_DIR/server.log"
+# Event stream published by the in-game bridge agent, consumed by the panel and
+# by external tools. Cursors into it are byte offsets, so it is only ever
+# appended to during a run and truncated at boot alongside the server log.
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
+BRIDGE_EVENTS="$LOGS_DIR/bridge-events.jsonl"
 CONFIG_DIR="$PAL_ROOT/config"
 USER_MODS_DIR="$PAL_ROOT/mods"
 USER_PAKS_DIR="$PAL_ROOT/paks"
 USER_LOGICMODS_DIR="$PAL_ROOT/logicmods"
 BACKUPS_DIR="$PAL_ROOT/backups"
 STATE_DIR="$PAL_ROOT/.state"
+# Action queue in the other direction: the panel appends requests, the agent
+# consumes them by offset. Same boot lifecycle as the event stream, so a
+# request written for a previous run is never executed against this one.
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
+BRIDGE_ACTIONS="$STATE_DIR/bridge-actions.jsonl"
 
 PANEL_SETTINGS_FILE="$CONFIG_DIR/panel-settings.env"
 GAME_PAL_DIR="$SERVER_DIR/Pal"

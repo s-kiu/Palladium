@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Api, authed } from './api.service';
 import { LoginComponent } from './login.component';
 import { DashboardComponent } from './dashboard.component';
@@ -6,8 +6,10 @@ import { PlayersComponent } from './players.component';
 import { ModsComponent } from './mods.component';
 import { BackupsComponent } from './backups.component';
 import { AdminComponent } from './admin.component';
+import { BridgeComponent } from './bridge.component';
+import { PermissionsComponent } from './permissions.component';
 
-type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'admin';
+type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permissions' | 'admin';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +20,8 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'admin';
     PlayersComponent,
     ModsComponent,
     BackupsComponent,
+    BridgeComponent,
+    PermissionsComponent,
     AdminComponent,
   ],
   template: `
@@ -29,7 +33,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'admin';
       <header class="topbar">
         <span class="brand">pal-up</span>
         <nav>
-          @for (t of tabs; track t) {
+          @for (t of tabs(); track t) {
             <button [class.active]="tab() === t" (click)="tab.set(t)">{{ t }}</button>
           }
         </nav>
@@ -41,22 +45,55 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'admin';
           @case ('players') { <app-players /> }
           @case ('mods') { <app-mods /> }
           @case ('backups') { <app-backups /> }
+          @case ('palladium') { <app-bridge /> }
+          @case ('permissions') { <app-permissions /> }
           @case ('admin') { <app-admin /> }
         }
       </main>
     }
   `,
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   private api = inject(Api);
   authed = authed;
   tab = signal<Tab>('dashboard');
-  tabs: Tab[] = ['dashboard', 'players', 'mods', 'backups', 'admin'];
+  // The bridge tab only means anything once the agent mod is loaded, so it
+  // appears when the agent has announced itself and not before.
+  private bridgeUp = signal(false);
+  tabs = computed<Tab[]>(() => [
+    'dashboard',
+    'players',
+    'mods',
+    'backups',
+    ...(this.bridgeUp() ? (['palladium', 'permissions'] as Tab[]) : []),
+    'admin',
+  ]);
+  private timer?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
     this.api.session().subscribe({
-      next: (s) => authed.set(s.authenticated),
+      next: (s) => {
+        authed.set(s.authenticated);
+        if (s.authenticated) {
+          this.probeBridge();
+          this.timer = setInterval(() => this.probeBridge(), 15000);
+        }
+      },
       error: () => authed.set(false),
+    });
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.timer);
+  }
+
+  private probeBridge(): void {
+    this.api.bridgeStatus().subscribe({
+      next: (s) => {
+        this.bridgeUp.set(s.available);
+        if (!s.available && (this.tab() === 'palladium' || this.tab() === 'permissions')) this.tab.set('dashboard');
+      },
+      error: () => this.bridgeUp.set(false),
     });
   }
 

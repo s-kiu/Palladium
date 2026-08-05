@@ -16,6 +16,8 @@ dist/
 /logicmods/*
 /backups/*
 !/mods/.gitkeep
+# Palladium is this project's own mod, not user content — it ships here.
+!/mods/Palladium/
 !/paks/.gitkeep
 !/logicmods/.gitkeep
 !/backups/.gitkeep

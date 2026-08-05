@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  bridge-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: generated files match the capability manifest
+        run: |
+          node packages/shared/generate.mjs
+          git diff --exit-code || {
+            echo "::error::generated files drifted — run node packages/shared/generate.mjs and commit"
+            exit 1
+          }
+
   lint-shell:
     runs-on: ubuntu-latest
     steps:

@@ -76,6 +76,109 @@ export interface Player {
   [k: string]: unknown;
 }
 
+export interface BridgeSubject {
+  kind: string;
+  id?: string;
+  name?: string;
+  role?: string;
+  position?: { x: number; y: number; z: number };
+}
+
+export interface PermGroup {
+  name: string;
+  tag: string;
+  weight: number;
+  isDefault: boolean;
+  entries: { node: string; effect: string; constraints: unknown }[];
+  members: number;
+}
+
+export interface PermNode {
+  node: string;
+  mod: string;
+  description: string;
+  default: string;
+}
+
+export interface BridgeEvent {
+  v: number;
+  at: number;
+  kind: 'event' | 'result';
+  type: string;
+  id?: string;
+  ok?: boolean;
+  error?: string;
+  subject?: BridgeSubject;
+  data: Record<string, unknown>;
+}
+
+export interface BridgeHook {
+  hook: string;
+  target: string;
+  ok: boolean;
+}
+
+export interface BridgeStatus {
+  available: boolean;
+  agent: string | null;
+  version: string | null;
+  envelope: number | null;
+  hooks: BridgeHook[];
+  eventTypes: string[];
+  lastEventAt: number;
+  online: boolean;
+}
+
+export interface BridgeParamSpec {
+  type: 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subject';
+  required?: boolean;
+  picker?: string;
+  enriched?: boolean;
+  min?: number;
+  max?: number;
+  maxLen?: number;
+  default?: string | number | boolean;
+}
+
+export interface BridgeCapability {
+  type: string;
+  kind: 'event' | 'action' | 'query';
+  runtime: 'agent' | 'daemon' | 'game-rest';
+  target?: string;
+  source?: { hook: string };
+  since: string;
+  stability: 'stable' | 'experimental' | 'deprecated';
+  scope: 'read' | 'write';
+  summary: string;
+  params?: Record<string, BridgeParamSpec>;
+  data?: Record<string, BridgeParamSpec>;
+  live: boolean;
+}
+
+export interface BridgeSchema {
+  envelope: number;
+  agent: { name: string | null; version: string | null; ready: boolean };
+  capabilities: BridgeCapability[];
+}
+
+export interface BridgePlayer {
+  userid: string;
+  name: string;
+  firstSeen: number;
+  lastSeen: number;
+  joins: number;
+  online: boolean;
+  tags: Record<string, string>;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  scopes: string[];
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 export interface Status {
   online: boolean;
   info: { version: string; servername: string; description: string } | null;
@@ -173,6 +276,52 @@ export class Api {
   }
   logs(lines = 300) {
     return this.http.get<{ lines: string[] }>('/api/logs', { params: { lines } });
+  }
+  bridgeEvents(since: number, limit = 200) {
+    return this.http.get<{ events: BridgeEvent[]; cursor: number }>('/api/bridge/events', {
+      params: { since, limit },
+    });
+  }
+  bridgeStatus() {
+    return this.http.get<BridgeStatus>('/api/bridge/status');
+  }
+  bridgeSchema() {
+    return this.http.get<BridgeSchema>('/api/bridge/schema');
+  }
+  bridgePlayers() {
+    return this.http.get<{ players: BridgePlayer[] }>('/api/bridge/players');
+  }
+  bridgeCall(type: string, target: string | null, data: Record<string, unknown>) {
+    return this.http.post<BridgeEvent>('/api/bridge/call', { type, target, data });
+  }
+  bridgeCatalog() {
+    return this.http.get<{
+      items: { id: string; name: string }[];
+      pals: {
+        id: string;
+        name: string;
+        element: string[] | null;
+        variant: string;
+        seen?: { min: number; max: number; count: number };
+        unlisted?: boolean;
+      }[];
+      traits: { id: string; name: string; tier: number; effect: string }[];
+    }>('/api/bridge/catalog');
+  }
+  tokens() {
+    return this.http.get<{ tokens: ApiToken[] }>('/api/tokens');
+  }
+  createToken(name: string, scopes: string[]) {
+    return this.http.post<{ id: string; token: string; note: string }>('/api/tokens', { name, scopes });
+  }
+  revokeToken(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/tokens/${id}`);
+  }
+  bridgeOptions() {
+    return this.http.get<{ chatRoles: boolean }>('/api/bridge/options');
+  }
+  setBridgeOptions(opts: { chatRoles?: boolean }) {
+    return this.http.put<{ chatRoles: boolean }>('/api/bridge/options', opts);
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });

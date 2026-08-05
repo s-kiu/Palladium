@@ -118,6 +118,20 @@ mkbackup() { # name [age-days]
     ! grep -q "unmirrored line" "$BATS_TEST_TMPDIR/panel.log"
 }
 
+@test "bridge files share the server log's directories and boot lifecycle" {
+    [ "$BRIDGE_EVENTS" = "$LOGS_DIR/bridge-events.jsonl" ]
+    [ "$(dirname "$BRIDGE_EVENTS")" = "$(dirname "$SERVER_LOG")" ]
+    [ "$BRIDGE_ACTIONS" = "$STATE_DIR/bridge-actions.jsonl" ]
+    ensure_runtime_dirs
+    [ -d "$LOGS_DIR" ]
+    [ -d "$STATE_DIR" ]
+    # Both sides are addressed by byte offset, so serve.sh empties both at boot
+    # exactly as it does the server log. An action left over from a previous
+    # run must never execute against this one.
+    grep -q '^\s*: >"\$BRIDGE_EVENTS"' "$PKG_DIR/entrypoint/cmd/serve.sh"
+    grep -q '^\s*: >"\$BRIDGE_ACTIONS"' "$PKG_DIR/entrypoint/cmd/serve.sh"
+}
+
 # ── panel request markers ────────────────────────────────────────────────────
 
 @test "restore request marker round-trips a world" {

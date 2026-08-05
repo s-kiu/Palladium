@@ -18,9 +18,17 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BridgeDb } from './db.js';
+import { ACTIONS, CAPABILITIES, ENVELOPE_VERSION } from './generated/capabilities.js';
 
 const execFileP = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    principal?: { kind: 'session' | 'token'; id: string; name: string; scopes: string[] };
+  }
+}
 
 // ── configuration ────────────────────────────────────────────────────────────
 const PAL_ROOT = process.env.PAL_ROOT ?? '/palworld';
@@ -44,6 +52,11 @@ if (!ADMIN_PASSWORD) {
   console.error('FATAL: ADMIN_PASSWORD is not set — the panel refuses to run without it.');
   process.exit(1);
 }
+
+// Bridge storage: players, sessions, tags, API tokens, audit. Lives on the
+// data volume, so it survives container rebuilds like everything else there.
+const bridgeDb = new BridgeDb(path.join(STATE_DIR, 'bridge.db'));
+await bridgeDb.migrateRegistry(path.join(STATE_DIR, 'bridge-players.json'));
 
 // Session-cookie secret: explicit env var, else generated once and persisted
 // on the shared volume so sessions survive panel restarts.
@@ -285,9 +298,25 @@ const PUBLIC_ROUTES = new Set(['/api/login', '/api/session', '/api/health']);
 app.addHook('preHandler', async (req, reply) => {
   const route = req.url.split('?')[0];
   if (!route.startsWith('/api/') || PUBLIC_ROUTES.has(route)) return;
+
+  // Bearer tokens are the bridge's programmatic credential: language-agnostic
+  // (one header, no cookie jar), revocable, scoped. They deliberately cannot
+  // reach the panel's admin surface — that stays with the cookie session.
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    const token = bridgeDb.findToken(auth.slice(7).trim());
+    if (!token) return reply.code(401).send({ error: 'invalid or revoked token' });
+    if (!route.startsWith('/api/bridge/')) {
+      return reply.code(403).send({ error: 'tokens may only call /api/bridge/*' });
+    }
+    req.principal = { kind: 'token', id: token.id, name: token.name, scopes: token.scopes };
+    return;
+  }
+
   const exp = sessionExpiry(req);
   if (exp === null) return reply.code(401).send({ error: 'unauthorized' });
   if (exp - Date.now() < SESSION_TTL_MS / 2) setSession(reply); // rolling renewal
+  req.principal = { kind: 'session', id: 'panel', name: 'panel', scopes: ['*'] };
 });
 
 // naive per-IP login throttle: 10 attempts/minute
@@ -821,6 +850,856 @@ app.get<{ Querystring: { lines?: string } }>('/api/logs', async (req) => {
     return { lines: [] };
   }
 });
+// ── API tokens ───────────────────────────────────────────────────────────────
+// Bearer tokens are the bridge's credential for programs; the cookie session
+// stays the panel's. Tokens can only reach /api/bridge/* (enforced in the auth
+// hook), are scoped read/write, and only their hash is stored. Managing them
+// requires the cookie session, so a leaked token cannot mint more tokens.
+const TOKEN_SCOPES = new Set(['read', 'write']);
+
+function requireSession(req: import('fastify').FastifyRequest): boolean {
+  return req.principal?.kind === 'session';
+}
+
+app.get('/api/tokens', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  return { tokens: bridgeDb.listTokens() };
+});
+
+app.post<{ Body: { name?: string; scopes?: string[] } }>('/api/tokens', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  const name = (req.body?.name ?? '').trim().slice(0, 60);
+  const scopes = [...new Set(req.body?.scopes ?? [])];
+  if (!name) return reply.code(400).send({ error: 'name required' });
+  if (!scopes.length || scopes.some((s) => !TOKEN_SCOPES.has(s))) {
+    return reply.code(400).send({ error: 'scopes must be a non-empty subset of read, write' });
+  }
+  const created = bridgeDb.createToken(name, scopes);
+  await panelLog(`api token created: "${name}" (${scopes.join(', ')})`);
+  return { ...created, scopes, note: 'this is the only time the token value is shown' };
+});
+
+app.delete<{ Params: { id: string } }>('/api/tokens/:id', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  if (!bridgeDb.revokeToken(req.params.id)) return reply.code(404).send({ error: 'no such token' });
+  await panelLog(`api token revoked: ${req.params.id}`);
+  return { ok: true };
+});
+
+// Panel display options (the chat [ROLE] toggle). Cookie session only — this
+// is panel configuration, not part of the bridge API surface.
+app.get('/api/bridge/options', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+});
+
+app.put<{ Body: { chatRoles?: boolean } }>('/api/bridge/options', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  if (req.body?.chatRoles !== undefined) {
+    bridgeDb.optionSet('chat_roles', req.body.chatRoles ? 'on' : 'off');
+  }
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+});
+
+// ── in-game event bridge ─────────────────────────────────────────────────────
+// UE4SS Lua has no sockets, so the in-game agent talks to the rest of the world
+// through two files on the shared volume: it appends envelope-v2 events to one
+// and reads action requests from the other. The daemon is the public face of
+// both. What exists — every event type, every action, every parameter — is
+// declared in packages/shared/bridge-capabilities.json; this file implements
+// transport, storage, and the handlers whose runtime is not the agent.
+//
+// Cursors are byte offsets. The game container empties both files at boot, so a
+// cursor is only meaningful within one server run; a cursor past the end of the
+// file means the run ended and the reader rewinds to the start.
+const BRIDGE_EVENTS = path.join(PAL_ROOT, 'logs', 'bridge-events.jsonl');
+const BRIDGE_ACTIONS = path.join(STATE_DIR, 'bridge-actions.jsonl');
+const BRIDGE_WINDOW = 262_144; // bytes served per request, caps response size
+const ACTION_TIMEOUT_MS = 6000;
+
+interface Subject {
+  kind: string;
+  id?: string;
+  name?: string;
+  role?: string;
+  position?: { x: number; y: number; z: number };
+}
+
+interface BridgeEvent {
+  v: number;
+  at: number;
+  kind: 'event' | 'result';
+  type: string;
+  id?: string;
+  ok?: boolean;
+  error?: string;
+  subject?: Subject;
+  data: Record<string, unknown>;
+}
+
+async function readBridge(
+  since: number,
+  limit: number,
+): Promise<{ events: BridgeEvent[]; cursor: number }> {
+  let size: number;
+  try {
+    size = (await fs.stat(BRIDGE_EVENTS)).size;
+  } catch {
+    return { events: [], cursor: 0 }; // no agent installed, or not booted yet
+  }
+  const from = Number.isFinite(since) && since >= 0 && since <= size ? since : 0;
+  const want = Math.min(size - from, BRIDGE_WINDOW);
+  if (want <= 0) return { events: [], cursor: from };
+
+  const fh = await fs.open(BRIDGE_EVENTS, 'r');
+  let buf: Buffer;
+  try {
+    buf = Buffer.alloc(want);
+    const { bytesRead } = await fh.read(buf, 0, want, from);
+    buf = buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
+  }
+
+  const events: BridgeEvent[] = [];
+  let cursor = from;
+  let idx = 0;
+  while (events.length < limit) {
+    const nl = buf.indexOf(0x0a, idx);
+    if (nl === -1) break; // trailing partial line: leave it for the next read
+    const line = buf.subarray(idx, nl).toString('utf8').trim();
+    idx = nl + 1;
+    cursor = from + idx;
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line);
+      // Advance past anything unrecognised rather than stalling on it: one
+      // torn line must not wedge the stream for every reader behind it.
+      if (parsed && typeof parsed === 'object' && typeof parsed.type === 'string') {
+        if (typeof parsed.data !== 'object' || parsed.data === null) parsed.data = {};
+        events.push(parsed as BridgeEvent);
+      }
+    } catch { /* malformed line — skipped, cursor already moved past it */ }
+  }
+  // A full window with no line break at all can only be corruption; skip it so
+  // the cursor cannot get stuck.
+  if (idx === 0 && buf.length === BRIDGE_WINDOW) cursor = from + buf.length;
+  return { events, cursor };
+}
+
+// ── what the agent says about itself ─────────────────────────────────────────
+interface HookState { hook: string; target: string; ok: boolean }
+
+interface BridgeRun {
+  agent: string | null;
+  version: string | null;
+  envelope: number | null;
+  hooks: HookState[];
+  types: string[];
+  lastEventAt: number;
+}
+
+function emptyRun(): BridgeRun {
+  return { agent: null, version: null, envelope: null, hooks: [], types: [], lastEventAt: 0 };
+}
+
+let bridgeRun = emptyRun();
+
+// ── action results ───────────────────────────────────────────────────────────
+const actionWaiters = new Map<string, (event: BridgeEvent) => void>();
+
+function ingest(event: BridgeEvent): void {
+  bridgeRun.lastEventAt = Math.max(bridgeRun.lastEventAt, Number(event.at) || 0);
+  if (event.kind === 'result') {
+    const waiter = actionWaiters.get(String(event.id ?? ''));
+    if (waiter) waiter(event);
+    return;
+  }
+  if (!bridgeRun.types.includes(event.type)) bridgeRun.types.push(event.type);
+
+  const subjectId = String(event.subject?.id ?? '');
+  const subjectName = String(event.subject?.name ?? '');
+  switch (event.type) {
+    case 'bridge.ready':
+      bridgeRun.agent = String(event.data.agent ?? 'unknown');
+      bridgeRun.version = String(event.data.version ?? '');
+      bridgeRun.envelope = Number(event.data.envelope) || null;
+      break;
+    case 'bridge.hook': {
+      const hook = {
+        hook: String(event.data.hook ?? ''),
+        target: String(event.data.target ?? ''),
+        ok: event.data.ok === true,
+      };
+      const at = bridgeRun.hooks.findIndex((h) => h.hook === hook.hook);
+      if (at >= 0) bridgeRun.hooks[at] = hook;
+      else bridgeRun.hooks.push(hook);
+      break;
+    }
+    case 'player.join':
+      bridgeDb.join(subjectId, subjectName, Number(event.at) || 0);
+      break;
+    case 'player.leave':
+      bridgeDb.leave(subjectId, Number(event.at) || 0);
+      break;
+    case 'npc.spawn': {
+      const species = String(event.data.species ?? '');
+      bridgeDb.speciesSeen(species, Number(event.data.level) || 0, event.data.rare === true, Number(event.at) || 0);
+      // Boss-shaped spawns become teleport targets: the world announces where
+      // its arenas are, nobody has to type coordinates in.
+      const pos = event.subject?.position;
+      if (pos && /^(BOSS_|Boss_|RAID_|GYM_)/.test(species)) {
+        const label = `Boss: ${palNames.get(species) ?? species}`;
+        bridgeDb.locationSave(label, pos.x, pos.y, pos.z, 'boss');
+      }
+      break;
+    }
+    default:
+      if (event.subject?.kind === 'player') {
+        bridgeDb.seen(subjectId, subjectName, Number(event.at) || 0);
+      }
+  }
+}
+
+// The events file is what the agent knows; firstEver/joins live in the daemon's
+// database, so they are attached when a join is served. HTTP door only.
+function enrich(event: BridgeEvent): BridgeEvent {
+  let out = event;
+  const userid = String(event.subject?.id ?? '');
+  if (event.subject?.kind === 'player' && userid) {
+    const role = roleOf(userid);
+    if (role) out = { ...out, subject: { ...out.subject!, role } };
+  }
+  if (event.kind === 'event' && event.type === 'player.join' && userid) {
+    const player = bridgeDb.player(userid);
+    out = {
+      ...out,
+      data: {
+        ...out.data,
+        firstEver: bridgeDb.isFirstSession(userid, Number(event.at) || 0),
+        firstSeen: player?.firstSeen ?? event.at,
+        joins: player?.joins ?? 1,
+      },
+    };
+  }
+  return out;
+}
+
+app.get<{ Querystring: { since?: string; limit?: string; type?: string } }>(
+  '/api/bridge/events',
+  async (req) => {
+    const since = Math.max(0, Number(req.query.since ?? 0) || 0);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 500);
+    const result = await readBridge(since, limit);
+    const wanted = (req.query.type ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    // Filtering happens after the cursor is computed, so a caller narrowing to
+    // one type still advances past everything it skipped.
+    const events = result.events
+      .filter((e) => !wanted.length || wanted.includes(e.type))
+      .map(enrich);
+    return { events, cursor: result.cursor };
+  },
+);
+
+app.get('/api/bridge/status', async () => ({
+  available: bridgeRun.agent !== null,
+  agent: bridgeRun.agent,
+  version: bridgeRun.version,
+  envelope: bridgeRun.envelope,
+  hooks: bridgeRun.hooks,
+  eventTypes: bridgeRun.types,
+  lastEventAt: bridgeRun.lastEventAt,
+  online: (await palSafe('GET', 'info')) !== null,
+}));
+
+// The manifest merged with what is actually running: capabilities are declared
+// at build time, but a game patch can kill a hook at any moment — `live` is the
+// difference between the two.
+app.get('/api/bridge/schema', async () => ({
+  envelope: ENVELOPE_VERSION,
+  agent: { name: bridgeRun.agent, version: bridgeRun.version, ready: bridgeRun.agent !== null },
+  capabilities: CAPABILITIES.map((cap) => ({
+    ...cap,
+    live:
+      cap.runtime === 'daemon' || cap.runtime === 'game-rest'
+        ? true
+        : cap.kind === 'event' && cap.source?.hook
+          ? bridgeRun.hooks.some((h) => h.hook === cap.type && h.ok)
+          : bridgeRun.agent !== null,
+  })),
+}));
+
+app.get('/api/bridge/players', async () => ({ players: bridgeDb.players() }));
+
+// ── game-data catalogs ───────────────────────────────────────────────────────
+// Static id → display-name tables (items, pal species, passive-skill traits)
+// so pickers can offer names while the game gets the internal ids it wants.
+// Data files, not code — see packages/shared/game-data/README.md.
+let catalogCache: Record<string, unknown> | null = null;
+
+async function loadCatalog(): Promise<Record<string, unknown>> {
+  if (catalogCache) return catalogCache;
+  const candidates = [
+    path.join(HERE, '..', 'game-data'),            // image layout
+    path.join(HERE, '..', '..', 'shared', 'game-data'), // repo layout (dev)
+  ];
+  for (const dir of candidates) {
+    try {
+      const [items, pals, traits] = await Promise.all(
+        ['items.json', 'pals.json', 'traits.json'].map(async (file) =>
+          JSON.parse(await fs.readFile(path.join(dir, file), 'utf8'))),
+      );
+      catalogCache = { items, pals, traits };
+      return catalogCache;
+    } catch { /* not here — try the next location */ }
+  }
+  catalogCache = { items: [], pals: [], traits: [] };
+  return catalogCache;
+}
+
+interface PalEntry {
+  id: string;
+  name: string;
+  element: string[] | null;
+  variant: string;
+  seen?: { min: number; max: number; count: number };
+  unlisted?: boolean;
+}
+
+app.get('/api/bridge/catalog', async () => {
+  const base = await loadCatalog();
+  // The static table is what shipped; the world reports what exists. Observed
+  // spawn-level ranges annotate known species, and species absent from the
+  // table — a mod's mobs, or a patch's — are appended so they are pickable the
+  // moment one has spawned near a player.
+  const observed = bridgeDb.species();
+  const pals: PalEntry[] = (base.pals as PalEntry[]).map((p) => {
+    const seen = observed.get(p.id);
+    return seen ? { ...p, seen } : p;
+  });
+  const known = new Set(pals.map((p) => p.id));
+  for (const [species, seen] of observed) {
+    if (!known.has(species)) {
+      pals.push({ id: species, name: species, element: null, variant: 'normal', seen, unlisted: true });
+    }
+  }
+  return { ...base, pals };
+});
+
+// ── one call verb ────────────────────────────────────────────────────────────
+// POST /api/bridge/call {type, target, data} — the only way in, whatever the
+// capability. Routing is manifest data: agent capabilities go through the
+// action queue file, daemon ones run here, game-rest ones proxy the game API.
+const ID_RE = /^[0-9A-F]{32}$/i;
+
+function scopeAllowed(req: import('fastify').FastifyRequest, needed: string): boolean {
+  const scopes = req.principal?.scopes ?? [];
+  return scopes.includes('*') || scopes.includes(needed);
+}
+
+type Validated = Record<string, string | number | boolean | unknown>;
+
+function validateParams(
+  specs: Record<string, import('./generated/capabilities.js').ParamSpec> | undefined,
+  raw: Record<string, unknown>,
+): { ok: true; params: Validated } | { ok: false; error: string } {
+  const params: Validated = {};
+  for (const [name, spec] of Object.entries(specs ?? {})) {
+    let value: unknown = raw[name];
+    if (value === undefined || value === null || value === '') {
+      if (spec.required) return { ok: false, error: `invalid_params: missing ${name}` };
+      value = spec.default;
+    }
+    if (value === undefined || value === null) continue;
+    switch (spec.type) {
+      case 'int':
+      case 'number': {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return { ok: false, error: `invalid_params: ${name} not a number` };
+        const v = spec.type === 'int' ? Math.floor(n) : n;
+        if (spec.min !== undefined && v < spec.min) return { ok: false, error: `invalid_params: ${name} out of range` };
+        if (spec.max !== undefined && v > spec.max) return { ok: false, error: `invalid_params: ${name} out of range` };
+        params[name] = v;
+        break;
+      }
+      case 'bool':
+        params[name] = value === true || value === 'true' || value === '1' || value === 1;
+        break;
+      case 'item_id': {
+        const s = String(value);
+        if (!/^[A-Za-z0-9_]+$/.test(s)) return { ok: false, error: `invalid_params: bad ${name}` };
+        params[name] = s;
+        break;
+      }
+      case 'json':
+        // Structured values for daemon-runtime capabilities only — agent
+        // actions cross the tab-separated queue and never declare this type.
+        (params as Record<string, unknown>)[name] = value;
+        break;
+      default: {
+        let s = String(value);
+        if (spec.maxLen && s.length > spec.maxLen) s = s.slice(0, spec.maxLen);
+        params[name] = s;
+      }
+    }
+  }
+  return { ok: true, params };
+}
+
+function playerSubject(userid: string): Subject {
+  const player = bridgeDb.player(userid);
+  return { kind: 'player', id: userid, ...(player ? { name: player.name } : {}) };
+}
+
+function resultEnvelope(
+  type: string,
+  ok: boolean,
+  error: string | undefined,
+  subject: Subject | undefined,
+  data: Record<string, unknown>,
+): BridgeEvent {
+  return {
+    v: ENVELOPE_VERSION,
+    at: Math.floor(Date.now() / 1000),
+    kind: 'result',
+    type,
+    ok,
+    ...(error ? { error } : {}),
+    ...(subject ? { subject } : {}),
+    data,
+  };
+}
+
+// Handlers for runtime "daemon" — capabilities the database answers directly.
+const DAEMON_IMPL: Record<
+  string,
+  (target: string, p: Validated) => { ok: boolean; error?: string; data: Record<string, unknown> }
+> = {
+  'player.set_tag': (target, p) => {
+    if (!bridgeDb.player(target)) return { ok: false, error: 'unknown_player', data: {} };
+    bridgeDb.setTag(target, String(p.key), String(p.value));
+    return { ok: true, data: { key: p.key, value: p.value } };
+  },
+  'player.get_tag': (target, p) => ({
+    ok: true,
+    data: { key: p.key, value: bridgeDb.getTag(target, String(p.key)) },
+  }),
+  'player.delete_tag': (target, p) => {
+    bridgeDb.deleteTag(target, String(p.key));
+    return { ok: true, data: { key: p.key } };
+  },
+  'permission.register': (_t, p) => {
+    const mod = String(p.mod).toLowerCase();
+    if (!/^[a-z0-9_-]{2,32}$/.test(mod)) return { ok: false, error: 'invalid_params: mod', data: {} };
+    const raw = Array.isArray(p.nodes) ? (p.nodes as unknown[]) : null;
+    if (!raw || raw.length === 0 || raw.length > 100) {
+      return { ok: false, error: 'invalid_params: nodes must be a non-empty array (max 100)', data: {} };
+    }
+    const nodes: { node: string; description?: string; default?: string }[] = [];
+    for (const entry of raw) {
+      const n = entry as { node?: unknown; description?: unknown; default?: unknown };
+      const node = String(n.node ?? '');
+      // A mod may only register nodes under its own name — that is what keeps
+      // one mod from quietly redefining another's permissions.
+      if (!/^[a-z0-9_.-]{3,128}$/i.test(node) || !node.startsWith(mod + '.')) {
+        return { ok: false, error: `invalid_params: node '${node}' must start with '${mod}.'`, data: {} };
+      }
+      nodes.push({
+        node,
+        description: String(n.description ?? '').slice(0, 200),
+        default: n.default === 'allow' ? 'allow' : 'deny',
+      });
+    }
+    const registered = bridgeDb.registerNodes(mod, nodes);
+    permCacheBust();
+    return { ok: true, data: { registered } };
+  },
+  'permission.check': (target, p) => {
+    const resolved = bridgeDb.resolve(target, String(p.node));
+    let allowed = resolved.allowed;
+    let violation: string | null = null;
+    if (allowed && p.where !== undefined && resolved.constraints) {
+      violation = matchConstraints(resolved.constraints, p.where as Record<string, unknown>);
+      if (violation) allowed = false;
+    }
+    return {
+      ok: true,
+      data: {
+        allowed,
+        source: resolved.source,
+        constraints: resolved.constraints,
+        ...(violation ? { violated: violation } : {}),
+      },
+    };
+  },
+  'permission.grant': (target, p) => {
+    const effect = p.effect === 'deny' ? 'deny' : 'allow';
+    bridgeDb.userSetEntry(target, String(p.node), effect, p.constraints ?? null);
+    permCacheBust();
+    return { ok: true, data: { node: p.node, effect } };
+  },
+  'permission.revoke': (target, p) => {
+    bridgeDb.userRemoveEntry(target, String(p.node));
+    permCacheBust();
+    return { ok: true, data: { node: p.node } };
+  },
+  'permission.nodes': () => ({ ok: true, data: { nodes: bridgeDb.nodes() } }),
+  'permission.player': (target) => ({
+    ok: true,
+    data: {
+      groups: bridgeDb.userGroups(target),
+      entries: bridgeDb.userEntries(target),
+      role: bridgeDb.roleTag(target),
+    },
+  }),
+  'group.create': (_t, p) => {
+    if (bridgeDb.groupExists(String(p.name))) return { ok: false, error: 'exists', data: {} };
+    bridgeDb.groupCreate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0);
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.update': (_t, p) => {
+    if (!bridgeDb.groupUpdate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0)) {
+      return { ok: false, error: 'unknown_group', data: {} };
+    }
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.delete': (_t, p) => {
+    if (!bridgeDb.groupDelete(String(p.name))) return { ok: false, error: 'unknown_group', data: {} };
+    permCacheBust();
+    return { ok: true, data: { name: p.name } };
+  },
+  'group.set_entry': (_t, p) => {
+    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
+    const effect = p.effect === 'deny' ? 'deny' : 'allow';
+    bridgeDb.groupSetEntry(String(p.group), String(p.node), effect, p.constraints ?? null);
+    permCacheBust();
+    return { ok: true, data: { group: p.group, node: p.node } };
+  },
+  'group.remove_entry': (_t, p) => {
+    if (!bridgeDb.groupRemoveEntry(String(p.group), String(p.node))) {
+      return { ok: false, error: 'unknown_group', data: {} };
+    }
+    permCacheBust();
+    return { ok: true, data: { group: p.group, node: p.node } };
+  },
+  'group.assign': (target, p) => {
+    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
+    if (!bridgeDb.player(target)) return { ok: false, error: 'unknown_player', data: {} };
+    bridgeDb.groupAssign(target, String(p.group));
+    permCacheBust();
+    return { ok: true, data: { group: p.group } };
+  },
+  'group.unassign': (target, p) => {
+    bridgeDb.groupUnassign(target, String(p.group));
+    permCacheBust();
+    return { ok: true, data: { group: p.group } };
+  },
+  'group.list': () => ({ ok: true, data: { groups: bridgeDb.groups() } }),
+  'location.save': (_t, p) => {
+    bridgeDb.locationSave(String(p.name), Number(p.x), Number(p.y), Number(p.z), 'manual');
+    return { ok: true, data: { name: p.name } };
+  },
+  'location.list': () => ({ ok: true, data: { locations: bridgeDb.locations() } }),
+  'location.delete': (_t, p) => {
+    if (!bridgeDb.locationDelete(String(p.name))) return { ok: false, error: 'unknown_location', data: {} };
+    return { ok: true, data: { name: p.name } };
+  },
+};
+
+// Constraint matchers: {"param": {"equals": v} | {"in": [...]} | {"min": n, "max": n}}.
+// All listed params must satisfy their matcher; a constrained param missing
+// from the request is a violation, not a pass.
+function matchConstraints(
+  constraints: unknown,
+  where: Record<string, unknown>,
+): string | null {
+  if (typeof constraints !== 'object' || constraints === null) return null;
+  for (const [param, rawMatcher] of Object.entries(constraints as Record<string, unknown>)) {
+    const matcher = rawMatcher as { equals?: unknown; in?: unknown[]; min?: number; max?: number };
+    const value = where[param];
+    if (value === undefined) return `${param} is constrained but missing`;
+    if (matcher.equals !== undefined && String(value) !== String(matcher.equals)) {
+      return `${param} must equal ${matcher.equals}`;
+    }
+    if (Array.isArray(matcher.in) && !matcher.in.map(String).includes(String(value))) {
+      return `${param} not in the allowed set`;
+    }
+    const n = Number(value);
+    if (matcher.min !== undefined && (!Number.isFinite(n) || n < matcher.min)) {
+      return `${param} below ${matcher.min}`;
+    }
+    if (matcher.max !== undefined && (!Number.isFinite(n) || n > matcher.max)) {
+      return `${param} above ${matcher.max}`;
+    }
+  }
+  return null;
+}
+
+// Role tags are read on every served event; cache per player, dropped on any
+// permission mutation.
+const roleCache = new Map<string, string | null>();
+
+function permCacheBust(): void {
+  roleCache.clear();
+}
+
+function roleOf(userid: string): string | null {
+  if (!roleCache.has(userid)) roleCache.set(userid, bridgeDb.roleTag(userid));
+  return roleCache.get(userid) ?? null;
+}
+
+// Handlers for runtime "game-rest" — proxied to the game's own admin API.
+const REST_IMPL: Record<string, (p: Validated) => Promise<void>> = {
+  'server.announce': async (p) => {
+    await pal('POST', 'announce', { message: String(p.message) });
+  },
+};
+
+// Requests are tab-separated key=value lines rather than JSON: the agent has no
+// JSON parser, and a format with no structure has nothing to exploit. Values
+// are stripped of separators here, which is the only place they can be.
+function actionField(value: unknown): string {
+  return String(value ?? '').replace(/[\t\r\n]/g, ' ').slice(0, 512);
+}
+
+async function enqueueAction(type: string, target: string, params: Validated): Promise<string> {
+  const id = randomBytes(8).toString('hex');
+  const parts = [`id=${id}`, `action=${actionField(type)}`, `userid=${actionField(target)}`];
+  for (const [key, value] of Object.entries(params)) {
+    if (key === 'id' || key === 'action' || key === 'userid') continue;
+    parts.push(`${key}=${actionField(value)}`);
+  }
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.appendFile(BRIDGE_ACTIONS, parts.join('\t') + '\n');
+  return id;
+}
+
+function awaitAction(id: string, timeoutMs: number): Promise<BridgeEvent | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      actionWaiters.delete(id);
+      resolve(null);
+    }, timeoutMs);
+    actionWaiters.set(id, (event) => {
+      clearTimeout(timer);
+      actionWaiters.delete(id);
+      resolve(event);
+    });
+  });
+}
+
+app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown>; as?: string } }>(
+  '/api/bridge/call',
+  async (req, reply) => {
+    const type = req.body?.type ?? '';
+    const cap = ACTIONS.get(type);
+    if (!cap) {
+      return reply.code(400).send({ error: `unknown type: ${type}`, supported: [...ACTIONS.keys()] });
+    }
+    if (!scopeAllowed(req, cap.scope)) {
+      return reply.code(403).send({ error: `scope '${cap.scope}' required` });
+    }
+    const target = String(req.body?.target ?? '');
+    if (cap.target === 'player' && !ID_RE.test(target)) {
+      return reply.code(400).send({ error: 'target must be a 32-hex player id' });
+    }
+    const checked = validateParams(cap.params, req.body?.data ?? {});
+    if (!checked.ok) return reply.code(400).send({ error: checked.error });
+
+    let actor = req.principal?.kind === 'token' ? `token:${req.principal.name}` : 'panel';
+
+    // `as` makes the call on behalf of a player: the capability type becomes a
+    // permission node checked against that player, with the validated params as
+    // the constraint context. This is how "may spawn, but only Lamball" is
+    // enforced server-side rather than trusted to every mod.
+    const asPlayer = String(req.body?.as ?? '');
+    if (asPlayer) {
+      if (!ID_RE.test(asPlayer)) return reply.code(400).send({ error: 'as must be a 32-hex player id' });
+      const resolved = bridgeDb.resolve(asPlayer, type);
+      let denied = !resolved.allowed ? 'permission_denied' : null;
+      if (!denied && resolved.constraints) {
+        const violation = matchConstraints(resolved.constraints, checked.params as Record<string, unknown>);
+        if (violation) denied = `permission_denied: ${violation}`;
+      }
+      actor = `${actor} as:${asPlayer.slice(0, 8)}`;
+      if (denied) {
+        bridgeDb.audit(actor, type, target || null, false, denied);
+        return resultEnvelope(type, false, denied, playerSubject(asPlayer), {});
+      }
+    }
+    let result: BridgeEvent;
+
+    if (cap.runtime === 'agent') {
+      if (!bridgeRun.agent) return reply.code(409).send({ error: 'bridge agent not loaded' });
+      const id = await enqueueAction(type, target, checked.params);
+      const answered = await awaitAction(id, ACTION_TIMEOUT_MS);
+      if (!answered) {
+        bridgeDb.audit(actor, type, target || null, false, 'timeout');
+        await panelLog(`bridge ${type} — no response from the game`);
+        return reply.code(504).send({ error: 'the game did not answer in time', id });
+      }
+      result = answered;
+    } else if (cap.runtime === 'daemon') {
+      const impl = DAEMON_IMPL[type];
+      if (!impl) return reply.code(500).send({ error: 'capability declared but not implemented' });
+      const out = impl(target, checked.params);
+      result = resultEnvelope(type, out.ok, out.error, playerSubject(target), out.data);
+    } else {
+      const impl = REST_IMPL[type];
+      if (!impl) return reply.code(500).send({ error: 'capability declared but not implemented' });
+      try {
+        await impl(checked.params);
+        result = resultEnvelope(type, true, undefined, undefined, checked.params);
+      } catch {
+        result = resultEnvelope(type, false, 'server_offline', undefined, {});
+      }
+    }
+
+    bridgeDb.audit(actor, type, target || null, result.ok === true, String(result.error ?? ''));
+    await panelLog(
+      `bridge ${type}${target ? ` → ${target.slice(0, 8)}…` : ''} by ${actor} — ` +
+      (result.ok === true ? 'ok' : `failed (${result.error ?? ''})`),
+    );
+    return result;
+  },
+);
+
+// ── chat command routing ─────────────────────────────────────────────────────
+// Routing lives here, not in the mod: the in-game agent stays a plain event
+// source, so a new command is a table entry plus a daemon restart rather than a
+// Lua change plus a game restart.
+const COMMAND_PREFIX = '!';
+const COMMAND_COOLDOWN_MS = 2000;
+
+interface ChatCommand {
+  run: (event: BridgeEvent, args: string) => Promise<unknown>;
+  audit: (event: BridgeEvent, args: string) => string;
+}
+
+const CHAT_COMMANDS: Record<string, ChatCommand> = {
+  ping: {
+    run: () => pal('POST', 'announce', { message: 'pong' }),
+    audit: (e) => `chat !ping from ${e.subject?.name || 'unknown'} — announced "pong"`,
+  },
+};
+
+// Chat is untrusted input: one command per player per cooldown window, so a
+// spamming client cannot turn the broadcast endpoint into an amplifier.
+const lastCommandAt = new Map<string, number>();
+
+function commandAllowed(key: string, now: number): boolean {
+  const previous = lastCommandAt.get(key);
+  if (previous !== undefined && now - previous < COMMAND_COOLDOWN_MS) return false;
+  lastCommandAt.set(key, now);
+  if (lastCommandAt.size > 256) {
+    for (const [k, at] of lastCommandAt) {
+      if (now - at >= COMMAND_COOLDOWN_MS) lastCommandAt.delete(k);
+    }
+  }
+  return true;
+}
+
+async function routeChat(event: BridgeEvent): Promise<void> {
+  const text = String(event.data.message ?? '').trim();
+  if (!text.startsWith(COMMAND_PREFIX)) return;
+  const [word, ...rest] = text.slice(COMMAND_PREFIX.length).split(/\s+/);
+  const command = CHAT_COMMANDS[word.toLowerCase()];
+  if (!command) return;
+  const who = event.subject?.id || event.subject?.name || 'unknown';
+  if (!commandAllowed(who, Date.now())) return;
+  const args = rest.join(' ');
+  try {
+    await command.run(event, args);
+    bridgeDb.audit(`chat:${who}`, `chat.!${word}`, null, true, '');
+    await panelLog(command.audit(event, args));
+  } catch (err) {
+    bridgeDb.audit(`chat:${who}`, `chat.!${word}`, null, false, (err as Error).message);
+    await panelLog(`chat !${word} failed: ${(err as Error).message}`);
+  }
+}
+
+// The poller is the only consumer that must never miss an event, so it holds
+// its own cursor.
+let bridgeCursor = 0;
+let bridgePolling = false;
+
+async function pollBridge(route: boolean): Promise<void> {
+  if (bridgePolling) return;
+  bridgePolling = true;
+  try {
+    for (;;) {
+      const { events, cursor } = await readBridge(bridgeCursor, 200);
+      // A cursor that moved backwards means the file was emptied: the server
+      // rebooted, so the previous run's hooks and online flags are stale.
+      if (cursor < bridgeCursor) {
+        bridgeRun = emptyRun();
+        bridgeDb.allOffline();
+      }
+      bridgeCursor = cursor;
+      if (!events.length) break;
+      for (const event of events) {
+        ingest(event);
+        if (route && event.type === 'player.chat') await routeChat(event);
+      }
+    }
+  } catch (err) {
+    app.log.warn({ err }, 'bridge poll failed');
+  } finally {
+    bridgePolling = false;
+  }
+}
+
+// ── leave events ─────────────────────────────────────────────────────────────
+// Nothing in the engine exposes a disconnect this loader can hook — Blueprint
+// function targets fault the process — so leaves are derived from the game's
+// own player list and appended to the same stream, marked source:"rest".
+let lastSeenPlayers: Map<string, string> | null = null; // game id → name
+
+async function appendLeave(gameId: string, name: string): Promise<void> {
+  const id = gameId.toUpperCase();
+  const known = bridgeDb.player(id) ?? bridgeDb.players().find((p) => p.online && p.name === name);
+  const line = JSON.stringify({
+    v: ENVELOPE_VERSION,
+    at: Math.floor(Date.now() / 1000),
+    kind: 'event',
+    type: 'player.leave',
+    subject: { kind: 'player', id: known?.userid ?? id, name: name || known?.name || 'Unknown' },
+    data: { source: 'rest' },
+  });
+  await fs.appendFile(BRIDGE_EVENTS, line + '\n').catch(() => {});
+}
+
+async function pollPlayers(): Promise<void> {
+  if (!bridgeRun.agent) return; // no agent, no stream to contribute to
+  const payload = (await palSafe('GET', 'players')) as { players?: Record<string, unknown>[] } | null;
+  if (payload === null) {
+    // The API being unreachable is not everyone leaving at once; forget the
+    // previous list so the next successful poll starts a fresh comparison.
+    lastSeenPlayers = null;
+    return;
+  }
+  const current = new Map<string, string>();
+  for (const p of payload.players ?? []) {
+    const id = String(p.playerId ?? p.userId ?? p.name ?? '');
+    if (id) current.set(id, String(p.name ?? ''));
+  }
+  if (lastSeenPlayers) {
+    for (const [id, name] of lastSeenPlayers) {
+      if (!current.has(id)) await appendLeave(id, name);
+    }
+  }
+  lastSeenPlayers = current;
+}
+
+// Startup reads the whole run so status and the database reflect it, but with
+// routing off: commands answered before this daemon started must not fire again.
+async function hydrateBridge(): Promise<void> {
+  bridgeDb.allOffline();
+  bridgeCursor = 0;
+  await pollBridge(false);
+}
 
 // ── admin console: the full vanilla (REST) command surface ───────────────────
 type ConsoleArgs = { message?: string; userid?: string; waittime?: number };
@@ -871,5 +1750,24 @@ app.setNotFoundHandler((req, reply) => {
   }
   return reply.code(404).send({ error: 'not found' });
 });
+
+bridgeDb.ensureDefaultGroup();
+// Species id → display name, for labelling observed boss locations.
+const palNames = new Map<string, string>();
+{
+  const base = await loadCatalog();
+  for (const p of base.pals as { id: string; name: string }[]) palNames.set(p.id, p.name);
+}
+// Every callable capability is also a permission node (checked when a call is
+// made on behalf of a player). Default deny: acting as a player needs an
+// explicit grant, which is the entire point of the system.
+bridgeDb.registerNodes('bridge', [...ACTIONS.keys()].map((t) => ({
+  node: t,
+  description: `call ${t} on behalf of a player`,
+  default: 'deny',
+})));
+await hydrateBridge();
+setInterval(() => void pollBridge(true), 1000).unref();
+setInterval(() => void pollPlayers(), 5000).unref();
 
 await app.listen({ host: '0.0.0.0', port: PANEL_PORT });
