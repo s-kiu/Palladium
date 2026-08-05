@@ -215,17 +215,11 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
         <input type="checkbox" [ngModel]="chatRoles()" (ngModelChange)="toggleChatRoles($event)" name="opt-chatroles" />
         Show <span class="mono">[ROLE]</span> tags before names in the panel's chat card
       </label>
-      <label class="follow">
-        <input type="checkbox" [ngModel]="chatRolesInGame()" (ngModelChange)="toggleChatRolesInGame($event)" name="opt-chatroles-ingame" />
-        Prefix <span class="mono">[ROLE]</span> into the in-game chat itself
-        <span class="tag warn-tag">experimental</span>
-      </label>
       <p class="muted small-note">
         The role is the tag of the player's highest-weight tagged group; it also rides on every
-        served event as <code>subject.role</code>. The in-game variant edits the chat message as
-        the server receives it, before the game broadcasts it — the one engine write the agent
-        does. It is unproven on this UE4SS build: if chat misbehaves after enabling it, turn it
-        off again (takes effect within a second, no restart).
+        served event as <code>subject.role</code>, so relays can show it. It cannot be shown in
+        the in-game chat itself: writing the chat hook's message parameter faults this UE4SS
+        build (verified live), so the game's own chat stays untouched.
       </p>
     </div>
   `,
@@ -241,7 +235,6 @@ export class PermissionsComponent implements OnInit {
   playerEntries = signal<{ node: string; effect: string; constraints: unknown }[]>([]);
   playerRole = signal<string | null>(null);
   chatRoles = signal(false);
-  chatRolesInGame = signal(false);
   feedback = signal('');
   failed = signal(false);
 
@@ -264,10 +257,7 @@ export class PermissionsComponent implements OnInit {
   ngOnInit(): void {
     this.refresh();
     this.api.bridgePlayers().subscribe({ next: (r) => this.players.set(r.players), error: () => {} });
-    this.api.bridgeOptions().subscribe({
-      next: (o) => { this.chatRoles.set(o.chatRoles); this.chatRolesInGame.set(o.chatRolesInGame); },
-      error: () => {},
-    });
+    this.api.bridgeOptions().subscribe({ next: (o) => this.chatRoles.set(o.chatRoles), error: () => {} });
   }
 
   json(v: unknown): string {
@@ -388,10 +378,4 @@ export class PermissionsComponent implements OnInit {
     });
   }
 
-  toggleChatRolesInGame(value: boolean): void {
-    this.api.setBridgeOptions({ chatRolesInGame: value }).subscribe({
-      next: (o) => this.chatRolesInGame.set(o.chatRolesInGame),
-      error: () => {},
-    });
-  }
 }

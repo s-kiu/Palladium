@@ -318,10 +318,10 @@ export class Api {
     return this.http.delete<{ ok: boolean }>(`/api/tokens/${id}`);
   }
   bridgeOptions() {
-    return this.http.get<{ chatRoles: boolean; chatRolesInGame: boolean }>('/api/bridge/options');
+    return this.http.get<{ chatRoles: boolean }>('/api/bridge/options');
   }
-  setBridgeOptions(opts: { chatRoles?: boolean; chatRolesInGame?: boolean }) {
-    return this.http.put<{ chatRoles: boolean; chatRolesInGame: boolean }>('/api/bridge/options', opts);
+  setBridgeOptions(opts: { chatRoles?: boolean }) {
+    return this.http.put<{ chatRoles: boolean }>('/api/bridge/options', opts);
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });

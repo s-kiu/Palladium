@@ -366,7 +366,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. Spawned pals use the base NPC AI (they do not initiate attacks) and are not part of the world save — a server restart removes them. The npc.spawn event that follows carries the new pal's id.",
+    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true tries the engine's own monster spawner (unproven signature; falls back to the passive path and reports which one ran). Passive spawns never initiate attacks and are not part of the world save. The npc.spawn event that follows carries the new pal's id.",
     "params": {
       "species": {
         "type": "item_id",
@@ -396,6 +396,10 @@ export const CAPABILITIES: Capability[] = [
       },
       "z": {
         "type": "number"
+      },
+      "hostile": {
+        "type": "bool",
+        "default": false
       }
     },
     "returns": {

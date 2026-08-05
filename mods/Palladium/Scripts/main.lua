@@ -19,17 +19,17 @@
 -- Rules that keep the game alive, learned the hard way:
 --   - native (/Script/) hook targets only: Blueprint targets fault the process
 --   - never StaticFindObject a UFunction path: same fault
+--   - never write a hook parameter (param:set faults mid-broadcast)
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.2.0"
+local VERSION = "2.3.0"
 
 local CAPS = require("generated/capabilities")
 
 local PAL_ROOT = os.getenv("PAL_ROOT") or "/palworld"
 local EVENT_FILE = PAL_ROOT .. "/logs/bridge-events.jsonl"
 local ACTION_FILE = PAL_ROOT .. "/.state/bridge-actions.jsonl"
-local ROLES_FILE = PAL_ROOT .. "/.state/bridge-roles.tsv"
 
 local MAX_TEXT = 512
 local HOOK_RETRY_MS = 2000
@@ -241,42 +241,9 @@ local online = {}            -- userid → last event epoch
 local seen_this_run = {}     -- userid → true
 local expecting_respawn = {} -- userid → true after a death
 
--- ── chat role prefixes (experimental, operator opt-in) ──────────────────────
--- The daemon writes userid<TAB>tag lines when the in-game option is on; an
--- empty or missing file disables the whole path. The prefix works by editing
--- the chat hook's message parameter before the engine broadcasts it — the one
--- write this agent does into engine memory, which is why it hides behind an
--- option and a pcall.
-local roles = {}
-local roles_raw = nil
-
-local function poll_roles()
-    local file = io.open(ROLES_FILE, "r")
-    if not file then
-        if roles_raw ~= nil then roles, roles_raw = {}, nil end
-        return
-    end
-    local content = file:read("*a")
-    file:close()
-    if content == roles_raw then return end
-    roles_raw = content
-    roles = {}
-    local count = 0
-    for line in content:gmatch("[^\n]+") do
-        local userid, tag = line:match("^(%w+)\t(.+)$")
-        if userid and tag and #tag <= 16 then
-            roles[userid] = tag
-            count = count + 1
-        end
-    end
-    prefix_reported = false
-    info(string.format("role prefixes %s (%d player(s))", count > 0 and "active" or "cleared", count))
-end
-
 -- ── hook handlers ───────────────────────────────────────────────────────────
 local MESSAGE_FIELDS = { "Message", "message", "Text", "ChatMessage" }
 local reported_chat_shape = false
-local prefix_reported = false
 
 local function chat_text(payload)
     local direct = to_text(payload)
@@ -303,23 +270,6 @@ local function on_chat(context, first, second)
     end
     local state = state_of(controller)
     publish("player.chat", player_subject(state), { { "message", message } })
-
-    -- The event above carries the raw text; only what the game broadcasts
-    -- gains the prefix. Failure here loses the prefix, never the message.
-    local tag = roles[player_userid(state)]
-    if tag and first ~= nil and #message < 400 then
-        -- Diagnosed loudly on purpose: parameter writes are unproven on this
-        -- loader, and a silent no-op is indistinguishable from success.
-        local ok, err = pcall(function() first:set("[" .. tag .. "] " .. message) end)
-        if not prefix_reported then
-            prefix_reported = true
-            if ok then
-                info("role prefix write succeeded for [" .. tag .. "] — check in game whether it shows")
-            else
-                info("role prefix write FAILED: " .. tostring(err) .. " — this loader rejects hook parameter writes")
-            end
-        end
-    end
 end
 
 local function on_character_init(context)
@@ -564,6 +514,25 @@ IMPL["pal.spawn"] = function(state, p)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
     if not util or not valid(controller) then return false, "player_offline" end
+
+    -- hostile=true tries the engine's own monster spawner first — the binary
+    -- carries RequestSpawnMonsterForPlayer, whose behaviour (aggressive raid-
+    -- style spawns) is exactly what the plain path cannot produce. Signature
+    -- probed; on failure the spawn falls back to the passive path and says so.
+    if p.hostile and pawn then
+        local shapes = {
+            function() return util:RequestSpawnMonsterForPlayer(pawn, FName(p.species), p.level) end,
+            function() return util:RequestSpawnMonsterForPlayer(controller, FName(p.species), p.level) end,
+            function() return util:RequestSpawnMonsterForPlayer(FindFirstOf("World"), pawn, FName(p.species), p.level) end,
+        }
+        for _, attempt in ipairs(shapes) do
+            if pcall(attempt) then
+                return true, nil, { { "species", p.species }, { "level", p.level }, { "hostile", true } }
+            end
+        end
+        info("hostile spawn path unavailable — falling back to the passive spawner")
+    end
+
     local manager = util:GetNPCManager(controller)
     if not valid(manager) then return false, "spawn_failed" end
     local controller_class = member(manager, "NPCAIControllerBaseClass")
@@ -866,7 +835,6 @@ end
 if type(LoopAsync) == "function" then
     LoopAsync(ACTION_POLL_MS, function()
         guard("action poll", poll_actions)
-        guard("roles poll", poll_roles)
         return false
     end)
 else

@@ -148,12 +148,10 @@ always needs an explicit grant.
 **Roles.** A group can carry a `tag` (`VIP`, `ADMIN`); a player's role is the
 tag of their highest-weight tagged group. It rides on served events as
 `subject.role`, and the panel's chat card shows `[ROLE]` before names when the
-option is on. A second, experimental option prefixes the role into the in-game
-chat itself: the agent edits the chat message parameter as the server receives
-it, before the game broadcasts — the one engine write the agent performs, which
-is why it is opt-in. The daemon feeds it via `.state/bridge-roles.tsv`; an
-empty file disables the path entirely, and turning the option off takes effect
-within a second.
+option is on. The game's own chat cannot carry it: writing the chat hook's
+message parameter faults this UE4SS build (verified live, and the reason
+parameter writes are banned in the agent), so roles are visible everywhere the
+bridge renders chat and nowhere the game does.
 
 ## Positions and locations
 

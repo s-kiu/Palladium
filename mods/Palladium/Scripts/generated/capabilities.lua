@@ -52,6 +52,7 @@ return {
             { name = "x", kind = "number" },
             { name = "y", kind = "number" },
             { name = "z", kind = "number" },
+            { name = "hostile", kind = "bool", default = false },
             },
         },
         ["player.position"] = {

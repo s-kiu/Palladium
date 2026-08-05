@@ -552,18 +552,6 @@ export class BridgeDb {
     return Number(this.db.prepare('DELETE FROM locations WHERE name = ?').run(name).changes) > 0;
   }
 
-  // Every player that currently resolves to a role tag — the in-game prefix
-  // file is generated from this.
-  rolesForAll(): { userid: string; tag: string }[] {
-    const out: { userid: string; tag: string }[] = [];
-    const rows = this.db.prepare('SELECT userid FROM players').all() as { userid: string }[];
-    for (const row of rows) {
-      const tag = this.roleTag(String(row.userid));
-      if (tag) out.push({ userid: String(row.userid), tag });
-    }
-    return out;
-  }
-
   // ── options ────────────────────────────────────────────────────────────────
   optionGet(key: string): string | null {
     const row = this.db.prepare('SELECT value FROM bridge_options WHERE key = ?').get(key) as

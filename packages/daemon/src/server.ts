@@ -890,29 +890,16 @@ app.delete<{ Params: { id: string } }>('/api/tokens/:id', async (req, reply) => 
 // is panel configuration, not part of the bridge API surface.
 app.get('/api/bridge/options', async (req, reply) => {
   if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
-  return {
-    chatRoles: bridgeDb.optionGet('chat_roles') === 'on',
-    chatRolesInGame: bridgeDb.optionGet('chat_roles_ingame') === 'on',
-  };
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
 });
 
-app.put<{ Body: { chatRoles?: boolean; chatRolesInGame?: boolean } }>(
-  '/api/bridge/options',
-  async (req, reply) => {
-    if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
-    if (req.body?.chatRoles !== undefined) {
-      bridgeDb.optionSet('chat_roles', req.body.chatRoles ? 'on' : 'off');
-    }
-    if (req.body?.chatRolesInGame !== undefined) {
-      bridgeDb.optionSet('chat_roles_ingame', req.body.chatRolesInGame ? 'on' : 'off');
-      await writeRolesFile();
-    }
-    return {
-      chatRoles: bridgeDb.optionGet('chat_roles') === 'on',
-      chatRolesInGame: bridgeDb.optionGet('chat_roles_ingame') === 'on',
-    };
-  },
-);
+app.put<{ Body: { chatRoles?: boolean } }>('/api/bridge/options', async (req, reply) => {
+  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+  if (req.body?.chatRoles !== undefined) {
+    bridgeDb.optionSet('chat_roles', req.body.chatRoles ? 'on' : 'off');
+  }
+  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+});
 
 // ── in-game event bridge ─────────────────────────────────────────────────────
 // UE4SS Lua has no sockets, so the in-game agent talks to the rest of the world
@@ -1454,25 +1441,8 @@ function matchConstraints(
 // permission mutation.
 const roleCache = new Map<string, string | null>();
 
-const ROLES_FILE = path.join(STATE_DIR, 'bridge-roles.tsv');
-
-// The agent prefixes in-game chat from this file — experimental, so it only
-// carries content while the operator has the option on.
-async function writeRolesFile(): Promise<void> {
-  const enabled = bridgeDb.optionGet('chat_roles_ingame') === 'on';
-  const lines = enabled
-    ? bridgeDb.rolesForAll().map((r) => `${r.userid}\t${r.tag}`).join('\n')
-    : '';
-  const tmp = `${ROLES_FILE}.tmp`;
-  try {
-    await fs.writeFile(tmp, lines ? lines + '\n' : '');
-    await fs.rename(tmp, ROLES_FILE);
-  } catch { /* volume hiccup — the next mutation rewrites it */ }
-}
-
 function permCacheBust(): void {
   roleCache.clear();
-  void writeRolesFile();
 }
 
 function roleOf(userid: string): string | null {
@@ -1788,7 +1758,6 @@ const palNames = new Map<string, string>();
   const base = await loadCatalog();
   for (const p of base.pals as { id: string; name: string }[]) palNames.set(p.id, p.name);
 }
-await writeRolesFile();
 // Every callable capability is also a permission node (checked when a call is
 // made on behalf of a player). Default deny: acting as a player needs an
 // explicit grant, which is the entire point of the system.
