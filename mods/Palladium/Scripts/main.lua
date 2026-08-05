@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.6.1"
+local VERSION = "2.6.3"
 
 local CAPS = require("generated/capabilities")
 
@@ -519,7 +519,7 @@ IMPL["pal.spawn"] = function(state, p, finish)
     if not util or not valid(controller) then return false, "player_offline" end
 
     local manager = util:GetNPCManager(controller)
-    if not valid(manager) then return false, "spawn_failed" end
+    if not valid(manager) then return false, "spawn_failed: no NPC manager" end
 
     -- Which AI controller a spawn gets is what decides whether it fights.
     -- NPCAIControllerBaseClass — the one the community spawn recipe uses — has
@@ -550,19 +550,42 @@ IMPL["pal.spawn"] = function(state, p, finish)
             end
         end
     end
-    if not valid(base_class) and not valid(hostile_class) then return false, "spawn_failed" end
+    if not valid(base_class) and not valid(hostile_class) then
+        return false, "spawn_failed: no usable AI controller class"
+    end
 
     local location
     if p.x and p.y and p.z then
         location = { X = p.x, Y = p.y, Z = p.z }
     else
         if not pawn then return false, "player_offline" end
-        local at = pawn:K2_GetActorLocation()
+        local ok, at = pcall(function() return pawn:K2_GetActorLocation() end)
+        if not ok or type(member(at, "X")) ~= "number" then
+            return false, "spawn_failed: could not read the player's location"
+        end
         location = { X = at.X + 300, Y = at.Y, Z = at.Z + 100 }
     end
 
-    local function attempt(class)
-        if not valid(class) then return nil end
+    -- Every failure reason is reported: the spawner's own error message is the
+    -- only thing that distinguishes "rejected the controller" from "rejected
+    -- the species" from "returned nothing", and swallowing it is why the last
+    -- two attempts at this were guesswork.
+    -- Engine object references do not survive intervening engine work: reading
+    -- the controller class up front and spawning after a FindAllOf scan hands
+    -- the spawner a stale class, which it rejects. Everything the spawn needs
+    -- is therefore fetched inside the attempt, immediately before the call.
+    local last_error
+    local function attempt(get_class, label)
+        local manager = util:GetNPCManager(controller)
+        if not valid(manager) then
+            last_error = label .. ": NPC manager unavailable"
+            return nil
+        end
+        local class = get_class(manager)
+        if not valid(class) then
+            last_error = label .. ": class not valid"
+            return nil
+        end
         local ok, spawned = pcall(function()
             return manager:SpawnNPCForServer({
                 ControllerClass = class,
@@ -573,22 +596,47 @@ IMPL["pal.spawn"] = function(state, p, finish)
                 Squad = nil,
             }, nil)
         end)
-        if ok and valid(spawned) then return spawned end
-        return nil
+        if not ok then
+            last_error = label .. ": " .. tostring(spawned)
+            info(string.format("spawn error with %s: %s", label, tostring(spawned)))
+            return nil
+        end
+        if not valid(spawned) then
+            last_error = label .. ": spawner returned nothing"
+            return nil
+        end
+        return spawned
     end
 
-    local controller_kind = hostile_kind
-    local handle = attempt(hostile_class)
-    if not handle then
-        if hostile_class then
-            info(string.format(
-                "spawn with controller '%s' produced nothing — retrying with the base controller",
-                tostring(hostile_kind)))
+    local controller_kind, handle
+    if p.hostile then
+        -- Named classes first if this build has them, then a live wild pal's
+        -- controller. Each is resolved inside the attempt, right before use.
+        for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
+            handle = attempt(function(mgr) return member(mgr, field) end, field)
+            if handle then
+                controller_kind = field
+                break
+            end
         end
-        controller_kind = "NPCAIControllerBaseClass"
-        handle = attempt(base_class)
+        if not handle then
+            handle = attempt(function() return (wild_controller_class()) end, "wild pal controller")
+            if handle then
+                controller_kind = "wild pal controller"
+            else
+                info("combat controllers unavailable (" .. tostring(last_error) .. ") — falling back")
+            end
+        end
     end
-    if not handle then return false, "spawn_failed" end
+    if not handle then
+        controller_kind = "NPCAIControllerBaseClass"
+        handle = attempt(
+            function(mgr) return member(mgr, "NPCAIControllerBaseClass") end,
+            "NPCAIControllerBaseClass")
+    end
+    if not handle then
+        return false, "spawn_failed (" .. tostring(last_error) .. ")"
+    end
 
     -- Rarity and traits apply to the individual parameter once it exists.
     if p.rare or (p.traits and p.traits ~= "") then
