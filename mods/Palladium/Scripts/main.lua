@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.9.0"
+local VERSION = "2.9.1"
 
 local CAPS = require("generated/capabilities")
 
@@ -918,43 +918,33 @@ IMPL["pal.force_spawn"] = function(state, p)
         return false, "spawn_failed: could not read the player's location"
     end
 
-    local method = (p.kind == "rare") and "ForceSpawnRarePal" or "ForceSpawnPredatorPal"
+    local want_boss = p.kind == "boss"
     local radius = p.radius or 50000
-    local found, tried, errors = 0, 0, {}
+    local found, in_range, errors = 0, 0, {}
+    local best, best_distance, best_boss
 
     for _, class_name in ipairs(SPAWNER_CLASSES) do
         local ok, spawners = pcall(FindAllOf, class_name)
         if ok and type(spawners) == "table" then
             for _, spawner in ipairs(spawners) do
-                if valid(spawner) and tried < MAX_SPAWNERS_TRIED then
+                if valid(spawner) then
                     found = found + 1
-                    local near, distance = true, nil
                     local got, loc = pcall(function() return spawner:K2_GetActorLocation() end)
                     if got and type(member(loc, "X")) == "number" then
                         local dx, dy = loc.X - at.X, loc.Y - at.Y
-                        distance = math.sqrt(dx * dx + dy * dy)
-                        near = distance <= radius
-                    end
-                    if near then
-                        tried = tried + 1
-                        -- Signature unknown; try the plain call then a couple
-                        -- of plausible shapes, and report what took.
-                        local shapes = {
-                            { method .. "()", function() spawner[method](spawner) end },
-                            { method .. "(true)", function() spawner[method](spawner, true) end },
-                            { method .. "(world)", function() spawner[method](spawner, FindFirstOf("World")) end },
-                        }
-                        for _, shape in ipairs(shapes) do
-                            local called, err = pcall(shape[2])
-                            if called then
-                                return true, nil, {
-                                    { "method", shape[1] },
-                                    { "spawner", class_name },
-                                    { "distance", distance and math.floor(distance) or -1 },
-                                    { "spawnersTried", tried },
-                                }
+                        local distance = math.sqrt(dx * dx + dy * dy)
+                        if distance <= radius then
+                            in_range = in_range + 1
+                            local is_boss = member(spawner, "IsBossSpawner") == true
+                            -- Prefer a boss spawner when asked (alphas are
+                            -- hostile); otherwise simply take the nearest.
+                            local better = best == nil
+                                or (want_boss and is_boss and not best_boss)
+                                or ((want_boss and is_boss == (best_boss == true)) and distance < best_distance)
+                                or (not want_boss and distance < best_distance)
+                            if better then
+                                best, best_distance, best_boss = spawner, distance, is_boss
                             end
-                            if #errors < 4 then errors[#errors + 1] = shape[1] .. " -> " .. tostring(err) end
                         end
                     end
                 end
@@ -962,12 +952,37 @@ IMPL["pal.force_spawn"] = function(state, p)
         end
     end
 
-    if found == 0 then
-        return false, "not_supported: no spawner actors found in the world"
+    if found == 0 then return false, "not_supported: no spawner actors in the world" end
+    if not best then
+        return false, string.format("no spawner within %d units (%d exist)", radius, found)
     end
+
+    -- The calls AlphaRespawnScheduler uses in production on this same build:
+    -- clear the timer, then ask the spawner to fire. A pal that arrives this
+    -- way is spawned by the game itself and behaves like any other wild one.
+    pcall(function() best.RespawnTimer = 0.0 end)
+    pcall(function() best.RespawnTime = 0.0 end)
+
+    local shapes = {
+        { "RespawnByOutside()", function() return best:RespawnByOutside() end },
+        { "SpawnRequest_ByOutside(false)", function() return best:SpawnRequest_ByOutside(false) end },
+        { "SpawnRequest_ByOutside(true)", function() return best:SpawnRequest_ByOutside(true) end },
+    }
+    for _, shape in ipairs(shapes) do
+        local called, err = pcall(shape[2])
+        if called then
+            return true, nil, {
+                { "method", shape[1] },
+                { "boss", best_boss == true },
+                { "distance", math.floor(best_distance) },
+                { "spawnersInRange", in_range },
+            }
+        end
+        errors[#errors + 1] = shape[1] .. " -> " .. tostring(err)
+    end
+
     info("pal.force_spawn: no shape worked: " .. table.concat(errors, " | "))
-    return false, string.format("not_supported (%d spawners found, %d in range): %s",
-        found, tried, tostring(errors[1]))
+    return false, "not_supported: " .. tostring(errors[1])
 end
 
 IMPL["pal.inspect"] = function(_, p)

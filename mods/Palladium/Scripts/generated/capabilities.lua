@@ -123,7 +123,7 @@ return {
         },
         ["pal.force_spawn"] = {
             params = {
-            { name = "kind", kind = "string", max_len = 16, default = "predator" },
+            { name = "kind", kind = "string", max_len = 16, default = "nearest" },
             { name = "radius", kind = "number", min = 1000, max = 500000, default = 50000 },
             },
         },

@@ -1223,11 +1223,11 @@
       "since": "2.9.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Ask one of the world's own spawners near the player to fire — a predator (hostile by design) or a rare pal. Unlike pal.spawn this does not construct an NPC by hand: the game spawns it through its normal path, so it gets the AI a wild pal has. Reports which spawner and call shape worked.",
+      "summary": "Ask one of the world's own spawners near the player to fire. Unlike pal.spawn this does not construct an NPC by hand — the game spawns it through its normal path, so it gets the AI a wild pal has and will fight back. kind=boss prefers a boss/alpha spawner (hostile by design), anything else takes the nearest. Uses the same spawner calls AlphaRespawnScheduler relies on. The spawner decides species and location, not you.",
       "params": {
         "kind": {
           "type": "string",
-          "default": "predator",
+          "default": "nearest",
           "maxLen": 16
         },
         "radius": {
@@ -1239,9 +1239,9 @@
       },
       "returns": {
         "method": "string",
-        "spawner": "string",
+        "boss": "bool",
         "distance": "number",
-        "spawnersTried": "int"
+        "spawnersInRange": "int"
       },
       "errors": [
         "player_offline",
