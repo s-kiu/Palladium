@@ -8,7 +8,7 @@ dist/
 *.local
 
 # maintainer working notes — not part of the published repo
-/todo.md
+/todo*.md
 
 # runtime data created by compose bind mounts (user content, not source)
 /mods/*
