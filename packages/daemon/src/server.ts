@@ -1187,9 +1187,12 @@ async function pollBridge(route: boolean): Promise<void> {
 let lastSeenPlayers: Map<string, string> | null = null; // game id → name
 
 async function appendLeave(gameId: string, name: string): Promise<void> {
-  // The agent keys players by PlayerUId; reuse that id when this name is one
-  // the agent has announced, so both halves of the stream agree.
-  const known = [...playerRegistry.values()].find((p) => p.online && p.name === name);
+  // The agent renders PlayerUId exactly as the REST API reports playerId, so
+  // the two halves of the stream normally agree on the id outright. Matching by
+  // name is the fallback for a player the agent never announced — it joined
+  // before the mod loaded, or the join hook is stale after a game patch.
+  const byId = playerRegistry.get(gameId.toUpperCase());
+  const known = byId ?? [...playerRegistry.values()].find((p) => p.online && p.name === name);
   const line = JSON.stringify({
     v: 1,
     at: Math.floor(Date.now() / 1000),

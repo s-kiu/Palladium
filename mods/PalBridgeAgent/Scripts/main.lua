@@ -19,7 +19,7 @@
 -- Targets below verified against Palworld v1.0.2.101103 (Steam build 24466863).
 
 local MOD = "PalBridgeAgent"
-local VERSION = "1.1.0"
+local VERSION = "1.1.1"
 local SCHEMA_VERSION = 1
 
 local PAL_ROOT = os.getenv("PAL_ROOT") or "/palworld"
@@ -147,16 +147,27 @@ local function player_name(state)
     return (state and to_text(member(state, "PlayerNamePrivate"))) or "Unknown"
 end
 
--- PlayerUId is an FGuid; its four words rendered as the dashed form the game's
--- REST API and the panel both key on.
+-- PlayerUId is an FGuid of four words. The game's own REST API reports the same
+-- value as 32 hex digits with no separators, so render it identically: an event
+-- can then be joined to /v1/api/players without translating anything.
+--
+-- The words read back signed, so a word with the high bit set arrives negative
+-- and sign-extends to sixteen digits under %08X. The modulo brings it back into
+-- unsigned 32-bit range.
+local ZERO_UID = string.rep("0", 32)
+
+local function hex32(word)
+    return string.format("%08X", (word or 0) % 0x100000000)
+end
+
 local function player_userid(state)
     if state == nil then return "" end
     local uid = member(state, "PlayerUId")
     if uid == nil then return "" end
     local ok, text = pcall(function()
-        return string.format("%08X-%08X-%08X-%08X", uid.A or 0, uid.B or 0, uid.C or 0, uid.D or 0)
+        return hex32(uid.A) .. hex32(uid.B) .. hex32(uid.C) .. hex32(uid.D)
     end)
-    if ok and text and text ~= "00000000-00000000-00000000-00000000" then return text end
+    if ok and text and text ~= ZERO_UID then return text end
     return ""
 end
 

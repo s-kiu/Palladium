@@ -20,10 +20,13 @@ beyond UE4SS itself.
 `/palworld/logs/bridge-events.jsonl` — one JSON object per line, appended:
 
 ```json
-{"v":1,"at":1785900289,"type":"chat","player":"Ashen","userid":"1122AABB-...","message":"hello"}
-{"v":1,"at":1785900301,"type":"join","player":"Ashen","userid":"1122AABB-...","initial":true}
-{"v":1,"at":1785900420,"type":"death","player":"Ashen","userid":"1122AABB-...","killer":"Bo"}
+{"v":1,"at":1785900289,"type":"chat","player":"Ashen","userid":"F8EAA197000...","message":"hello"}
+{"v":1,"at":1785900301,"type":"join","player":"Ashen","userid":"F8EAA197000...","initial":true}
+{"v":1,"at":1785900420,"type":"death","player":"Ashen","userid":"F8EAA197000...","killer":"Bo"}
 ```
+
+`userid` is `PlayerUId` as 32 hex digits, the same rendering the game's REST
+API uses for `playerId`, so events can be joined to it directly.
 
 Set `PAL_ROOT` to move both paths off `/palworld`.
 

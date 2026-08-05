@@ -1,7 +1,7 @@
 {
   "ModName": "PalBridge Agent",
   "PackageName": "PalBridgeAgent",
-  "Version": "1.1.0",
+  "Version": "1.1.1",
   "DebugMode": false,
   "Author": "pal-up",
   "Dependencies": ["UE4SS"],

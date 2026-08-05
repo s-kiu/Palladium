@@ -45,6 +45,11 @@ Every line carries `v`, `at` and `type`; the rest depends on the type.
 `player` is `Unknown` and `userid` is `""` when the game did not supply them.
 `message` is capped at 512 characters.
 
+`userid` is the player's `PlayerUId` rendered as 32 hex digits — byte-identical
+to the `playerId` the game's own REST API reports, so events join directly to
+`/api/players` with no translation. (Note that the REST `userId` field is a
+different thing: the platform account, `steam_…`.)
+
 The file is emptied when the server boots, exactly like `logs/server.log`. It is
 append-only within a run. Chat text is player input: treat it as untrusted, and
 expect control characters to arrive JSON-escaped (`\n`, `\u0007`).
