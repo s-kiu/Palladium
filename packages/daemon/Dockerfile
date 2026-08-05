@@ -31,6 +31,8 @@ COPY --from=panel /panel/dist/panel/browser ./public
 # The settings catalog is shared with the game image so the editor's form and
 # the ini generator can never disagree about keys or types.
 COPY packages/server-image/config/settings.map ./settings.map
+# Game-data catalogs (items, pals, traits) behind /api/bridge/catalog.
+COPY packages/shared/game-data ./game-data
 
 LABEL org.opencontainers.image.title="pal-up Panel" \
       org.opencontainers.image.description="Web panel for pal-up Palworld servers" \

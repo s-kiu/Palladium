@@ -4,6 +4,7 @@ export type ParamType = 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subj
 export interface ParamSpec {
   type: ParamType;
   required?: boolean;
+  picker?: string;
   optional?: boolean;
   enriched?: boolean;
   min?: number;
@@ -228,7 +229,8 @@ export const CAPABILITIES: Capability[] = [
     "params": {
       "item": {
         "type": "item_id",
-        "required": true
+        "required": true,
+        "picker": "item"
       },
       "count": {
         "type": "int",
@@ -308,7 +310,8 @@ export const CAPABILITIES: Capability[] = [
     "params": {
       "item": {
         "type": "item_id",
-        "required": true
+        "required": true,
+        "picker": "item"
       }
     },
     "returns": {
@@ -333,7 +336,8 @@ export const CAPABILITIES: Capability[] = [
     "params": {
       "item": {
         "type": "item_id",
-        "required": true
+        "required": true,
+        "picker": "item"
       },
       "count": {
         "type": "int",
@@ -365,7 +369,8 @@ export const CAPABILITIES: Capability[] = [
     "params": {
       "species": {
         "type": "item_id",
-        "required": true
+        "required": true,
+        "picker": "pal"
       },
       "level": {
         "type": "int",
@@ -379,7 +384,8 @@ export const CAPABILITIES: Capability[] = [
       },
       "traits": {
         "type": "string",
-        "maxLen": 200
+        "maxLen": 200,
+        "picker": "traits"
       },
       "x": {
         "type": "number"

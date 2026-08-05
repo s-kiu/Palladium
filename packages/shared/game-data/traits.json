@@ -1,0 +1,260 @@
+[
+{
+"id": "Legend",
+"name": "Legend",
+"tier": 4,
+"effect": "+20% Attack and Defense, +15% movement speed"
+},
+{
+"id": "Rare",
+"name": "Rare (shiny)",
+"tier": 4,
+"effect": "The sparkling rare-pal aura, larger model"
+},
+{
+"id": "Noukin",
+"name": "Musclehead",
+"tier": 3,
+"effect": "+30% Attack, -50% work speed"
+},
+{
+"id": "CraftSpeed_up2",
+"name": "Artisan",
+"tier": 3,
+"effect": "+50% work speed"
+},
+{
+"id": "MoveSpeed_up_3",
+"name": "Swift",
+"tier": 3,
+"effect": "+30% movement speed"
+},
+{
+"id": "PAL_ALLAttack_up2",
+"name": "Ferocious",
+"tier": 3,
+"effect": "+20% Attack"
+},
+{
+"id": "PAL_ALLDefence_up2",
+"name": "Burly Body",
+"tier": 3,
+"effect": "+20% Defense"
+},
+{
+"id": "Lucky",
+"name": "Lucky",
+"tier": 3,
+"effect": "+15% Attack, +15% work speed"
+},
+{
+"id": "ElementBoost_Fire_2_PAL",
+"name": "Flame Emperor",
+"tier": 3,
+"effect": "+20% Fire damage"
+},
+{
+"id": "ElementBoost_Aqua_2_PAL",
+"name": "Lord of the Sea",
+"tier": 3,
+"effect": "+20% Water damage"
+},
+{
+"id": "ElementBoost_Thunder_2_PAL",
+"name": "Lord of Lightning",
+"tier": 3,
+"effect": "+20% Electric damage"
+},
+{
+"id": "ElementBoost_Leaf_2_PAL",
+"name": "Spirit Emperor",
+"tier": 3,
+"effect": "+20% Grass damage"
+},
+{
+"id": "ElementBoost_Ice_2_PAL",
+"name": "Ice Emperor",
+"tier": 3,
+"effect": "+20% Ice damage"
+},
+{
+"id": "ElementBoost_Earth_2_PAL",
+"name": "Earth Emperor",
+"tier": 3,
+"effect": "+20% Ground damage"
+},
+{
+"id": "ElementBoost_Dark_2_PAL",
+"name": "Lord of the Underworld",
+"tier": 3,
+"effect": "+20% Dark damage"
+},
+{
+"id": "ElementBoost_Dragon_2_PAL",
+"name": "Divine Dragon",
+"tier": 3,
+"effect": "+20% Dragon damage"
+},
+{
+"id": "ElementBoost_Normal_2_PAL",
+"name": "Celestial Emperor",
+"tier": 3,
+"effect": "+20% Neutral damage"
+},
+{
+"id": "PAL_ALLAttack_up1",
+"name": "Brave",
+"tier": 2,
+"effect": "+10% Attack"
+},
+{
+"id": "PAL_ALLDefence_up1",
+"name": "Hard Skin",
+"tier": 2,
+"effect": "+10% Defense"
+},
+{
+"id": "CraftSpeed_up1",
+"name": "Serious",
+"tier": 2,
+"effect": "+20% work speed"
+},
+{
+"id": "MoveSpeed_up_2",
+"name": "Runner",
+"tier": 2,
+"effect": "+20% movement speed"
+},
+{
+"id": "PAL_CorporateSlave",
+"name": "Work Slave",
+"tier": 2,
+"effect": "+30% work speed, -30% Attack"
+},
+{
+"id": "PAL_sadist",
+"name": "Sadist",
+"tier": 2,
+"effect": "+15% Attack, -15% Defense"
+},
+{
+"id": "PAL_masochist",
+"name": "Masochist",
+"tier": 2,
+"effect": "+15% Defense, -15% Attack"
+},
+{
+"id": "PAL_Sanity_Down_1",
+"name": "Positive Thinker",
+"tier": 2,
+"effect": "Sanity drops 10% slower"
+},
+{
+"id": "PAL_FullStomach_Down_1",
+"name": "Diet Lover",
+"tier": 2,
+"effect": "Hunger drops 10% slower"
+},
+{
+"id": "ElementBoost_Fire_1_PAL",
+"name": "Pyromaniac",
+"tier": 2,
+"effect": "+10% Fire damage"
+},
+{
+"id": "ElementBoost_Aqua_1_PAL",
+"name": "Hydromaniac",
+"tier": 2,
+"effect": "+10% Water damage"
+},
+{
+"id": "ElementBoost_Thunder_1_PAL",
+"name": "Capacitor",
+"tier": 2,
+"effect": "+10% Electric damage"
+},
+{
+"id": "ElementBoost_Leaf_1_PAL",
+"name": "Fragrant Foliage",
+"tier": 2,
+"effect": "+10% Grass damage"
+},
+{
+"id": "ElementBoost_Ice_1_PAL",
+"name": "Coldblooded",
+"tier": 2,
+"effect": "+10% Ice damage"
+},
+{
+"id": "ElementBoost_Earth_1_PAL",
+"name": "Power of Gaia",
+"tier": 2,
+"effect": "+10% Ground damage"
+},
+{
+"id": "ElementBoost_Dark_1_PAL",
+"name": "Veil of Darkness",
+"tier": 2,
+"effect": "+10% Dark damage"
+},
+{
+"id": "ElementBoost_Dragon_1_PAL",
+"name": "Blood of the Dragon",
+"tier": 2,
+"effect": "+10% Dragon damage"
+},
+{
+"id": "ElementBoost_Normal_1_PAL",
+"name": "Zen Mind",
+"tier": 2,
+"effect": "+10% Neutral damage"
+},
+{
+"id": "MoveSpeed_up_1",
+"name": "Nimble",
+"tier": 1,
+"effect": "+10% movement speed"
+},
+{
+"id": "PAL_ALLAttack_down1",
+"name": "Coward",
+"tier": -1,
+"effect": "-10% Attack"
+},
+{
+"id": "PAL_ALLDefence_down1",
+"name": "Downtrodden",
+"tier": -1,
+"effect": "-10% Defense"
+},
+{
+"id": "CraftSpeed_down1",
+"name": "Clumsy",
+"tier": -1,
+"effect": "-10% work speed"
+},
+{
+"id": "PAL_FullStomach_Up_1",
+"name": "Glutton",
+"tier": -1,
+"effect": "Hunger drops 10% faster"
+},
+{
+"id": "PAL_ALLAttack_down2",
+"name": "Pacifist",
+"tier": -2,
+"effect": "-20% Attack"
+},
+{
+"id": "PAL_ALLDefence_down2",
+"name": "Brittle",
+"tier": -2,
+"effect": "-20% Defense"
+},
+{
+"id": "CraftSpeed_down2",
+"name": "Slacker",
+"tier": -2,
+"effect": "-30% work speed"
+}
+]

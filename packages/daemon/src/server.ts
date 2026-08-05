@@ -1097,6 +1097,34 @@ app.get('/api/bridge/schema', async () => ({
 
 app.get('/api/bridge/players', async () => ({ players: bridgeDb.players() }));
 
+// ── game-data catalogs ───────────────────────────────────────────────────────
+// Static id → display-name tables (items, pal species, passive-skill traits)
+// so pickers can offer names while the game gets the internal ids it wants.
+// Data files, not code — see packages/shared/game-data/README.md.
+let catalogCache: Record<string, unknown> | null = null;
+
+async function loadCatalog(): Promise<Record<string, unknown>> {
+  if (catalogCache) return catalogCache;
+  const candidates = [
+    path.join(HERE, '..', 'game-data'),            // image layout
+    path.join(HERE, '..', '..', 'shared', 'game-data'), // repo layout (dev)
+  ];
+  for (const dir of candidates) {
+    try {
+      const [items, pals, traits] = await Promise.all(
+        ['items.json', 'pals.json', 'traits.json'].map(async (file) =>
+          JSON.parse(await fs.readFile(path.join(dir, file), 'utf8'))),
+      );
+      catalogCache = { items, pals, traits };
+      return catalogCache;
+    } catch { /* not here — try the next location */ }
+  }
+  catalogCache = { items: [], pals: [], traits: [] };
+  return catalogCache;
+}
+
+app.get('/api/bridge/catalog', async () => loadCatalog());
+
 // ── one call verb ────────────────────────────────────────────────────────────
 // POST /api/bridge/call {type, target, data} — the only way in, whatever the
 // capability. Routing is manifest data: agent capabilities go through the

@@ -62,6 +62,7 @@ export type ParamType = 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subj
 export interface ParamSpec {
   type: ParamType;
   required?: boolean;
+  picker?: string;
   optional?: boolean;
   enriched?: boolean;
   min?: number;
