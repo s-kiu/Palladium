@@ -33,6 +33,7 @@ actually live on the running server.
 | `player.set_tag` | action | daemon | stable | 2.0.0 | `key` · string · required<br>`value` · string · required | Attach a key/value to a player, kept in the daemon's database across restarts. The persistence primitive for 'already got the kit', ranks, notes. |
 | `player.get_tag` | query | daemon | stable | 2.0.0 | `key` · string · required | Read one of a player's tags. ok with value null when the tag is unset. |
 | `player.delete_tag` | action | daemon | stable | 2.0.0 | `key` · string · required | Remove a tag from a player. |
+| `player.position` | query | agent | stable | 2.1.0 | _none_ | The online player's exact world position (Engine Actor location, includes z). |
 
 ## npc.*
 
@@ -75,3 +76,11 @@ actually live on the running server.
 | `group.assign` | action | daemon | stable | 2.1.0 | `group` · item_id · required | Put a player into a group. |
 | `group.unassign` | action | daemon | stable | 2.1.0 | `group` · item_id · required | Take a player out of a group. |
 | `group.list` | query | daemon | stable | 2.1.0 | _none_ | All groups with their entries, weights, tags and member counts. |
+
+## location.*
+
+| Type | Kind | Runtime | Stability | Since | Fields | Summary |
+|---|---|---|---|---|---|---|
+| `location.save` | action | daemon | stable | 2.1.0 | `name` · string · required<br>`x` · number · required<br>`y` · number · required<br>`z` · number · required | Save a named world location for the teleport picker. Stand somewhere, read player.position, save it — fast-travel points, arenas, meeting spots. |
+| `location.list` | query | daemon | stable | 2.1.0 | _none_ | Saved locations plus boss-spawn positions observed live (source: manual | boss). |
+| `location.delete` | action | daemon | stable | 2.1.0 | `name` · string · required | Remove a saved location. |

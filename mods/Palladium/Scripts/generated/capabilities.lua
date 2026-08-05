@@ -54,5 +54,10 @@ return {
             { name = "z", kind = "number" },
             },
         },
+        ["player.position"] = {
+            params = {
+
+            },
+        },
     },
 }

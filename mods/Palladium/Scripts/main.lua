@@ -22,13 +22,14 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.0.0"
+local VERSION = "2.1.0"
 
 local CAPS = require("generated/capabilities")
 
 local PAL_ROOT = os.getenv("PAL_ROOT") or "/palworld"
 local EVENT_FILE = PAL_ROOT .. "/logs/bridge-events.jsonl"
 local ACTION_FILE = PAL_ROOT .. "/.state/bridge-actions.jsonl"
+local ROLES_FILE = PAL_ROOT .. "/.state/bridge-roles.tsv"
 
 local MAX_TEXT = 512
 local HOOK_RETRY_MS = 2000
@@ -211,6 +212,32 @@ local online = {}            -- userid → last event epoch
 local seen_this_run = {}     -- userid → true
 local expecting_respawn = {} -- userid → true after a death
 
+-- ── chat role prefixes (experimental, operator opt-in) ──────────────────────
+-- The daemon writes userid<TAB>tag lines when the in-game option is on; an
+-- empty or missing file disables the whole path. The prefix works by editing
+-- the chat hook's message parameter before the engine broadcasts it — the one
+-- write this agent does into engine memory, which is why it hides behind an
+-- option and a pcall.
+local roles = {}
+local roles_raw = nil
+
+local function poll_roles()
+    local file = io.open(ROLES_FILE, "r")
+    if not file then
+        if roles_raw ~= nil then roles, roles_raw = {}, nil end
+        return
+    end
+    local content = file:read("*a")
+    file:close()
+    if content == roles_raw then return end
+    roles_raw = content
+    roles = {}
+    for line in content:gmatch("[^\n]+") do
+        local userid, tag = line:match("^(%w+)\t(.+)$")
+        if userid and tag and #tag <= 16 then roles[userid] = tag end
+    end
+end
+
 -- ── hook handlers ───────────────────────────────────────────────────────────
 local MESSAGE_FIELDS = { "Message", "message", "Text", "ChatMessage" }
 local reported_chat_shape = false
@@ -240,6 +267,13 @@ local function on_chat(context, first, second)
     end
     local state = state_of(controller)
     publish("player.chat", player_subject(state), { { "message", message } })
+
+    -- The event above carries the raw text; only what the game broadcasts
+    -- gains the prefix. Failure here loses the prefix, never the message.
+    local tag = roles[player_userid(state)]
+    if tag and first ~= nil and #message < 400 then
+        pcall(function() first:set("[" .. tag .. "] " .. message) end)
+    end
 end
 
 local function on_character_init(context)
@@ -458,6 +492,16 @@ local function item_count(state, item)
     return count
 end
 
+IMPL["player.position"] = function(state)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local ok, at = pcall(function() return pawn:K2_GetActorLocation() end)
+    if not ok or type(at) ~= "table" and type(at) ~= "userdata" then return false, "not_supported" end
+    local x, y, z = member(at, "X"), member(at, "Y"), member(at, "Z")
+    if type(x) ~= "number" then return false, "not_supported" end
+    return true, nil, { { "x", x }, { "y", y or 0 }, { "z", z or 0 } }
+end
+
 IMPL["player.count_item"] = function(state, p)
     local count, err = item_count(state, p.item)
     if count == nil then return false, err end
@@ -669,6 +713,7 @@ end
 if type(LoopAsync) == "function" then
     LoopAsync(ACTION_POLL_MS, function()
         guard("action poll", poll_actions)
+        guard("roles poll", poll_roles)
         return false
     end)
 else
