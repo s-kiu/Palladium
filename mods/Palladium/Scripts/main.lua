@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.8.0"
+local VERSION = "2.8.1"
 
 local CAPS = require("generated/capabilities")
 
@@ -915,8 +915,23 @@ IMPL["pal.inspect"] = function(_, p)
         if ok then controller = got end
     end
     if valid(controller) then
+        -- ToString does not name a UClass; GetFullName/GetFName do. This is the
+        -- one field that can distinguish a wild pal's brain from a spawned
+        -- one's, so try every naming call rather than settling for "unnamed".
         local ok, class = pcall(function() return controller:GetClass() end)
-        controller_name = (ok and valid(class) and to_text(class)) or "unnamed"
+        for _, source in ipairs({ (ok and class) or nil, controller }) do
+            for _, method in ipairs({ "GetFullName", "GetFName", "GetName" }) do
+                local got, name = pcall(function() return source[method](source) end)
+                if got then
+                    local text = to_text(name) or (type(name) == "string" and name or nil)
+                    if text and text ~= "" then
+                        controller_name = text
+                        break
+                    end
+                end
+            end
+            if controller_name ~= "none" and controller_name ~= "unnamed" then break end
+        end
     end
 
     local owner = save and member(save, "OwnerPlayerUId")
