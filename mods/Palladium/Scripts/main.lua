@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.3.0"
+local VERSION = "2.4.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -515,27 +515,31 @@ IMPL["pal.spawn"] = function(state, p)
     local controller, pawn = pawn_of(state)
     if not util or not valid(controller) then return false, "player_offline" end
 
-    -- hostile=true tries the engine's own monster spawner first — the binary
-    -- carries RequestSpawnMonsterForPlayer, whose behaviour (aggressive raid-
-    -- style spawns) is exactly what the plain path cannot produce. Signature
-    -- probed; on failure the spawn falls back to the passive path and says so.
-    if p.hostile and pawn then
-        local shapes = {
-            function() return util:RequestSpawnMonsterForPlayer(pawn, FName(p.species), p.level) end,
-            function() return util:RequestSpawnMonsterForPlayer(controller, FName(p.species), p.level) end,
-            function() return util:RequestSpawnMonsterForPlayer(FindFirstOf("World"), pawn, FName(p.species), p.level) end,
-        }
-        for _, attempt in ipairs(shapes) do
-            if pcall(attempt) then
-                return true, nil, { { "species", p.species }, { "level", p.level }, { "hostile", true } }
-            end
-        end
-        info("hostile spawn path unavailable — falling back to the passive spawner")
-    end
-
     local manager = util:GetNPCManager(controller)
     if not valid(manager) then return false, "spawn_failed" end
-    local controller_class = member(manager, "NPCAIControllerBaseClass")
+
+    -- Which AI controller a spawn gets is what decides whether it fights.
+    -- NPCAIControllerBaseClass — the one the community spawn recipe uses — has
+    -- no combat brain, which is why those pals stand there. The manager also
+    -- exposes monster/enemy controller classes; prefer those when hostile is
+    -- asked for, and report which one actually applied.
+    local controller_class, controller_kind
+    if p.hostile then
+        for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
+            local candidate = member(manager, field)
+            if valid(candidate) then
+                controller_class, controller_kind = candidate, field
+                break
+            end
+        end
+    end
+    if not controller_class then
+        controller_class = member(manager, "NPCAIControllerBaseClass")
+        controller_kind = "NPCAIControllerBaseClass"
+        if p.hostile then
+            info("no monster/enemy AI controller class on the NPC manager — spawning passive")
+        end
+    end
     if not valid(controller_class) then return false, "spawn_failed" end
 
     local location
@@ -589,7 +593,12 @@ IMPL["pal.spawn"] = function(state, p)
             ExecuteWithDelay(500, function() guard("pal.spawn configure", configure, 1) end)
         end
     end
-    return true, nil, { { "species", p.species }, { "level", p.level } }
+    return true, nil, {
+        { "species", p.species },
+        { "level", p.level },
+        { "hostile", controller_kind ~= "NPCAIControllerBaseClass" },
+        { "controller", controller_kind },
+    }
 end
 
 IMPL["player.set_hp"] = function(state, p)
