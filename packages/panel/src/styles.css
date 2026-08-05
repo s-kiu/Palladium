@@ -249,6 +249,12 @@ tr.picked td { background: rgba(91, 157, 255, 0.09); }
 .evt-type[data-type="join"], .evt-type[data-type="capture"] { color: #4ade80; }
 .evt-type[data-type="hook"], .evt-type[data-type="ready"] { color: var(--warn); }
 p.err { color: var(--danger); }
+.action-row { border-top: 1px solid var(--border); padding: 12px 0 4px; }
+.action-row:first-of-type { border-top: none; }
+.action-name { font-weight: 600; }
+.action-row input { max-width: 260px; }
+.small-tags { font-size: 11px; color: var(--muted); max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner .mono { display: block; margin-top: 6px; user-select: all; word-break: break-all; }
 .follow { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .follow input { flex: none; accent-color: var(--accent); }
 

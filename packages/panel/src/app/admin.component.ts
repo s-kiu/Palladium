@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Api, Status } from './api.service';
+import { Api, ApiToken, Status } from './api.service';
 import { ChatComponent } from './chat.component';
 import { ConsoleComponent } from './console.component';
 import { SettingsComponent } from './settings.component';
@@ -69,6 +69,49 @@ import { SettingsComponent } from './settings.component';
       }
     </div>
 
+    <div class="card">
+      <div class="row spread">
+        <h2>API tokens</h2>
+        <span class="tag">{{ tokens().length }} active</span>
+      </div>
+      <p class="muted">
+        Bearer credentials for programs using the bridge API — one header, no cookie jar,
+        revocable here. Tokens can only call <code>/api/bridge/*</code>; read tokens cannot
+        change anything in the game.
+      </p>
+      @if (newToken()) {
+        <div class="banner info">
+          <b>Copy it now — this is the only time it is shown:</b>
+          <span class="mono">{{ newToken() }}</span>
+        </div>
+      }
+      <div class="row wrap">
+        <input [(ngModel)]="tokenName" name="token-name" placeholder="what will use it, e.g. discord-relay" />
+        <label class="follow"><input type="checkbox" [(ngModel)]="tokenWrite" name="token-write" /> allow write</label>
+        <button class="primary" (click)="createToken()" [disabled]="!tokenName">Create token</button>
+      </div>
+      @if (tokens().length) {
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Scopes</th><th class="num">Created</th><th class="num">Last used</th><th></th></tr>
+          </thead>
+          <tbody>
+            @for (t of tokens(); track t.id) {
+              <tr>
+                <td>{{ t.name }}</td>
+                <td class="mono">{{ t.scopes.join(', ') }}</td>
+                <td class="num">{{ date(t.createdAt) }}</td>
+                <td class="num">{{ t.lastUsedAt ? date(t.lastUsedAt) : 'never' }}</td>
+                <td class="actions">
+                  <button class="danger" (click)="revokeToken(t.id)">Revoke</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
     <app-chat />
     <app-console />
     <app-settings />
@@ -132,10 +175,45 @@ export class AdminComponent implements OnInit, OnDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private ticker?: ReturnType<typeof setInterval>;
 
+  tokens = signal<ApiToken[]>([]);
+  newToken = signal('');
+  tokenName = '';
+  tokenWrite = false;
+
   ngOnInit(): void {
     this.refresh();
+    this.refreshTokens();
     this.timer = setInterval(() => this.refresh(), 5000);
     this.ticker = setInterval(() => this.now.set(Date.now()), 1000);
+  }
+
+  refreshTokens(): void {
+    this.api.tokens().subscribe({ next: (r) => this.tokens.set(r.tokens), error: () => {} });
+  }
+
+  date(at: number): string {
+    return new Date(at * 1000).toISOString().slice(0, 10);
+  }
+
+  createToken(): void {
+    const scopes = this.tokenWrite ? ['read', 'write'] : ['read'];
+    this.api.createToken(this.tokenName, scopes).subscribe({
+      next: (r) => {
+        this.newToken.set(r.token);
+        this.tokenName = '';
+        this.tokenWrite = false;
+        this.refreshTokens();
+      },
+      error: () => this.feedback.set('token creation failed'),
+    });
+  }
+
+  revokeToken(id: string): void {
+    if (!confirm('Revoke this token? Anything using it stops working immediately.')) return;
+    this.api.revokeToken(id).subscribe({
+      next: () => this.refreshTokens(),
+      error: () => this.feedback.set('revoke failed'),
+    });
   }
   ngOnDestroy(): void {
     clearInterval(this.timer);

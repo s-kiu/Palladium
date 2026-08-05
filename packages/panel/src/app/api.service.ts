@@ -76,14 +76,23 @@ export interface Player {
   [k: string]: unknown;
 }
 
+export interface BridgeSubject {
+  kind: string;
+  id?: string;
+  name?: string;
+  position?: { x: number; y: number; z: number };
+}
+
 export interface BridgeEvent {
   v: number;
   at: number;
+  kind: 'event' | 'result';
   type: string;
-  player?: string;
-  userid?: string;
-  message?: string;
-  [key: string]: unknown;
+  id?: string;
+  ok?: boolean;
+  error?: string;
+  subject?: BridgeSubject;
+  data: Record<string, unknown>;
 }
 
 export interface BridgeHook {
@@ -96,12 +105,42 @@ export interface BridgeStatus {
   available: boolean;
   agent: string | null;
   version: string | null;
-  schema: number | null;
-  actions: string[];
+  envelope: number | null;
   hooks: BridgeHook[];
   eventTypes: string[];
   lastEventAt: number;
   online: boolean;
+}
+
+export interface BridgeParamSpec {
+  type: 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subject';
+  required?: boolean;
+  enriched?: boolean;
+  min?: number;
+  max?: number;
+  maxLen?: number;
+  default?: string | number | boolean;
+}
+
+export interface BridgeCapability {
+  type: string;
+  kind: 'event' | 'action' | 'query';
+  runtime: 'agent' | 'daemon' | 'game-rest';
+  target?: string;
+  source?: { hook: string };
+  since: string;
+  stability: 'stable' | 'experimental' | 'deprecated';
+  scope: 'read' | 'write';
+  summary: string;
+  params?: Record<string, BridgeParamSpec>;
+  data?: Record<string, BridgeParamSpec>;
+  live: boolean;
+}
+
+export interface BridgeSchema {
+  envelope: number;
+  agent: { name: string | null; version: string | null; ready: boolean };
+  capabilities: BridgeCapability[];
 }
 
 export interface BridgePlayer {
@@ -111,13 +150,15 @@ export interface BridgePlayer {
   lastSeen: number;
   joins: number;
   online: boolean;
+  tags: Record<string, string>;
 }
 
-export interface BridgeActionResult {
+export interface ApiToken {
   id: string;
-  ok: boolean;
-  detail: string;
-  event: BridgeEvent;
+  name: string;
+  scopes: string[];
+  createdAt: number;
+  lastUsedAt: number | null;
 }
 
 export interface Status {
@@ -226,11 +267,23 @@ export class Api {
   bridgeStatus() {
     return this.http.get<BridgeStatus>('/api/bridge/status');
   }
+  bridgeSchema() {
+    return this.http.get<BridgeSchema>('/api/bridge/schema');
+  }
   bridgePlayers() {
     return this.http.get<{ players: BridgePlayer[] }>('/api/bridge/players');
   }
-  bridgeAction(action: string, params: Record<string, unknown>) {
-    return this.http.post<BridgeActionResult>('/api/bridge/actions', { action, ...params });
+  bridgeCall(type: string, target: string | null, data: Record<string, unknown>) {
+    return this.http.post<BridgeEvent>('/api/bridge/call', { type, target, data });
+  }
+  tokens() {
+    return this.http.get<{ tokens: ApiToken[] }>('/api/tokens');
+  }
+  createToken(name: string, scopes: string[]) {
+    return this.http.post<{ id: string; token: string; note: string }>('/api/tokens', { name, scopes });
+  }
+  revokeToken(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/tokens/${id}`);
   }
   console(command: string, args: Record<string, unknown> = {}) {
     return this.http.post<{ ok: boolean; result: unknown }>('/api/console', { command, args });

@@ -30,8 +30,8 @@ import { Api, BridgeEvent } from './api.service';
         @for (e of lines(); track $index) {
           <div class="chatline">
             <span class="chat-time">{{ time(e.at) }}</span>
-            <span class="chat-player">{{ e.player || 'unknown' }}</span>
-            <span class="chat-text">{{ e.message }}</span>
+            <span class="chat-player">{{ e.subject?.name || 'unknown' }}</span>
+            <span class="chat-text">{{ e.data['message'] }}</span>
           </div>
         } @empty {
           <span class="muted">{{ placeholder() }}</span>
@@ -79,7 +79,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         // moved backwards means a new run: drop what belongs to the old one.
         if (r.cursor < this.cursor) this.lines.set([]);
         this.cursor = r.cursor;
-        const chat = r.events.filter((e) => e.type === 'chat');
+        const chat = r.events.filter((e) => e.kind === 'event' && e.type === 'player.chat');
         if (chat.length) {
           this.lines.update((prev) => [...prev, ...chat].slice(-ChatComponent.KEEP));
           this.shouldScroll = true;
