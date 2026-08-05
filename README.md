@@ -65,11 +65,20 @@ Folder conventions, Linux caveats, and how mods survive game updates: [docs/mods
 
 ## Building on top of it
 
-In-game chat is published as a JSON event stream — readable as a file on the
-data volume or over HTTP from the panel — and chat commands are answered from
-there: type `!ping` in game and the server broadcasts `pong`. That is the seam
-for bots, Discord relays, and anything else that wants to react to what happens
-on the server. Contract and endpoint: [docs/bridge.md](docs/bridge.md).
+Chat, joins and deaths are published as a JSON event stream — readable as a file
+on the data volume or over HTTP from the panel — and actions go back the other
+way, so an outside process can hand a player an item or message them privately.
+Type `!ping` in game and the server broadcasts `pong`; the panel's **bridge**
+page shows the live stream, the hooks behind it, and every player id ever seen.
+
+That is the seam for bots, Discord relays, and anything else that wants to react
+to what happens on the server. Contract and endpoints:
+[docs/bridge.md](docs/bridge.md). Three runnable examples — a starter-kit
+greeter, a death feed, and extra chat commands added without touching the
+server: [examples/bridge/](examples/bridge).
+
+The in-game half is a normal UE4SS mod, [mods/PalBridgeAgent](mods/PalBridgeAgent),
+published as a standalone download for servers not running pal-up.
 
 ## Everyday operations
 
@@ -95,7 +104,8 @@ docker compose start palworld
 pal-up/
 ├── compose.yaml              # the one command
 ├── .env.example              # all server & container settings
-├── mods/                     # ← drop UE4SS Lua mods here
+├── mods/                     # ← drop UE4SS Lua mods here (PalBridgeAgent ships in it)
+├── examples/bridge/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here
 ├── backups/                  # world snapshots appear here
