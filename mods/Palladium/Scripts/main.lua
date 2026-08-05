@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.6.0"
+local VERSION = "2.6.1"
 
 local CAPS = require("generated/capabilities")
 
@@ -526,31 +526,31 @@ IMPL["pal.spawn"] = function(state, p, finish)
     -- no combat brain, which is why those pals stand there. The manager also
     -- exposes monster/enemy controller classes; prefer those when hostile is
     -- asked for, and report which one actually applied.
-    local controller_class, controller_kind
+    -- Which AI controller a spawn gets is what decides whether it fights, and
+    -- the base class the community recipe uses has no combat brain. A combat
+    -- controller is attempted first when asked for, but it is only an attempt:
+    -- the spawn itself must never be lost to it, so the base class is always
+    -- kept as a fallback and tried if the first spawn yields nothing.
+    local base_class = member(manager, "NPCAIControllerBaseClass")
+    local hostile_class, hostile_kind
     if p.hostile then
         for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
             local candidate = member(manager, field)
             if valid(candidate) then
-                controller_class, controller_kind = candidate, field
+                hostile_class, hostile_kind = candidate, field
                 break
             end
         end
-        -- Those fields are not on this build's NPC manager. The world is the
-        -- other source of truth: a wild pal loaded right now is running the
-        -- controller that makes it fight, so borrow its class outright rather
-        -- than guessing more names.
-        if not controller_class then
-            controller_class, controller_kind = wild_controller_class()
+        if not hostile_class then
+            hostile_class, hostile_kind = wild_controller_class()
+            if hostile_class then
+                info("borrowing AI controller class from a wild pal: " .. tostring(hostile_kind))
+            else
+                info("no combat AI controller available (none on the NPC manager, no wild pal loaded to borrow from)")
+            end
         end
     end
-    if not controller_class then
-        controller_class = member(manager, "NPCAIControllerBaseClass")
-        controller_kind = "NPCAIControllerBaseClass"
-        if p.hostile then
-            info("no combat AI controller available (none on the NPC manager, no wild pal loaded to borrow from) — spawning passive")
-        end
-    end
-    if not valid(controller_class) then return false, "spawn_failed" end
+    if not valid(base_class) and not valid(hostile_class) then return false, "spawn_failed" end
 
     local location
     if p.x and p.y and p.z then
@@ -561,15 +561,34 @@ IMPL["pal.spawn"] = function(state, p, finish)
         location = { X = at.X + 300, Y = at.Y, Z = at.Z + 100 }
     end
 
-    local handle = manager:SpawnNPCForServer({
-        ControllerClass = controller_class,
-        CharacterID = FName(p.species),
-        Level = p.level,
-        Location = location,
-        Yaw = 0.0,
-        Squad = nil,
-    }, nil)
-    if not valid(handle) then return false, "spawn_failed" end
+    local function attempt(class)
+        if not valid(class) then return nil end
+        local ok, spawned = pcall(function()
+            return manager:SpawnNPCForServer({
+                ControllerClass = class,
+                CharacterID = FName(p.species),
+                Level = p.level,
+                Location = location,
+                Yaw = 0.0,
+                Squad = nil,
+            }, nil)
+        end)
+        if ok and valid(spawned) then return spawned end
+        return nil
+    end
+
+    local controller_kind = hostile_kind
+    local handle = attempt(hostile_class)
+    if not handle then
+        if hostile_class then
+            info(string.format(
+                "spawn with controller '%s' produced nothing — retrying with the base controller",
+                tostring(hostile_kind)))
+        end
+        controller_kind = "NPCAIControllerBaseClass"
+        handle = attempt(base_class)
+    end
+    if not handle then return false, "spawn_failed" end
 
     -- Rarity and traits apply to the individual parameter once it exists.
     if p.rare or (p.traits and p.traits ~= "") then
