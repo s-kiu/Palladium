@@ -366,7 +366,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true asks the NPC manager for its monster/enemy AI controller instead of the passive base controller — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id, usable straight away with pal.stats / pal.set_stats.",
+    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true attaches a combat-capable AI controller: the NPC manager's monster/enemy class if this build exposes one, otherwise the controller class borrowed from a wild pal currently loaded in the world (so at least one must be loaded) — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id, usable straight away with pal.stats / pal.set_stats.",
     "params": {
       "species": {
         "type": "item_id",
@@ -973,7 +973,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "read",
-    "summary": "Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, level. A stat this build does not expose comes back null rather than absent.",
+    "summary": "Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, plus level, rank, talent* IVs and rank* soul upgrades from the save parameter. A stat this build does not expose comes back null rather than absent.",
     "params": {},
     "returns": {
       "stats": "json"
@@ -990,7 +990,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Set any combination of an online player's stats in one call; omitted fields are left alone. hp is a fraction of max (0-1); the rest are absolute. Reports which fields applied and returns the resulting stats.",
+    "summary": "Set any combination of an online player's stats in one call; omitted fields are left alone. hp is a fraction of max (0-1); the rest are absolute. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — pals carry all of them; a player character carries only what its own parameter exposes. Reports which fields applied and returns the resulting stats.",
     "params": {
       "hp": {
         "type": "number",
@@ -1011,6 +1011,51 @@ export const CAPABILITIES: Capability[] = [
         "type": "number",
         "min": 1,
         "max": 100000
+      },
+      "level": {
+        "type": "int",
+        "min": 1,
+        "max": 100
+      },
+      "rank": {
+        "type": "int",
+        "min": 1,
+        "max": 5
+      },
+      "talentHp": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentMelee": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentShot": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentDefense": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "rankAttack": {
+        "type": "int",
+        "min": 0,
+        "max": 10
+      },
+      "rankDefence": {
+        "type": "int",
+        "min": 0,
+        "max": 10
+      },
+      "rankCraftSpeed": {
+        "type": "int",
+        "min": 0,
+        "max": 10
       }
     },
     "returns": {
@@ -1030,7 +1075,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "read",
-    "summary": "Read a loaded pal's stats, targeting the id from pal.list or a pal.spawn result.",
+    "summary": "Read a loaded pal's stats, targeting the id from pal.list or a pal.spawn result — including level, rank, talent* IVs and rank* soul upgrades.",
     "params": {
       "pal": {
         "type": "string",
@@ -1055,7 +1100,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Set any combination of a loaded pal's stats in one call; omitted fields are left alone.",
+    "summary": "Set any combination of a loaded pal's stats in one call; omitted fields are left alone. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated.",
     "params": {
       "pal": {
         "type": "string",
@@ -1082,6 +1127,51 @@ export const CAPABILITIES: Capability[] = [
         "type": "number",
         "min": 1,
         "max": 100000
+      },
+      "level": {
+        "type": "int",
+        "min": 1,
+        "max": 100
+      },
+      "rank": {
+        "type": "int",
+        "min": 1,
+        "max": 5
+      },
+      "talentHp": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentMelee": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentShot": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "talentDefense": {
+        "type": "int",
+        "min": 0,
+        "max": 100
+      },
+      "rankAttack": {
+        "type": "int",
+        "min": 0,
+        "max": 10
+      },
+      "rankDefence": {
+        "type": "int",
+        "min": 0,
+        "max": 10
+      },
+      "rankCraftSpeed": {
+        "type": "int",
+        "min": 0,
+        "max": 10
       }
     },
     "returns": {

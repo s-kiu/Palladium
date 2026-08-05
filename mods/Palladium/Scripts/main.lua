@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.5.0"
+local VERSION = "2.6.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -510,6 +510,9 @@ IMPL["player.has_item"] = function(state, p)
     return true, nil, { { "item", p.item }, { "has", count >= p.count }, { "count", count } }
 end
 
+-- Defined after world_pals(); assigned there.
+local wild_controller_class
+
 IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
@@ -532,12 +535,19 @@ IMPL["pal.spawn"] = function(state, p, finish)
                 break
             end
         end
+        -- Those fields are not on this build's NPC manager. The world is the
+        -- other source of truth: a wild pal loaded right now is running the
+        -- controller that makes it fight, so borrow its class outright rather
+        -- than guessing more names.
+        if not controller_class then
+            controller_class, controller_kind = wild_controller_class()
+        end
     end
     if not controller_class then
         controller_class = member(manager, "NPCAIControllerBaseClass")
         controller_kind = "NPCAIControllerBaseClass"
         if p.hostile then
-            info("no monster/enemy AI controller class on the NPC manager — spawning passive")
+            info("no combat AI controller available (none on the NPC manager, no wild pal loaded to borrow from) — spawning passive")
         end
     end
     if not valid(controller_class) then return false, "spawn_failed" end
@@ -639,11 +649,22 @@ local function stat_of(sources, method)
     return nil
 end
 
+-- Combat/work stats live as fields on the pal's SaveParameter, not behind
+-- getters. Writing them is AdminCommands' proven recipe: assign, mirror,
+-- OnRep_SaveParameter to replicate.
+local SAVE_STATS = {
+    { "level", "Level" }, { "rank", "Rank" },
+    { "talentHp", "Talent_HP" }, { "talentMelee", "Talent_Melee" },
+    { "talentShot", "Talent_Shot" }, { "talentDefense", "Talent_Defense" },
+    { "rankAttack", "Rank_Attack" }, { "rankDefence", "Rank_Defence" },
+    { "rankCraftSpeed", "Rank_CraftSpeed" }, { "craftSpeed", "CraftSpeed" },
+}
+
 local STAT_GETTERS = {
     { "hp", "GetHP" }, { "maxHp", "GetMaxHP" },
     { "hunger", "GetFullStomach" }, { "maxHunger", "GetMaxFullStomach" },
     { "shield", "GetShieldValue" }, { "maxShield", "GetShieldMaxHP" },
-    { "sanity", "GetSanityValue" }, { "level", "GetLevel" },
+    { "sanity", "GetSanityValue" },
 }
 
 local function read_stats(character)
@@ -656,12 +677,11 @@ local function read_stats(character)
         parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
             (value and json_value(value) or "null")
     end
-    if not stat_of(sources, "GetLevel") then
-        local save = parameter and member(parameter, "SaveParameter")
-        local level = save and member(save, "Level")
-        if type(level) == "number" then
-            parts[#parts] = json_string("level", 24) .. ":" .. json_value(level)
-        end
+    local save = parameter and member(parameter, "SaveParameter")
+    for _, entry in ipairs(SAVE_STATS) do
+        local value = save and as_number(member(save, entry[2]))
+        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
+            (value and json_value(value) or "null")
     end
     return "{" .. table.concat(parts, ",") .. "}"
 end
@@ -697,6 +717,34 @@ local function write_stats(character, p)
     if p.shield ~= nil then
         attempt("shield", function() util:SetShieldHP(character, p.shield) end)
     end
+    -- Save-parameter fields are plain assignments; replicate once at the end.
+    local parameter = pal_parameter(character)
+    local save = parameter and member(parameter, "SaveParameter")
+    local mirror = parameter and member(parameter, "SaveParameterMirror")
+    local touched = false
+    if save then
+        for _, entry in ipairs(SAVE_STATS) do
+            local value = p[entry[1]]
+            if value ~= nil then
+                local ok = pcall(function()
+                    save[entry[2]] = value
+                    if mirror then mirror[entry[2]] = value end
+                end)
+                if ok then
+                    applied[#applied + 1] = entry[1]
+                    touched = true
+                else
+                    failed[#failed + 1] = entry[1]
+                end
+            end
+        end
+        if touched then pcall(function() parameter:OnRep_SaveParameter() end) end
+    else
+        for _, entry in ipairs(SAVE_STATS) do
+            if p[entry[1]] ~= nil then failed[#failed + 1] = entry[1] end
+        end
+    end
+
     if #applied == 0 and #failed > 0 then return false, "not_supported" end
     return true, nil, {
         { "applied", table.concat(applied, ",") },
@@ -742,6 +790,27 @@ local function world_pals()
         end
     end
     return out
+end
+
+-- The class of the AI controller a naturally-spawned pal is running. This is
+-- the only reliable way found to get a combat-capable controller on this
+-- build: no such class is exposed on the NPC manager, but wild pals in the
+-- world are demonstrably running one.
+function wild_controller_class()
+    for _, pal in ipairs(world_pals()) do
+        local controller = member(pal.character, "Controller")
+        if not valid(controller) then
+            local ok, got = pcall(function() return pal.character:GetAIController() end)
+            if ok then controller = got end
+        end
+        if valid(controller) then
+            local ok, class = pcall(function() return controller:GetClass() end)
+            if ok and valid(class) then
+                return class, to_text(class) or "wild pal controller"
+            end
+        end
+    end
+    return nil, nil
 end
 
 local MAX_PAL_LIST = 100

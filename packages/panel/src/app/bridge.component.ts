@@ -475,7 +475,16 @@ export class BridgeComponent implements OnInit, OnDestroy {
     { key: 'shield', label: 'Shield', editable: true, hint: 'absolute' },
     { key: 'maxShield', label: 'Max shield', editable: true, hint: 'absolute' },
     { key: 'sanity', label: 'Sanity', editable: false, hint: '' },
-    { key: 'level', label: 'Level', editable: false, hint: '' },
+    { key: 'level', label: 'Level', editable: true, hint: '1-100' },
+    { key: 'rank', label: 'Star rank', editable: true, hint: '1-5' },
+    { key: 'talentMelee', label: 'Attack (melee IV)', editable: true, hint: '0-100' },
+    { key: 'talentShot', label: 'Attack (ranged IV)', editable: true, hint: '0-100' },
+    { key: 'talentDefense', label: 'Defense IV', editable: true, hint: '0-100' },
+    { key: 'talentHp', label: 'HP IV', editable: true, hint: '0-100' },
+    { key: 'rankAttack', label: 'Attack souls', editable: true, hint: '0-10' },
+    { key: 'rankDefence', label: 'Defense souls', editable: true, hint: '0-10' },
+    { key: 'rankCraftSpeed', label: 'Work speed souls', editable: true, hint: '0-10' },
+    { key: 'craftSpeed', label: 'Work speed', editable: false, hint: '' },
   ];
 
   worldPals = signal<{ id: string; species: string; level: number; rare: boolean }[]>([]);
