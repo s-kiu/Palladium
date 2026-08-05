@@ -1,4 +1,13 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   Api,
@@ -8,10 +17,20 @@ import {
   BridgeSchema,
 } from './api.service';
 
+// One option shape feeds every picker: players, items, pal species, traits.
+interface PickOption {
+  value: string;
+  label: string;
+  sub?: string;
+  tier?: number;
+  online?: boolean;
+}
+
 // The bridge page renders the schema, not a hand-kept list: every hook row,
-// filter chip, action form and input field below comes from what the manifest
+// filter chip, action form and picker below comes from what the manifest
 // declares and the agent reports live. A capability added to the manifest
-// appears here — form included — with no change to this file.
+// appears here — form, target field and pickers included — with no change to
+// this file.
 @Component({
   selector: 'app-bridge',
   standalone: true,
@@ -76,29 +95,23 @@ import {
         <h2>Players</h2>
         <span class="tag">{{ players().length }} known</span>
       </div>
-      <p class="muted">
-        Every id the bridge has seen, kept in the panel's database across restarts. Select one
-        to target actions at it.
-      </p>
+      <p class="muted">Every id the bridge has seen, kept in the panel's database across restarts.</p>
       <table>
         <thead>
-          <tr><th>Name</th><th>User id</th><th class="num">Joins</th><th class="num">First seen</th><th class="num">Last seen</th><th>Tags</th><th></th></tr>
+          <tr><th>Name</th><th>User id</th><th class="num">Joins</th><th class="num">First seen</th><th class="num">Last seen</th><th>Tags</th></tr>
         </thead>
         <tbody>
           @for (p of players(); track p.userid) {
-            <tr [class.picked]="selected() === p.userid">
+            <tr>
               <td>{{ p.name }} @if (p.online) { <span class="tag">online</span> }</td>
               <td class="mono">{{ p.userid }}</td>
               <td class="num">{{ p.joins }}</td>
               <td class="num">{{ date(p.firstSeen) }}</td>
               <td class="num">{{ date(p.lastSeen) }}</td>
               <td class="mono small-tags">{{ tagText(p) }}</td>
-              <td class="actions">
-                <button (click)="selected.set(p.userid)" [disabled]="selected() === p.userid">Select</button>
-              </td>
             </tr>
           } @empty {
-            <tr><td colspan="7" class="muted">Nobody has connected while the bridge was running yet.</td></tr>
+            <tr><td colspan="6" class="muted">Nobody has connected while the bridge was running yet.</td></tr>
           }
         </tbody>
       </table>
@@ -113,26 +126,26 @@ import {
         One form per capability the schema declares — nothing here is hand-written per action.
         The same calls work from any language with an API token (admin page).
       </p>
-      @if (!selected()) {
-        <p class="muted small-note">Player-targeted actions need a player — select one above.</p>
-      } @else {
-        <p class="small-note">Target: <b>{{ selectedName() }}</b> <span class="mono muted">{{ selected() }}</span></p>
-      }
       @for (c of actionCaps(); track c.type) {
         <div class="action-row">
           <div class="row wrap">
             <span class="mono action-name">{{ c.type }}</span>
             <span class="tag" [class.warn-tag]="c.stability !== 'stable'">{{ c.stability }}</span>
-            @if (c.target === 'player') { <span class="tag">targets player</span> }
             <span class="spacer"></span>
-            <button
-              class="primary"
-              (click)="run(c)"
-              [disabled]="busy() || !c.live || (c.target === 'player' && !selected())"
-            >Run</button>
+            <button class="primary" (click)="run(c)" [disabled]="busy() || !c.live">Run</button>
           </div>
           <p class="muted small-note">{{ c.summary }}</p>
           <div class="row wrap">
+            @if (c.target === 'player') {
+              <span class="pickwrap">
+                <input
+                  [(ngModel)]="targets[c.type]"
+                  [name]="c.type + '.target'"
+                  placeholder="target player (required)"
+                />
+                <button class="pickbtn" title="pick a player" (click)="openPlayerPicker(c.type)">☰</button>
+              </span>
+            }
             @for (p of paramList(c); track p.name) {
               @if (p.spec.type === 'bool') {
                 <label class="follow">
@@ -143,6 +156,15 @@ import {
                   />
                   {{ p.name }}
                 </label>
+              } @else if (p.spec.picker) {
+                <span class="pickwrap">
+                  <input
+                    [(ngModel)]="inputs[c.type + '.' + p.name]"
+                    [name]="c.type + '.' + p.name"
+                    [placeholder]="placeholderFor(p)"
+                  />
+                  <button class="pickbtn" title="pick from the list" (click)="openCatalogPicker(p.spec.picker!, c.type + '.' + p.name)">☰</button>
+                </span>
               } @else {
                 <input
                   [class.short]="p.spec.type === 'int' || p.spec.type === 'number'"
@@ -160,22 +182,97 @@ import {
         </div>
       }
     </div>
+
+    <dialog #pickerDlg class="dlg picker-dlg">
+      <div class="row spread">
+        <h2>{{ pickerTitle() }}</h2>
+        <button class="ghost" (click)="closePicker()">✕</button>
+      </div>
+      <input
+        [(ngModel)]="pickerSearch"
+        name="picker-search"
+        placeholder="type to search…"
+        (ngModelChange)="pickerQuery.set($event)"
+        autocomplete="off"
+      />
+      <div class="pick-list">
+        @for (o of pickerShown(); track o.value) {
+          <button
+            class="pick-item"
+            [class.picked]="pickerChosen().has(o.value)"
+            (click)="choose(o)"
+          >
+            <span class="pick-label">
+              @if (o.tier !== undefined) { <span class="tier-dot tier-{{ tierClass(o.tier) }}"></span> }
+              {{ o.label }}
+              @if (o.online) { <span class="tag">online</span> }
+              @if (pickerChosen().has(o.value)) { <span class="tag">selected</span> }
+            </span>
+            <span class="pick-sub">{{ o.sub }}</span>
+          </button>
+        } @empty {
+          <p class="muted">nothing matches</p>
+        }
+        @if (pickerTruncated()) {
+          <p class="muted small-note">…{{ pickerTruncated() }} more — keep typing to narrow.</p>
+        }
+      </div>
+      @if (pickerMulti()) {
+        <div class="row dlg-actions">
+          <button (click)="closePicker()">Cancel</button>
+          <button class="primary" (click)="applyMulti()">Use {{ pickerChosen().size }} selected</button>
+        </div>
+      }
+    </dialog>
   `,
 })
 export class BridgeComponent implements OnInit, OnDestroy {
   private api = inject(Api);
+  @ViewChild('pickerDlg') pickerDlg?: ElementRef<HTMLDialogElement>;
 
   schema = signal<BridgeSchema | null>(null);
   events = signal<BridgeEvent[]>([]);
   players = signal<BridgePlayer[]>([]);
   filter = signal<Set<string>>(new Set());
-  selected = signal<string>('');
   placeholder = signal('loading events…');
   busy = signal(false);
 
   inputs: Record<string, string> = {};
   boolInputs: Record<string, boolean> = {};
+  targets: Record<string, string> = {};
   results: Record<string, string> = {};
+
+  private catalogs: {
+    item: PickOption[];
+    pal: PickOption[];
+    traits: PickOption[];
+  } = { item: [], pal: [], traits: [] };
+
+  // ── picker state ───────────────────────────────────────────────────────────
+  pickerTitle = signal('');
+  pickerQuery = signal('');
+  pickerSearch = '';
+  pickerMulti = signal(false);
+  pickerChosen = signal<Set<string>>(new Set());
+  private pickerOptions = signal<PickOption[]>([]);
+  private pickerWrite: (value: string) => void = () => {};
+  private static readonly PICKER_PAGE = 150;
+
+  pickerFiltered = computed(() => {
+    const q = this.pickerQuery().toLowerCase().trim();
+    const all = this.pickerOptions();
+    if (!q) return all;
+    return all.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        o.value.toLowerCase().includes(q) ||
+        (o.sub ?? '').toLowerCase().includes(q),
+    );
+  });
+  pickerShown = computed(() => this.pickerFiltered().slice(0, BridgeComponent.PICKER_PAGE));
+  pickerTruncated = computed(() =>
+    Math.max(0, this.pickerFiltered().length - BridgeComponent.PICKER_PAGE),
+  );
 
   private cursor = 0;
   private timers: ReturnType<typeof setInterval>[] = [];
@@ -205,14 +302,20 @@ export class BridgeComponent implements OnInit, OnDestroy {
     return wanted.size ? all.filter((e) => wanted.has(this.chipOf(e))) : all;
   });
 
-  selectedName = computed(
-    () => this.players().find((p) => p.userid === this.selected())?.name ?? 'unknown',
-  );
-
   ngOnInit(): void {
     this.refreshSchema();
     this.refreshEvents();
     this.refreshPlayers();
+    this.api.bridgeCatalog().subscribe({
+      next: (c) => {
+        this.catalogs = {
+          item: c.items.map((i) => ({ value: i.id, label: i.name, sub: i.id })),
+          pal: c.pals.map((p) => ({ value: p.id, label: p.name, sub: p.id })),
+          traits: c.traits.map((t) => ({ value: t.id, label: t.name, sub: t.effect, tier: t.tier })),
+        };
+      },
+      error: () => {},
+    });
     this.timers.push(setInterval(() => this.refreshEvents(), 2000));
     this.timers.push(setInterval(() => this.refreshSchema(), 10000));
     this.timers.push(setInterval(() => this.refreshPlayers(), 5000));
@@ -221,6 +324,80 @@ export class BridgeComponent implements OnInit, OnDestroy {
     for (const t of this.timers) clearInterval(t);
   }
 
+  // ── pickers ────────────────────────────────────────────────────────────────
+  openPlayerPicker(capType: string): void {
+    this.openPicker(
+      'Pick a player',
+      this.players().map((p) => ({
+        value: p.userid,
+        label: p.name,
+        sub: p.userid,
+        online: p.online,
+      })),
+      false,
+      (v) => (this.targets[capType] = v),
+    );
+  }
+
+  openCatalogPicker(kind: string, inputKey: string): void {
+    const titles: Record<string, string> = {
+      item: 'Pick an item',
+      pal: 'Pick a pal',
+      traits: 'Pick traits',
+    };
+    const options = (this.catalogs as Record<string, PickOption[]>)[kind] ?? [];
+    const multi = kind === 'traits';
+    if (multi) {
+      const current = (this.inputs[inputKey] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      this.pickerChosen.set(new Set(current));
+    }
+    this.openPicker(titles[kind] ?? 'Pick', options, multi, (v) => (this.inputs[inputKey] = v));
+  }
+
+  private openPicker(
+    title: string,
+    options: PickOption[],
+    multi: boolean,
+    write: (value: string) => void,
+  ): void {
+    this.pickerTitle.set(title);
+    this.pickerOptions.set(options);
+    this.pickerMulti.set(multi);
+    if (!multi) this.pickerChosen.set(new Set());
+    this.pickerWrite = write;
+    this.pickerSearch = '';
+    this.pickerQuery.set('');
+    this.pickerDlg?.nativeElement.showModal();
+  }
+
+  choose(option: PickOption): void {
+    if (this.pickerMulti()) {
+      this.pickerChosen.update((prev) => {
+        const next = new Set(prev);
+        if (next.has(option.value)) next.delete(option.value);
+        else next.add(option.value);
+        return next;
+      });
+      return;
+    }
+    this.pickerWrite(option.value);
+    this.closePicker();
+  }
+
+  applyMulti(): void {
+    this.pickerWrite([...this.pickerChosen()].join(','));
+    this.closePicker();
+  }
+
+  closePicker(): void {
+    this.pickerDlg?.nativeElement.close();
+  }
+
+  tierClass(tier: number): string {
+    return tier < 0 ? 'neg' : String(Math.min(4, Math.max(1, tier)));
+  }
+
+  // ── table / stream helpers ─────────────────────────────────────────────────
   chipOf(e: BridgeEvent): string {
     return e.kind === 'result' ? 'result' : e.type;
   }
@@ -316,6 +493,11 @@ export class BridgeComponent implements OnInit, OnDestroy {
   }
 
   run(c: BridgeCapability): void {
+    const target = (this.targets[c.type] ?? '').trim();
+    if (c.target === 'player' && !target) {
+      this.results[c.type] = 'failed (pick a target player first)';
+      return;
+    }
     const data: Record<string, unknown> = {};
     for (const p of this.paramList(c)) {
       const key = `${c.type}.${p.name}`;
@@ -328,7 +510,7 @@ export class BridgeComponent implements OnInit, OnDestroy {
     }
     this.busy.set(true);
     this.results[c.type] = 'running…';
-    this.api.bridgeCall(c.type, c.target === 'player' ? this.selected() : null, data).subscribe({
+    this.api.bridgeCall(c.type, c.target === 'player' ? target : null, data).subscribe({
       next: (r) => {
         this.busy.set(false);
         this.results[c.type] = r.ok

@@ -115,6 +115,7 @@ export interface BridgeStatus {
 export interface BridgeParamSpec {
   type: 'string' | 'int' | 'number' | 'bool' | 'item_id' | 'subject';
   required?: boolean;
+  picker?: string;
   enriched?: boolean;
   min?: number;
   max?: number;
@@ -275,6 +276,13 @@ export class Api {
   }
   bridgeCall(type: string, target: string | null, data: Record<string, unknown>) {
     return this.http.post<BridgeEvent>('/api/bridge/call', { type, target, data });
+  }
+  bridgeCatalog() {
+    return this.http.get<{
+      items: { id: string; name: string }[];
+      pals: { id: string; name: string }[];
+      traits: { id: string; name: string; tier: number; effect: string }[];
+    }>('/api/bridge/catalog');
   }
   tokens() {
     return this.http.get<{ tokens: ApiToken[] }>('/api/tokens');

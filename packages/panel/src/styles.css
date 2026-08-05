@@ -255,6 +255,44 @@ p.err { color: var(--danger); }
 .action-row input { max-width: 260px; }
 .small-tags { font-size: 11px; color: var(--muted); max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .banner .mono { display: block; margin-top: 6px; user-select: all; word-break: break-all; }
+
+/* ── pickers ────────────────────────────────────────────────────────────── */
+.pickwrap { display: inline-flex; align-items: stretch; }
+.pickwrap input { border-radius: 8px 0 0 8px; max-width: 220px; }
+.pickbtn {
+  border-radius: 0 8px 8px 0;
+  border-left: none;
+  padding: 6px 10px;
+  flex: none;
+}
+.picker-dlg { width: min(560px, 92vw); }
+.picker-dlg input { width: 100%; margin: 10px 0; }
+.pick-list { max-height: 46vh; overflow: auto; display: grid; gap: 2px; }
+.pick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  padding: 7px 10px;
+}
+.pick-item:hover { background: var(--hover); border-color: var(--border); }
+.pick-item.picked { border-color: var(--accent); background: rgba(91, 157, 255, 0.08); }
+.pick-label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.pick-sub {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.tier-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.tier-dot.tier-4 { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.7); }
+.tier-dot.tier-3 { background: #c084fc; }
+.tier-dot.tier-2 { background: var(--accent); }
+.tier-dot.tier-1 { background: #4ade80; }
+.tier-dot.tier-neg { background: var(--danger); }
 .follow { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .follow input { flex: none; accent-color: var(--accent); }
 
