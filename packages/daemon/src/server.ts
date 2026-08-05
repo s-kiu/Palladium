@@ -948,7 +948,19 @@ async function flushRegistry(): Promise<void> {
   const out: Record<string, PlayerRecord> = {};
   for (const [userid, rec] of playerRegistry) out[userid] = rec;
   await fs.mkdir(STATE_DIR, { recursive: true });
-  await fs.writeFile(BRIDGE_PLAYERS, JSON.stringify(out, null, 2)).catch(() => {});
+  // Write-then-rename, because this file cannot be rebuilt: the event stream it
+  // was derived from is emptied on every boot, so a first-seen date lost here is
+  // lost for good. A plain write truncates first, and a crash in that window
+  // leaves unparseable JSON that loads as an empty registry.
+  const tmp = `${BRIDGE_PLAYERS}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(out, null, 2));
+    await fs.rename(tmp, BRIDGE_PLAYERS);
+  } catch (err) {
+    app.log.warn({ err }, 'could not persist the player registry');
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    registryDirty = true; // keep the change pending for the next flush
+  }
 }
 
 function recordPlayer(event: BridgeEvent): void {
