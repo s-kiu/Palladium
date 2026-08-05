@@ -280,7 +280,14 @@ export class Api {
   bridgeCatalog() {
     return this.http.get<{
       items: { id: string; name: string }[];
-      pals: { id: string; name: string }[];
+      pals: {
+        id: string;
+        name: string;
+        element: string[] | null;
+        variant: string;
+        seen?: { min: number; max: number; count: number };
+        unlisted?: boolean;
+      }[];
       traits: { id: string; name: string; tier: number; effect: string }[];
     }>('/api/bridge/catalog');
   }

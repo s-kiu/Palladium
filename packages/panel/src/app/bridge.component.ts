@@ -24,6 +24,11 @@ interface PickOption {
   sub?: string;
   tier?: number;
   online?: boolean;
+  element?: string[] | null;
+  variant?: string;
+  seenMin?: number;
+  seenMax?: number;
+  unlisted?: boolean;
 }
 
 // The bridge page renders the schema, not a hand-kept list: every hook row,
@@ -195,6 +200,37 @@ interface PickOption {
         (ngModelChange)="pickerQuery.set($event)"
         autocomplete="off"
       />
+      @if (pickerKind() === 'pal') {
+        <div class="row wrap chips">
+          <button class="chip" [class.on]="!palElement()" (click)="palElement.set(null)">any element</button>
+          @for (el of PAL_ELEMENTS; track el) {
+            <button class="chip" [class.on]="palElement() === el" (click)="palElement.set(el)">
+              @if (el !== 'unknown') { <span class="el-dot el-{{ el.toLowerCase() }}"></span> }
+              {{ el }}
+            </button>
+          }
+        </div>
+        <div class="row wrap pal-filters">
+          <select [(ngModel)]="palVariant" name="pal-variant" (ngModelChange)="palVariantSig.set($event)">
+            <option value="all">all variants</option>
+            @for (v of PAL_VARIANTS; track v) { <option [value]="v">{{ v }}</option> }
+          </select>
+          <input
+            class="short"
+            type="number"
+            min="1"
+            max="100"
+            [(ngModel)]="palLevel"
+            name="pal-level"
+            placeholder="level"
+            (ngModelChange)="setPalLevel($event)"
+          />
+          <button class="chip" [class.on]="palSeenOnly()" (click)="palSeenOnly.set(!palSeenOnly())">
+            seen on this server
+          </button>
+          <span class="muted small-note">level and “seen” come from spawns observed here — a modded mob appears once one has spawned</span>
+        </div>
+      }
       <div class="pick-list">
         @for (o of pickerShown(); track o.value) {
           <button
@@ -204,7 +240,9 @@ interface PickOption {
           >
             <span class="pick-label">
               @if (o.tier !== undefined) { <span class="tier-dot tier-{{ tierClass(o.tier) }}"></span> }
+              @for (el of o.element ?? []; track el) { <span class="el-dot el-{{ el.toLowerCase() }}" [title]="el"></span> }
               {{ o.label }}
+              @if (o.unlisted) { <span class="tag warn-tag">unlisted</span> }
               @if (o.online) { <span class="tag">online</span> }
               @if (pickerChosen().has(o.value)) { <span class="tag">selected</span> }
             </span>
@@ -250,9 +288,18 @@ export class BridgeComponent implements OnInit, OnDestroy {
 
   // ── picker state ───────────────────────────────────────────────────────────
   pickerTitle = signal('');
+  pickerKind = signal('');
   pickerQuery = signal('');
   pickerSearch = '';
   pickerMulti = signal(false);
+  readonly PAL_ELEMENTS = ['Neutral', 'Fire', 'Water', 'Grass', 'Electric', 'Ice', 'Ground', 'Dark', 'Dragon', 'unknown'];
+  readonly PAL_VARIANTS = ['normal', 'boss', 'raid', 'gym', 'predator', 'summon'];
+  palElement = signal<string | null>(null);
+  palVariant = 'all';
+  palVariantSig = signal('all');
+  palLevel = '';
+  palLevelSig = signal('');
+  palSeenOnly = signal(false);
   pickerChosen = signal<Set<string>>(new Set());
   private pickerOptions = signal<PickOption[]>([]);
   private pickerWrite: (value: string) => void = () => {};
@@ -260,7 +307,19 @@ export class BridgeComponent implements OnInit, OnDestroy {
 
   pickerFiltered = computed(() => {
     const q = this.pickerQuery().toLowerCase().trim();
-    const all = this.pickerOptions();
+    let all = this.pickerOptions();
+    if (this.pickerKind() === 'pal') {
+      const el = this.palElement();
+      if (el === 'unknown') all = all.filter((o) => !o.element?.length);
+      else if (el) all = all.filter((o) => o.element?.includes(el));
+      const variant = this.palVariantSig();
+      if (variant !== 'all') all = all.filter((o) => o.variant === variant);
+      if (this.palSeenOnly()) all = all.filter((o) => o.seenMin !== undefined);
+      const lv = Number(this.palLevelSig());
+      if (this.palLevelSig() !== '' && Number.isFinite(lv)) {
+        all = all.filter((o) => o.seenMin !== undefined && lv >= o.seenMin! && lv <= (o.seenMax ?? o.seenMin!));
+      }
+    }
     if (!q) return all;
     return all.filter(
       (o) =>
@@ -310,7 +369,16 @@ export class BridgeComponent implements OnInit, OnDestroy {
       next: (c) => {
         this.catalogs = {
           item: c.items.map((i) => ({ value: i.id, label: i.name, sub: i.id })),
-          pal: c.pals.map((p) => ({ value: p.id, label: p.name, sub: p.id })),
+          pal: c.pals.map((p) => ({
+            value: p.id,
+            label: p.name,
+            sub: p.id + (p.seen ? ` · seen lv ${p.seen.min}–${p.seen.max} ×${p.seen.count}` : ''),
+            element: p.element,
+            variant: p.variant,
+            seenMin: p.seen?.min,
+            seenMax: p.seen?.max,
+            unlisted: p.unlisted,
+          })),
           traits: c.traits.map((t) => ({ value: t.id, label: t.name, sub: t.effect, tier: t.tier })),
         };
       },
@@ -326,6 +394,7 @@ export class BridgeComponent implements OnInit, OnDestroy {
 
   // ── pickers ────────────────────────────────────────────────────────────────
   openPlayerPicker(capType: string): void {
+    this.pickerKind.set('player');
     this.openPicker(
       'Pick a player',
       this.players().map((p) => ({
@@ -351,7 +420,30 @@ export class BridgeComponent implements OnInit, OnDestroy {
       const current = (this.inputs[inputKey] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       this.pickerChosen.set(new Set(current));
     }
+    this.pickerKind.set(kind);
+    // The world keeps reporting new species (mods included); refresh the pal
+    // catalog on open so they are pickable without a page reload.
+    if (kind === 'pal') this.refreshCatalog();
     this.openPicker(titles[kind] ?? 'Pick', options, multi, (v) => (this.inputs[inputKey] = v));
+  }
+
+  private refreshCatalog(): void {
+    this.api.bridgeCatalog().subscribe({
+      next: (c) => {
+        this.catalogs.pal = c.pals.map((p) => ({
+          value: p.id,
+          label: p.name,
+          sub: p.id + (p.seen ? ` · seen lv ${p.seen.min}–${p.seen.max} ×${p.seen.count}` : ''),
+          element: p.element,
+          variant: p.variant,
+          seenMin: p.seen?.min,
+          seenMax: p.seen?.max,
+          unlisted: p.unlisted,
+        }));
+        if (this.pickerKind() === 'pal') this.pickerOptions.set(this.catalogs.pal);
+      },
+      error: () => {},
+    });
   }
 
   private openPicker(
@@ -367,6 +459,12 @@ export class BridgeComponent implements OnInit, OnDestroy {
     this.pickerWrite = write;
     this.pickerSearch = '';
     this.pickerQuery.set('');
+    this.palElement.set(null);
+    this.palVariant = 'all';
+    this.palVariantSig.set('all');
+    this.palLevel = '';
+    this.palLevelSig.set('');
+    this.palSeenOnly.set(false);
     this.pickerDlg?.nativeElement.showModal();
   }
 
@@ -395,6 +493,10 @@ export class BridgeComponent implements OnInit, OnDestroy {
 
   tierClass(tier: number): string {
     return tier < 0 ? 'neg' : String(Math.min(4, Math.max(1, tier)));
+  }
+
+  setPalLevel(value: unknown): void {
+    this.palLevelSig.set(value === null || value === undefined ? '' : String(value));
   }
 
   // ── table / stream helpers ─────────────────────────────────────────────────

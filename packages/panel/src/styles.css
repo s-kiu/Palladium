@@ -294,6 +294,18 @@ p.err { color: var(--danger); }
 .tier-dot.tier-2 { background: var(--accent); }
 .tier-dot.tier-1 { background: #4ade80; }
 .tier-dot.tier-neg { background: var(--danger); }
+.pal-filters { margin-bottom: 8px; }
+.el-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; display: inline-block; }
+.chip .el-dot { margin-right: 5px; vertical-align: middle; }
+.el-neutral { background: #9ca3af; }
+.el-fire { background: #f87171; }
+.el-water { background: #38bdf8; }
+.el-grass { background: #4ade80; }
+.el-electric { background: #facc15; }
+.el-ice { background: #7dd3fc; }
+.el-ground { background: #d97706; }
+.el-dark { background: #a855f7; }
+.el-dragon { background: #8b5cf6; }
 .follow { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .follow input { flex: none; accent-color: var(--accent); }
 

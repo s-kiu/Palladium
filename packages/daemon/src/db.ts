@@ -67,6 +67,14 @@ export class BridgeDb {
         last_used_at INTEGER,
         revoked      INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE IF NOT EXISTS species_seen (
+        species   TEXT PRIMARY KEY,
+        min_level INTEGER NOT NULL,
+        max_level INTEGER NOT NULL,
+        count     INTEGER NOT NULL DEFAULT 0,
+        rare      INTEGER NOT NULL DEFAULT 0,
+        last_at   INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS audit (
         id     INTEGER PRIMARY KEY AUTOINCREMENT,
         at     INTEGER NOT NULL,
@@ -173,6 +181,37 @@ export class BridgeDb {
 
   deleteTag(userid: string, key: string): void {
     this.db.prepare('DELETE FROM tags WHERE userid = ? AND key = ?').run(userid, key);
+  }
+
+  // ── species observed in the world ──────────────────────────────────────────
+  // Fed by npc.spawn events. This is how the catalog learns what actually
+  // exists on THIS server — spawn-level ranges, and species no static table
+  // knows because a mod added them.
+  speciesSeen(species: string, level: number, rare: boolean, at: number): void {
+    if (!species) return;
+    this.db.prepare(`
+      INSERT INTO species_seen (species, min_level, max_level, count, rare, last_at)
+      VALUES (?, ?, ?, 1, ?, ?)
+      ON CONFLICT(species) DO UPDATE SET
+        min_level = MIN(min_level, excluded.min_level),
+        max_level = MAX(max_level, excluded.max_level),
+        count = count + 1,
+        rare = MAX(rare, excluded.rare),
+        last_at = MAX(last_at, excluded.last_at)
+    `).run(species, level, level, rare ? 1 : 0, at);
+  }
+
+  species(): Map<string, { min: number; max: number; count: number; rare: boolean }> {
+    const rows = this.db.prepare('SELECT * FROM species_seen').all() as Record<string, unknown>[];
+    return new Map(rows.map((r) => [
+      String(r.species),
+      {
+        min: Number(r.min_level),
+        max: Number(r.max_level),
+        count: Number(r.count),
+        rare: Number(r.rare) === 1,
+      },
+    ]));
   }
 
   // ── API tokens ─────────────────────────────────────────────────────────────

@@ -1026,6 +1026,14 @@ function ingest(event: BridgeEvent): void {
     case 'player.leave':
       bridgeDb.leave(subjectId, Number(event.at) || 0);
       break;
+    case 'npc.spawn':
+      bridgeDb.speciesSeen(
+        String(event.data.species ?? ''),
+        Number(event.data.level) || 0,
+        event.data.rare === true,
+        Number(event.at) || 0,
+      );
+      break;
     default:
       if (event.subject?.kind === 'player') {
         bridgeDb.seen(subjectId, subjectName, Number(event.at) || 0);
@@ -1123,7 +1131,34 @@ async function loadCatalog(): Promise<Record<string, unknown>> {
   return catalogCache;
 }
 
-app.get('/api/bridge/catalog', async () => loadCatalog());
+interface PalEntry {
+  id: string;
+  name: string;
+  element: string[] | null;
+  variant: string;
+  seen?: { min: number; max: number; count: number };
+  unlisted?: boolean;
+}
+
+app.get('/api/bridge/catalog', async () => {
+  const base = await loadCatalog();
+  // The static table is what shipped; the world reports what exists. Observed
+  // spawn-level ranges annotate known species, and species absent from the
+  // table — a mod's mobs, or a patch's — are appended so they are pickable the
+  // moment one has spawned near a player.
+  const observed = bridgeDb.species();
+  const pals: PalEntry[] = (base.pals as PalEntry[]).map((p) => {
+    const seen = observed.get(p.id);
+    return seen ? { ...p, seen } : p;
+  });
+  const known = new Set(pals.map((p) => p.id));
+  for (const [species, seen] of observed) {
+    if (!known.has(species)) {
+      pals.push({ id: species, name: species, element: null, variant: 'normal', seen, unlisted: true });
+    }
+  }
+  return { ...base, pals };
+});
 
 // ── one call verb ────────────────────────────────────────────────────────────
 // POST /api/bridge/call {type, target, data} — the only way in, whatever the
