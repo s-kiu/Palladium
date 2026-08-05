@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.8.1"
+local VERSION = "2.9.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -902,6 +902,74 @@ end
 -- Diagnostic: everything that could plausibly differ between a wild pal (which
 -- fights back) and a spawned one (which does not). Pure property reads, so it
 -- is safe to point at anything. Compare the two and the difference is the bug.
+-- The world's own spawners are the path the game itself uses, and they attach
+-- whatever AI a wild pal gets — including predators, which are hostile by
+-- design. Spawner actors are reachable by class name (the same discovery
+-- AlphaRespawnScheduler uses in production), so ask one near the player to
+-- fire rather than constructing an NPC by hand.
+local SPAWNER_CLASSES = { "BP_MonoNPCSpawner_C", "BP_PalSpawner_Standard_C" }
+local MAX_SPAWNERS_TRIED = 25
+
+IMPL["pal.force_spawn"] = function(state, p)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local ok_at, at = pcall(function() return pawn:K2_GetActorLocation() end)
+    if not ok_at or type(member(at, "X")) ~= "number" then
+        return false, "spawn_failed: could not read the player's location"
+    end
+
+    local method = (p.kind == "rare") and "ForceSpawnRarePal" or "ForceSpawnPredatorPal"
+    local radius = p.radius or 50000
+    local found, tried, errors = 0, 0, {}
+
+    for _, class_name in ipairs(SPAWNER_CLASSES) do
+        local ok, spawners = pcall(FindAllOf, class_name)
+        if ok and type(spawners) == "table" then
+            for _, spawner in ipairs(spawners) do
+                if valid(spawner) and tried < MAX_SPAWNERS_TRIED then
+                    found = found + 1
+                    local near, distance = true, nil
+                    local got, loc = pcall(function() return spawner:K2_GetActorLocation() end)
+                    if got and type(member(loc, "X")) == "number" then
+                        local dx, dy = loc.X - at.X, loc.Y - at.Y
+                        distance = math.sqrt(dx * dx + dy * dy)
+                        near = distance <= radius
+                    end
+                    if near then
+                        tried = tried + 1
+                        -- Signature unknown; try the plain call then a couple
+                        -- of plausible shapes, and report what took.
+                        local shapes = {
+                            { method .. "()", function() spawner[method](spawner) end },
+                            { method .. "(true)", function() spawner[method](spawner, true) end },
+                            { method .. "(world)", function() spawner[method](spawner, FindFirstOf("World")) end },
+                        }
+                        for _, shape in ipairs(shapes) do
+                            local called, err = pcall(shape[2])
+                            if called then
+                                return true, nil, {
+                                    { "method", shape[1] },
+                                    { "spawner", class_name },
+                                    { "distance", distance and math.floor(distance) or -1 },
+                                    { "spawnersTried", tried },
+                                }
+                            end
+                            if #errors < 4 then errors[#errors + 1] = shape[1] .. " -> " .. tostring(err) end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if found == 0 then
+        return false, "not_supported: no spawner actors found in the world"
+    end
+    info("pal.force_spawn: no shape worked: " .. table.concat(errors, " | "))
+    return false, string.format("not_supported (%d spawners found, %d in range): %s",
+        found, tried, tostring(errors[1]))
+end
+
 IMPL["pal.inspect"] = function(_, p)
     local pal = find_pal(p.pal)
     if not pal then return false, "pal_not_found" end

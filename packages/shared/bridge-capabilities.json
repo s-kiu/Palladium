@@ -1214,6 +1214,39 @@
       "errors": [
         "pal_not_found"
       ]
+    },
+    {
+      "type": "pal.force_spawn",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "2.9.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Ask one of the world's own spawners near the player to fire — a predator (hostile by design) or a rare pal. Unlike pal.spawn this does not construct an NPC by hand: the game spawns it through its normal path, so it gets the AI a wild pal has. Reports which spawner and call shape worked.",
+      "params": {
+        "kind": {
+          "type": "string",
+          "default": "predator",
+          "maxLen": 16
+        },
+        "radius": {
+          "type": "number",
+          "min": 1000,
+          "max": 500000,
+          "default": 50000
+        }
+      },
+      "returns": {
+        "method": "string",
+        "spawner": "string",
+        "distance": "number",
+        "spawnersTried": "int"
+      },
+      "errors": [
+        "player_offline",
+        "not_supported"
+      ]
     }
   ]
 }

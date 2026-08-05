@@ -121,5 +121,11 @@ return {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             },
         },
+        ["pal.force_spawn"] = {
+            params = {
+            { name = "kind", kind = "string", max_len = 16, default = "predator" },
+            { name = "radius", kind = "number", min = 1000, max = 500000, default = 50000 },
+            },
+        },
     },
 }
