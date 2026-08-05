@@ -110,5 +110,11 @@ return {
             { name = "rankCraftSpeed", kind = "int", min = 0, max = 10 },
             },
         },
+        ["pal.aggro"] = {
+            params = {
+            { name = "pal", kind = "string", required = true, max_len = 64 },
+            { name = "amount", kind = "int", min = 1, max = 100000, default = 1000 },
+            },
+        },
     },
 }

@@ -219,6 +219,24 @@ Grant `guardian.summon` to a group on the permissions page and the command
 starts working for its members; the constraint syntax can narrow it further
 ("only Lamball", "only below level 20") without changing the mod.
 
+## Spawned pals do not fight
+
+A pal spawned through `pal.spawn` gets the base NPC AI controller — the only
+one `SpawnNPCForServer` accepts on this build — and that controller has no
+combat behaviour. Such a pal neither attacks nor **retaliates**: hit it and it
+stands there.
+
+`pal.aggro` is the way round it. Retaliation in this game is the hate system:
+damage normally adds hate toward the attacker and the AI goes for whoever it
+hates most. A spawned pal never receives that first entry, so `pal.aggro`
+seeds it directly against a chosen player. `hostile: true` on a spawn remains
+a request for a combat controller class, honoured only if the build exposes
+one — the result always names the controller that actually applied, so it is
+never ambiguous.
+
+Neither changes the other limit: spawns are absent from the world save and
+disappear on restart.
+
 ## What the engine allows
 
 Hook targets must be native (`/Script/…`) functions: Blueprint (`/Game/…`)

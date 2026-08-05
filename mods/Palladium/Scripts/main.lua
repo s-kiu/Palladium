@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.6.3"
+local VERSION = "2.7.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -510,48 +510,12 @@ IMPL["player.has_item"] = function(state, p)
     return true, nil, { { "item", p.item }, { "has", count >= p.count }, { "count", count } }
 end
 
--- Defined after world_pals(); assigned there.
-local wild_controller_class
-
 IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
     if not util or not valid(controller) then return false, "player_offline" end
-
-    local manager = util:GetNPCManager(controller)
-    if not valid(manager) then return false, "spawn_failed: no NPC manager" end
-
-    -- Which AI controller a spawn gets is what decides whether it fights.
-    -- NPCAIControllerBaseClass — the one the community spawn recipe uses — has
-    -- no combat brain, which is why those pals stand there. The manager also
-    -- exposes monster/enemy controller classes; prefer those when hostile is
-    -- asked for, and report which one actually applied.
-    -- Which AI controller a spawn gets is what decides whether it fights, and
-    -- the base class the community recipe uses has no combat brain. A combat
-    -- controller is attempted first when asked for, but it is only an attempt:
-    -- the spawn itself must never be lost to it, so the base class is always
-    -- kept as a fallback and tried if the first spawn yields nothing.
-    local base_class = member(manager, "NPCAIControllerBaseClass")
-    local hostile_class, hostile_kind
-    if p.hostile then
-        for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
-            local candidate = member(manager, field)
-            if valid(candidate) then
-                hostile_class, hostile_kind = candidate, field
-                break
-            end
-        end
-        if not hostile_class then
-            hostile_class, hostile_kind = wild_controller_class()
-            if hostile_class then
-                info("borrowing AI controller class from a wild pal: " .. tostring(hostile_kind))
-            else
-                info("no combat AI controller available (none on the NPC manager, no wild pal loaded to borrow from)")
-            end
-        end
-    end
-    if not valid(base_class) and not valid(hostile_class) then
-        return false, "spawn_failed: no usable AI controller class"
+    if not valid(util:GetNPCManager(controller)) then
+        return false, "spawn_failed: no NPC manager"
     end
 
     local location
@@ -566,24 +530,21 @@ IMPL["pal.spawn"] = function(state, p, finish)
         location = { X = at.X + 300, Y = at.Y, Z = at.Z + 100 }
     end
 
-    -- Every failure reason is reported: the spawner's own error message is the
-    -- only thing that distinguishes "rejected the controller" from "rejected
-    -- the species" from "returned nothing", and swallowing it is why the last
-    -- two attempts at this were guesswork.
-    -- Engine object references do not survive intervening engine work: reading
-    -- the controller class up front and spawning after a FindAllOf scan hands
-    -- the spawner a stale class, which it rejects. Everything the spawn needs
-    -- is therefore fetched inside the attempt, immediately before the call.
+    -- Engine references do not survive intervening engine work, so the manager
+    -- and the controller class are both resolved inside the attempt, right
+    -- before the spawn call. Errors are reported rather than swallowed: the
+    -- spawner's own message is the only thing that separates "rejected the
+    -- controller" from "rejected the species".
     local last_error
-    local function attempt(get_class, label)
+    local function attempt(field, label)
         local manager = util:GetNPCManager(controller)
         if not valid(manager) then
             last_error = label .. ": NPC manager unavailable"
             return nil
         end
-        local class = get_class(manager)
+        local class = member(manager, field)
         if not valid(class) then
-            last_error = label .. ": class not valid"
+            last_error = label .. ": class not available on this build"
             return nil
         end
         local ok, spawned = pcall(function()
@@ -608,31 +569,25 @@ IMPL["pal.spawn"] = function(state, p, finish)
         return spawned
     end
 
+    -- A combat controller if this build has one; the base class otherwise. The
+    -- spawn must never be lost to the attempt, so the base is always tried.
     local controller_kind, handle
     if p.hostile then
-        -- Named classes first if this build has them, then a live wild pal's
-        -- controller. Each is resolved inside the attempt, right before use.
         for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
-            handle = attempt(function(mgr) return member(mgr, field) end, field)
+            handle = attempt(field, field)
             if handle then
                 controller_kind = field
                 break
             end
         end
         if not handle then
-            handle = attempt(function() return (wild_controller_class()) end, "wild pal controller")
-            if handle then
-                controller_kind = "wild pal controller"
-            else
-                info("combat controllers unavailable (" .. tostring(last_error) .. ") — falling back")
-            end
+            info("no combat AI controller class on this build — spawning with the base controller. " ..
+                 "Use pal.aggro to make the pal fight.")
         end
     end
     if not handle then
         controller_kind = "NPCAIControllerBaseClass"
-        handle = attempt(
-            function(mgr) return member(mgr, "NPCAIControllerBaseClass") end,
-            "NPCAIControllerBaseClass")
+        handle = attempt("NPCAIControllerBaseClass", "NPCAIControllerBaseClass")
     end
     if not handle then
         return false, "spawn_failed (" .. tostring(last_error) .. ")"
@@ -640,12 +595,12 @@ IMPL["pal.spawn"] = function(state, p, finish)
 
     -- Rarity and traits apply to the individual parameter once it exists.
     if p.rare or (p.traits and p.traits ~= "") then
-        local function configure(attempt)
+        local function configure(attempt_no)
             if not valid(handle) then return end
             local parameter = handle:TryGetIndividualParameter()
             if not valid(parameter) then
-                if attempt < 5 and type(ExecuteWithDelay) == "function" then
-                    ExecuteWithDelay(250, function() configure(attempt + 1) end)
+                if attempt_no < 5 and type(ExecuteWithDelay) == "function" then
+                    ExecuteWithDelay(250, function() configure(attempt_no + 1) end)
                 end
                 return
             end
@@ -670,13 +625,14 @@ IMPL["pal.spawn"] = function(state, p, finish)
             ExecuteWithDelay(500, function() guard("pal.spawn configure", configure, 1) end)
         end
     end
-    -- The individual parameter (and with it the pal's id) exists a moment
-    -- after the spawn call; wait for it so the caller gets an id it can act on
-    -- straight away rather than having to correlate the npc.spawn event.
-    local function settle(attempt)
+
+    -- The individual parameter (and with it the pal's id) exists a moment after
+    -- the spawn call; wait for it so the caller gets an id it can act on
+    -- straight away rather than correlating the npc.spawn event.
+    local function settle(attempt_no)
         local pal_id = valid(handle) and pal_id_of(handle:TryGetIndividualParameter()) or ""
-        if pal_id == "" and attempt < 6 and type(ExecuteWithDelay) == "function" then
-            ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt + 1) end)
+        if pal_id == "" and attempt_no < 6 and type(ExecuteWithDelay) == "function" then
+            ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt_no + 1) end)
             return
         end
         finish(true, nil, {
@@ -691,6 +647,7 @@ IMPL["pal.spawn"] = function(state, p, finish)
     return "deferred"
 end
 
+-- ── stats ───────────────────────────────────────────────────────────────────
 -- Numbers arrive raw or wrapped in a fixed-point struct depending on the
 -- field; unwrap both shapes.
 local function as_number(value)
@@ -759,8 +716,7 @@ local function write_stats(character, p)
     if not util then return false, "not_supported" end
     local applied, failed = {}, {}
     local function attempt(label, ...)
-        local shapes = { ... }
-        for _, shape in ipairs(shapes) do
+        for _, shape in ipairs({ ... }) do
             if pcall(shape) then
                 applied[#applied + 1] = label
                 return
@@ -784,6 +740,7 @@ local function write_stats(character, p)
     if p.shield ~= nil then
         attempt("shield", function() util:SetShieldHP(character, p.shield) end)
     end
+
     -- Save-parameter fields are plain assignments; replicate once at the end.
     local parameter = pal_parameter(character)
     local save = parameter and member(parameter, "SaveParameter")
@@ -859,27 +816,6 @@ local function world_pals()
     return out
 end
 
--- The class of the AI controller a naturally-spawned pal is running. This is
--- the only reliable way found to get a combat-capable controller on this
--- build: no such class is exposed on the NPC manager, but wild pals in the
--- world are demonstrably running one.
-function wild_controller_class()
-    for _, pal in ipairs(world_pals()) do
-        local controller = member(pal.character, "Controller")
-        if not valid(controller) then
-            local ok, got = pcall(function() return pal.character:GetAIController() end)
-            if ok then controller = got end
-        end
-        if valid(controller) then
-            local ok, class = pcall(function() return controller:GetClass() end)
-            if ok and valid(class) then
-                return class, to_text(class) or "wild pal controller"
-            end
-        end
-    end
-    return nil, nil
-end
-
 local MAX_PAL_LIST = 100
 
 IMPL["pal.list"] = function(_, _)
@@ -904,11 +840,62 @@ IMPL["pal.list"] = function(_, _)
     }
 end
 
+-- A pal that will not fight back has nothing in its hate map. The engine's
+-- hate system is what drives retaliation: damage normally adds hate toward the
+-- attacker and the AI then goes for whoever it hates most. A spawned pal never
+-- gets that first entry, so it stands there. Seeding it directly is the lever.
+--
+-- Signatures are unproven, so each shape is tried in turn and the errors are
+-- reported rather than swallowed — the last two rounds of guesswork cost more
+-- than saying which call failed and why.
+local function hate_system(character)
+    local candidates = { character }
+    local controller = member(character, "Controller")
+    if valid(controller) then candidates[#candidates + 1] = controller end
+    local component = member(character, "CharacterParameterComponent")
+    if valid(component) then candidates[#candidates + 1] = component end
+    for _, source in ipairs(candidates) do
+        local ok, system = pcall(function() return source:GetHateSystem() end)
+        if ok and system ~= nil then return system, source end
+        local direct = member(source, "HateSystem")
+        if direct ~= nil then return direct, source end
+    end
+    return nil
+end
+
 local function find_pal(pal_id)
     for _, pal in ipairs(world_pals()) do
         if pal.id ~= "" and pal.id == pal_id then return pal end
     end
     return nil
+end
+
+IMPL["pal.aggro"] = function(state, p)
+    local pal = find_pal(p.pal)
+    if not pal then return false, "pal_not_found" end
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+
+    local system = hate_system(pal.character)
+    if system == nil then return false, "not_supported: no hate system on this pal" end
+
+    local amount = p.amount or 1000
+    local errors = {}
+    local shapes = {
+        { "PlusHateValue(target, amount)", function() system:PlusHateValue(pawn, amount) end },
+        { "PlusHateValue(target)", function() system:PlusHateValue(pawn) end },
+        { "ChangeHate(target, amount)", function() system:ChangeHate(pawn, amount) end },
+        { "PlusHateValue(self, target, amount)", function() system:PlusHateValue(pal.character, pawn, amount) end },
+    }
+    for _, shape in ipairs(shapes) do
+        local ok, err = pcall(shape[2])
+        if ok then
+            return true, nil, { { "pal", p.pal }, { "amount", amount }, { "via", shape[1] } }
+        end
+        errors[#errors + 1] = shape[1] .. " -> " .. tostring(err)
+    end
+    info("pal.aggro: every hate shape failed: " .. table.concat(errors, " | "))
+    return false, "not_supported: " .. tostring(errors[1])
 end
 
 IMPL["pal.stats"] = function(_, p)

@@ -335,7 +335,7 @@
       "since": "2.0.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true attaches a combat-capable AI controller: the NPC manager's monster/enemy class if this build exposes one, otherwise the controller class borrowed from a wild pal currently loaded in the world (so at least one must be loaded) — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id, usable straight away with pal.stats / pal.set_stats.",
+      "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. Spawned pals use the base NPC AI: they do not attack and do not fight back — use pal.aggro to make one target a player. hostile=true asks for a combat AI controller class if this build exposes one (most do not) and reports which controller applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id.",
       "params": {
         "species": {
           "type": "item_id",
@@ -1150,6 +1150,40 @@
       },
       "errors": [
         "pal_not_found",
+        "not_supported"
+      ]
+    },
+    {
+      "type": "pal.aggro",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "2.7.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Make a loaded pal hate a player, so it turns on them and fights. Seeds the engine's hate system directly — the mechanism damage normally uses, which spawned pals never receive. Signatures are probed; the result names the call that worked.",
+      "params": {
+        "pal": {
+          "type": "string",
+          "required": true,
+          "maxLen": 64,
+          "picker": "worldpal"
+        },
+        "amount": {
+          "type": "int",
+          "min": 1,
+          "max": 100000,
+          "default": 1000
+        }
+      },
+      "returns": {
+        "pal": "string",
+        "amount": "int",
+        "via": "string"
+      },
+      "errors": [
+        "pal_not_found",
+        "player_offline",
         "not_supported"
       ]
     }
