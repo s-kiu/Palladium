@@ -821,17 +821,20 @@ app.get<{ Querystring: { lines?: string } }>('/api/logs', async (req) => {
     return { lines: [] };
   }
 });
-
 // ── in-game event bridge ─────────────────────────────────────────────────────
-// UE4SS Lua has no sockets, so the in-game agent publishes events by appending
-// JSON lines to a file on the shared volume. The daemon is the public face of
-// that stream: it re-exposes it over HTTP and drives chat commands from it.
+// UE4SS Lua has no sockets, so the in-game agent talks to the rest of the world
+// through two files on the shared volume: it appends events to one and reads
+// action requests from the other. The daemon is the public face of both.
 //
-// Cursors are byte offsets. The game container truncates the file at boot, so
-// a cursor is only meaningful within one server run; a cursor past the end of
-// the file means the run ended and the reader rewinds to the start.
+// Cursors are byte offsets. The game container empties both files at boot, so a
+// cursor is only meaningful within one server run; a cursor past the end of the
+// file means the run ended and the reader rewinds to the start.
 const BRIDGE_EVENTS = path.join(PAL_ROOT, 'logs', 'bridge-events.jsonl');
+const BRIDGE_ACTIONS = path.join(STATE_DIR, 'bridge-actions.jsonl');
+const BRIDGE_PLAYERS = path.join(STATE_DIR, 'bridge-players.json');
 const BRIDGE_WINDOW = 262_144; // bytes served per request, caps response size
+const ACTION_TIMEOUT_MS = 6000;
+const ACTION_KEY_RE = /^[A-Za-z0-9_]+$/;
 
 interface BridgeEvent {
   v: number;
@@ -840,6 +843,7 @@ interface BridgeEvent {
   player?: string;
   userid?: string;
   message?: string;
+  [key: string]: unknown;
 }
 
 async function readBridge(
@@ -891,11 +895,206 @@ async function readBridge(
   return { events, cursor };
 }
 
-app.get<{ Querystring: { since?: string; limit?: string } }>('/api/bridge/events', async (req) => {
-  const since = Math.max(0, Number(req.query.since ?? 0) || 0);
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 500);
-  return readBridge(since, limit);
-});
+// ── what the agent says about itself ─────────────────────────────────────────
+// The agent announces its version and every hook it managed to register, so the
+// panel shows what is actually live rather than a list compiled here that would
+// drift the moment a game patch moves an engine function.
+interface HookState { hook: string; target: string; ok: boolean }
+
+interface BridgeRun {
+  agent: string | null;
+  version: string | null;
+  schema: number | null;
+  actions: string[];
+  hooks: HookState[];
+  types: string[];
+  lastEventAt: number;
+}
+
+function emptyRun(): BridgeRun {
+  return { agent: null, version: null, schema: null, actions: [], hooks: [], types: [], lastEventAt: 0 };
+}
+
+let bridgeRun = emptyRun();
+
+// ── player registry ──────────────────────────────────────────────────────────
+// Every id the bridge has ever seen, kept across reboots. The event file starts
+// empty each run, so this file is the only place a first-seen date can live.
+interface PlayerRecord {
+  userid: string;
+  name: string;
+  firstSeen: number;
+  lastSeen: number;
+  joins: number;
+  online: boolean;
+}
+
+const playerRegistry = new Map<string, PlayerRecord>();
+let registryDirty = false;
+
+async function loadRegistry(): Promise<void> {
+  try {
+    const raw = JSON.parse((await readOpt(BRIDGE_PLAYERS)) ?? '{}');
+    for (const [userid, rec] of Object.entries(raw as Record<string, PlayerRecord>)) {
+      // Online is a property of a running server, never of the saved file.
+      playerRegistry.set(userid, { ...rec, userid, online: false });
+    }
+  } catch { /* first run, or a file we cannot parse — start empty */ }
+}
+
+async function flushRegistry(): Promise<void> {
+  if (!registryDirty) return;
+  registryDirty = false;
+  const out: Record<string, PlayerRecord> = {};
+  for (const [userid, rec] of playerRegistry) out[userid] = rec;
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.writeFile(BRIDGE_PLAYERS, JSON.stringify(out, null, 2)).catch(() => {});
+}
+
+function recordPlayer(event: BridgeEvent): void {
+  const userid = String(event.userid ?? '');
+  if (!userid) return;
+  const at = Number(event.at) || Math.floor(Date.now() / 1000);
+  const name = String(event.player ?? '') || 'Unknown';
+  const existing = playerRegistry.get(userid);
+  const record: PlayerRecord = existing ?? {
+    userid, name, firstSeen: at, lastSeen: at, joins: 0, online: false,
+  };
+  if (name !== 'Unknown') record.name = name;
+  record.lastSeen = Math.max(record.lastSeen, at);
+  if (event.type === 'join') {
+    record.joins += 1;
+    record.online = true;
+  } else if (event.type === 'leave') {
+    record.online = false;
+  }
+  playerRegistry.set(userid, record);
+  registryDirty = true;
+}
+
+// ── action results ───────────────────────────────────────────────────────────
+// The agent reports the outcome of every request back onto the event stream, so
+// a caller that posted an action can be answered synchronously.
+const actionWaiters = new Map<string, (event: BridgeEvent) => void>();
+
+function ingest(event: BridgeEvent): void {
+  if (!bridgeRun.types.includes(event.type)) bridgeRun.types.push(event.type);
+  bridgeRun.lastEventAt = Math.max(bridgeRun.lastEventAt, Number(event.at) || 0);
+
+  switch (event.type) {
+    case 'ready':
+      bridgeRun.agent = String(event.agent ?? 'unknown');
+      bridgeRun.version = String(event.version ?? '');
+      bridgeRun.schema = Number(event.schema) || null;
+      bridgeRun.actions = String(event.actions ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      break;
+    case 'hook': {
+      const hook = { hook: String(event.hook ?? ''), target: String(event.target ?? ''), ok: event.ok === true };
+      const at = bridgeRun.hooks.findIndex((h) => h.target === hook.target);
+      if (at >= 0) bridgeRun.hooks[at] = hook;
+      else bridgeRun.hooks.push(hook);
+      break;
+    }
+    case 'action': {
+      const waiter = actionWaiters.get(String(event.id ?? ''));
+      if (waiter) waiter(event);
+      break;
+    }
+    default:
+      recordPlayer(event);
+  }
+}
+
+app.get<{ Querystring: { since?: string; limit?: string; type?: string } }>(
+  '/api/bridge/events',
+  async (req) => {
+    const since = Math.max(0, Number(req.query.since ?? 0) || 0);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 500);
+    const result = await readBridge(since, limit);
+    const wanted = (req.query.type ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    // Filtering happens after the cursor is computed, so a caller narrowing to
+    // one type still advances past everything it skipped.
+    if (!wanted.length) return result;
+    return { ...result, events: result.events.filter((e) => wanted.includes(e.type)) };
+  },
+);
+
+app.get('/api/bridge/status', async () => ({
+  // The agent announces itself at load; nothing else can, so its absence is
+  // what "not available" means.
+  available: bridgeRun.agent !== null,
+  agent: bridgeRun.agent,
+  version: bridgeRun.version,
+  schema: bridgeRun.schema,
+  actions: bridgeRun.actions,
+  hooks: bridgeRun.hooks,
+  eventTypes: bridgeRun.types,
+  lastEventAt: bridgeRun.lastEventAt,
+  online: (await palSafe('GET', 'info')) !== null,
+}));
+
+app.get('/api/bridge/players', async () => ({
+  players: [...playerRegistry.values()].sort((a, b) => b.lastSeen - a.lastSeen),
+}));
+
+// ── sending actions into the game ────────────────────────────────────────────
+// Requests are tab-separated key=value lines rather than JSON: the agent has no
+// JSON parser, and a format with no structure has nothing to exploit. Values
+// are stripped of separators here, which is the only place they can be.
+function actionField(value: unknown): string {
+  return String(value ?? '').replace(/[\t\r\n]/g, ' ').slice(0, 512);
+}
+
+async function enqueueAction(action: string, params: Record<string, unknown>): Promise<string> {
+  const id = randomBytes(8).toString('hex');
+  const parts = [`id=${id}`, `action=${actionField(action)}`];
+  for (const [key, value] of Object.entries(params)) {
+    if (!ACTION_KEY_RE.test(key) || value === undefined || value === null) continue;
+    parts.push(`${key}=${actionField(value)}`);
+  }
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.appendFile(BRIDGE_ACTIONS, parts.join('\t') + '\n');
+  return id;
+}
+
+function awaitAction(id: string, timeoutMs: number): Promise<BridgeEvent | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      actionWaiters.delete(id);
+      resolve(null);
+    }, timeoutMs);
+    actionWaiters.set(id, (event) => {
+      clearTimeout(timer);
+      actionWaiters.delete(id);
+      resolve(event);
+    });
+  });
+}
+
+app.post<{ Body: { action?: string; userid?: string; [key: string]: unknown } }>(
+  '/api/bridge/actions',
+  async (req, reply) => {
+    const { action, ...params } = req.body ?? {};
+    if (!action) return reply.code(400).send({ error: 'action required' });
+    // The agent is the authority on what it can do; before it has announced
+    // itself there is nothing listening and the request would hang.
+    if (!bridgeRun.agent) return reply.code(409).send({ error: 'bridge agent not loaded' });
+    if (!bridgeRun.actions.includes(action)) {
+      return reply.code(400).send({ error: `unknown action: ${action}`, supported: bridgeRun.actions });
+    }
+    const id = await enqueueAction(action, params);
+    const result = await awaitAction(id, ACTION_TIMEOUT_MS);
+    if (!result) {
+      await panelLog(`bridge action ${action} — no response from the game`);
+      return reply.code(504).send({ id, ok: false, error: 'the game did not answer in time' });
+    }
+    await panelLog(
+      `bridge action ${action}${params.userid ? ` → ${params.userid}` : ''} — ` +
+      (result.ok === true ? `ok (${result.detail ?? ''})` : `failed (${result.detail ?? ''})`),
+    );
+    return { id, ok: result.ok === true, detail: result.detail ?? '', event: result };
+  },
+);
 
 // ── chat command routing ─────────────────────────────────────────────────────
 // Routing lives here, not in the mod: the in-game agent stays a plain event
@@ -949,25 +1148,87 @@ async function routeChat(event: BridgeEvent): Promise<void> {
 }
 
 // The poller is the only consumer that must never miss an event, so it holds
-// its own cursor. It starts at the current end of file: a daemon restart must
-// not re-execute commands that were already answered.
+// its own cursor.
 let bridgeCursor = 0;
 let bridgePolling = false;
 
-async function pollBridge(): Promise<void> {
+async function pollBridge(route: boolean): Promise<void> {
   if (bridgePolling) return;
   bridgePolling = true;
   try {
-    const { events, cursor } = await readBridge(bridgeCursor, 200);
-    bridgeCursor = cursor;
-    for (const event of events) {
-      if (event.type === 'chat') await routeChat(event);
+    for (;;) {
+      const { events, cursor } = await readBridge(bridgeCursor, 200);
+      // A cursor that moved backwards means the file was emptied: the server
+      // rebooted, so the previous run's hooks and online flags are stale.
+      if (cursor < bridgeCursor) {
+        bridgeRun = emptyRun();
+        for (const rec of playerRegistry.values()) rec.online = false;
+      }
+      bridgeCursor = cursor;
+      if (!events.length) break;
+      for (const event of events) {
+        ingest(event);
+        if (route && event.type === 'chat') await routeChat(event);
+      }
     }
+    await flushRegistry();
   } catch (err) {
     app.log.warn({ err }, 'bridge poll failed');
   } finally {
     bridgePolling = false;
   }
+}
+
+// ── leave events ─────────────────────────────────────────────────────────────
+// Nothing in the engine exposes a disconnect this loader can hook — Blueprint
+// function targets fault the process — so leaves are derived from the game's
+// own player list and appended to the same stream. Consumers cannot tell the
+// difference apart from the `source` field, which is the point.
+let lastSeenPlayers: Map<string, string> | null = null; // game id → name
+
+async function appendLeave(gameId: string, name: string): Promise<void> {
+  // The agent keys players by PlayerUId; reuse that id when this name is one
+  // the agent has announced, so both halves of the stream agree.
+  const known = [...playerRegistry.values()].find((p) => p.online && p.name === name);
+  const line = JSON.stringify({
+    v: 1,
+    at: Math.floor(Date.now() / 1000),
+    type: 'leave',
+    player: name || known?.name || 'Unknown',
+    userid: known?.userid ?? gameId,
+    source: 'rest',
+  });
+  await fs.appendFile(BRIDGE_EVENTS, line + '\n').catch(() => {});
+}
+
+async function pollPlayers(): Promise<void> {
+  if (!bridgeRun.agent) return; // no agent, no stream to contribute to
+  const payload = (await palSafe('GET', 'players')) as { players?: Record<string, unknown>[] } | null;
+  if (payload === null) {
+    // The API being unreachable is not everyone leaving at once; forget the
+    // previous list so the next successful poll starts a fresh comparison.
+    lastSeenPlayers = null;
+    return;
+  }
+  const current = new Map<string, string>();
+  for (const p of payload.players ?? []) {
+    const id = String(p.playerId ?? p.userId ?? p.name ?? '');
+    if (id) current.set(id, String(p.name ?? ''));
+  }
+  if (lastSeenPlayers) {
+    for (const [id, name] of lastSeenPlayers) {
+      if (!current.has(id)) await appendLeave(id, name);
+    }
+  }
+  lastSeenPlayers = current;
+}
+
+// Startup reads the whole run so status and the registry reflect it, but with
+// routing off: commands answered before this daemon started must not fire again.
+async function hydrateBridge(): Promise<void> {
+  await loadRegistry();
+  bridgeCursor = 0;
+  await pollBridge(false);
 }
 
 // ── admin console: the full vanilla (REST) command surface ───────────────────
@@ -1020,7 +1281,8 @@ app.setNotFoundHandler((req, reply) => {
   return reply.code(404).send({ error: 'not found' });
 });
 
-bridgeCursor = await fs.stat(BRIDGE_EVENTS).then((st) => st.size, () => 0);
-setInterval(() => void pollBridge(), 1000).unref();
+await hydrateBridge();
+setInterval(() => void pollBridge(true), 1000).unref();
+setInterval(() => void pollPlayers(), 5000).unref();
 
 await app.listen({ host: '0.0.0.0', port: PANEL_PORT });
