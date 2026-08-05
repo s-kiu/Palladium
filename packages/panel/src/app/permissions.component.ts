@@ -11,6 +11,45 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
   imports: [FormsModule],
   template: `
     <div class="card">
+      <details>
+        <summary class="getting-started-summary">
+          <b>How permissions work</b>
+          <span class="muted"> — nodes, groups, constraints, roles. Click to expand.</span>
+        </summary>
+        <ol class="getting-started">
+          <li>
+            <b>Nodes</b> are dotted names like <code>chatshop.kit</code> or <code>pal.spawn</code>.
+            Built-in capabilities register theirs automatically (default deny); mods register
+            their own on startup via <code>permission.register</code> and appear below once
+            they have run.
+          </li>
+          <li>
+            <b>Resolution order</b>: a player's own overrides win, then their groups by weight
+            (highest first), then the default group, then the node's registered default.
+            Within one source an exact node beats <code>chatshop.*</code> beats <code>*</code>,
+            and deny beats allow on ties.
+          </li>
+          <li>
+            <b>Constraints make one node fine-grained.</b> Any allow entry can carry
+            per-parameter rules, matched against the actual call:
+            <pre class="mono">{{ '{' }}"species": {{ '{' }}"in": ["SheepBall"]{{ '}' }}{{ '}' }}          may spawn, but only Lamball
+{{ '{' }}"level": {{ '{' }}"max": 20{{ '}' }}{{ '}' }}                     …and only up to level 20
+{{ '{' }}"x": {{ '{' }}"min": -1000, "max": 1000{{ '}' }}, "y": {{ '{' }}"min": -1000, "max": 1000{{ '}' }}{{ '}' }}   teleport only inside a box</pre>
+            A tool acting for a player sends <code>as: &lt;player id&gt;</code> on
+            <code>POST /api/bridge/call</code>; the server resolves the capability as that
+            player's node, checks the constraints against the call's parameters, and refuses
+            with the violated rule named.
+          </li>
+          <li>
+            <b>Roles</b>: a group can carry a tag; a player's role is their highest-weight tag.
+            It is served on every event as <code>subject.role</code> and shown in chat when
+            enabled below.
+          </li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="card">
       <div class="row spread">
         <h2>Groups</h2>
         <span class="tag">{{ groups().length }} groups</span>
@@ -174,12 +213,19 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
       <h2>Options</h2>
       <label class="follow">
         <input type="checkbox" [ngModel]="chatRoles()" (ngModelChange)="toggleChatRoles($event)" name="opt-chatroles" />
-        Show <span class="mono">[ROLE]</span> tags before names in the chat card
+        Show <span class="mono">[ROLE]</span> tags before names in the panel's chat card
+      </label>
+      <label class="follow">
+        <input type="checkbox" [ngModel]="chatRolesInGame()" (ngModelChange)="toggleChatRolesInGame($event)" name="opt-chatroles-ingame" />
+        Prefix <span class="mono">[ROLE]</span> into the in-game chat itself
+        <span class="tag warn-tag">experimental</span>
       </label>
       <p class="muted small-note">
-        The role is the tag of the player's highest-weight tagged group. It also rides on every
-        served event as <code>subject.role</code>, so relays can show it too. The in-game chat
-        itself cannot be rewritten — the hook only observes messages.
+        The role is the tag of the player's highest-weight tagged group; it also rides on every
+        served event as <code>subject.role</code>. The in-game variant edits the chat message as
+        the server receives it, before the game broadcasts it — the one engine write the agent
+        does. It is unproven on this UE4SS build: if chat misbehaves after enabling it, turn it
+        off again (takes effect within a second, no restart).
       </p>
     </div>
   `,
@@ -195,6 +241,7 @@ export class PermissionsComponent implements OnInit {
   playerEntries = signal<{ node: string; effect: string; constraints: unknown }[]>([]);
   playerRole = signal<string | null>(null);
   chatRoles = signal(false);
+  chatRolesInGame = signal(false);
   feedback = signal('');
   failed = signal(false);
 
@@ -217,7 +264,10 @@ export class PermissionsComponent implements OnInit {
   ngOnInit(): void {
     this.refresh();
     this.api.bridgePlayers().subscribe({ next: (r) => this.players.set(r.players), error: () => {} });
-    this.api.bridgeOptions().subscribe({ next: (o) => this.chatRoles.set(o.chatRoles), error: () => {} });
+    this.api.bridgeOptions().subscribe({
+      next: (o) => { this.chatRoles.set(o.chatRoles); this.chatRolesInGame.set(o.chatRolesInGame); },
+      error: () => {},
+    });
   }
 
   json(v: unknown): string {
@@ -332,8 +382,15 @@ export class PermissionsComponent implements OnInit {
   }
 
   toggleChatRoles(value: boolean): void {
-    this.api.setBridgeOptions(value).subscribe({
+    this.api.setBridgeOptions({ chatRoles: value }).subscribe({
       next: (o) => this.chatRoles.set(o.chatRoles),
+      error: () => {},
+    });
+  }
+
+  toggleChatRolesInGame(value: boolean): void {
+    this.api.setBridgeOptions({ chatRolesInGame: value }).subscribe({
+      next: (o) => this.chatRolesInGame.set(o.chatRolesInGame),
       error: () => {},
     });
   }

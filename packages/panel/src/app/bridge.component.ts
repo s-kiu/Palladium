@@ -195,6 +195,17 @@ interface PickOption {
                   />
                   {{ p.name }}
                 </label>
+              } @else if (p.spec.picker === 'location') {
+                <span class="pickwrap">
+                  <input
+                    class="short"
+                    type="number"
+                    [(ngModel)]="inputs[c.type + '.' + p.name]"
+                    [name]="c.type + '.' + p.name"
+                    [placeholder]="placeholderFor(p)"
+                  />
+                  <button class="pickbtn" title="pick a saved location" (click)="openLocationPicker(c.type)">☰</button>
+                </span>
               } @else if (p.spec.picker) {
                 <span class="pickwrap">
                   <input
@@ -427,6 +438,32 @@ export class BridgeComponent implements OnInit, OnDestroy {
   }
 
   // ── pickers ────────────────────────────────────────────────────────────────
+  openLocationPicker(capType: string): void {
+    this.pickerKind.set('location');
+    this.api.bridgeCall('location.list', null, {}).subscribe({
+      next: (r) => {
+        const locations = (r.data['locations'] as { name: string; x: number; y: number; z: number; source: string }[]) ?? [];
+        this.openPicker(
+          'Pick a location',
+          locations.map((l) => ({
+            value: `${l.x},${l.y},${l.z}`,
+            label: l.name,
+            sub: `${l.x.toFixed(0)}, ${l.y.toFixed(0)}, ${l.z.toFixed(0)} · ${l.source}`,
+            unlisted: l.source === 'boss',
+          })),
+          false,
+          (v) => {
+            const [x, y, z] = v.split(',');
+            this.inputs[`${capType}.x`] = x;
+            this.inputs[`${capType}.y`] = y;
+            this.inputs[`${capType}.z`] = z;
+          },
+        );
+      },
+      error: () => {},
+    });
+  }
+
   openPlayerPicker(capType: string): void {
     this.pickerKind.set('player');
     this.openPicker(
