@@ -9,7 +9,7 @@ import { AdminComponent } from './admin.component';
 import { BridgeComponent } from './bridge.component';
 import { PermissionsComponent } from './permissions.component';
 
-type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'permissions' | 'admin';
+type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permissions' | 'admin';
 
 @Component({
   selector: 'app-root',
@@ -45,7 +45,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'bridge' | 'permission
           @case ('players') { <app-players /> }
           @case ('mods') { <app-mods /> }
           @case ('backups') { <app-backups /> }
-          @case ('bridge') { <app-bridge /> }
+          @case ('palladium') { <app-bridge /> }
           @case ('permissions') { <app-permissions /> }
           @case ('admin') { <app-admin /> }
         }
@@ -65,7 +65,7 @@ export class AppComponent implements OnInit, OnDestroy {
     'players',
     'mods',
     'backups',
-    ...(this.bridgeUp() ? (['bridge', 'permissions'] as Tab[]) : []),
+    ...(this.bridgeUp() ? (['palladium', 'permissions'] as Tab[]) : []),
     'admin',
   ]);
   private timer?: ReturnType<typeof setInterval>;
@@ -91,7 +91,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.bridgeStatus().subscribe({
       next: (s) => {
         this.bridgeUp.set(s.available);
-        if (!s.available && (this.tab() === 'bridge' || this.tab() === 'permissions')) this.tab.set('dashboard');
+        if (!s.available && (this.tab() === 'palladium' || this.tab() === 'permissions')) this.tab.set('dashboard');
       },
       error: () => this.bridgeUp.set(false),
     });

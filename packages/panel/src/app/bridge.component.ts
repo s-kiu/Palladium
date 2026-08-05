@@ -77,7 +77,7 @@ interface PickOption {
 
     <div class="card">
       <div class="row spread">
-        <h2>Bridge agent</h2>
+        <h2>Agent</h2>
         <span class="tag">{{ agentLabel() }}</span>
       </div>
       <p class="muted">
