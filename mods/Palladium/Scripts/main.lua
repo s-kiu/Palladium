@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.7.0"
+local VERSION = "2.8.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -593,6 +593,35 @@ IMPL["pal.spawn"] = function(state, p, finish)
         return false, "spawn_failed (" .. tostring(last_error) .. ")"
     end
 
+    -- A pal spawned through the player's own NPC manager can come out marked as
+    -- that player's: OwnerPlayerUId set, which is exactly what would make the
+    -- game treat it as friendly and refuse to let it retaliate. Clear it when
+    -- hostility is asked for; pal.inspect reports whether it stuck.
+    if p.hostile then
+        local function disown(attempt_no)
+            if not valid(handle) then return end
+            local parameter = handle:TryGetIndividualParameter()
+            if not valid(parameter) then
+                if attempt_no < 5 and type(ExecuteWithDelay) == "function" then
+                    ExecuteWithDelay(250, function() disown(attempt_no + 1) end)
+                end
+                return
+            end
+            pcall(function()
+                local save = parameter.SaveParameter
+                save.OwnerPlayerUId.A = 0
+                save.OwnerPlayerUId.B = 0
+                save.OwnerPlayerUId.C = 0
+                save.OwnerPlayerUId.D = 0
+                save.IsOtomo = false
+                parameter:OnRep_SaveParameter()
+            end)
+        end
+        if type(ExecuteWithDelay) == "function" then
+            ExecuteWithDelay(600, function() guard("pal.spawn disown", disown, 1) end)
+        end
+    end
+
     -- Rarity and traits apply to the individual parameter once it exists.
     if p.rare or (p.traits and p.traits ~= "") then
         local function configure(attempt_no)
@@ -868,6 +897,48 @@ local function find_pal(pal_id)
         if pal.id ~= "" and pal.id == pal_id then return pal end
     end
     return nil
+end
+
+-- Diagnostic: everything that could plausibly differ between a wild pal (which
+-- fights back) and a spawned one (which does not). Pure property reads, so it
+-- is safe to point at anything. Compare the two and the difference is the bug.
+IMPL["pal.inspect"] = function(_, p)
+    local pal = find_pal(p.pal)
+    if not pal then return false, "pal_not_found" end
+    local character, parameter = pal.character, pal.parameter
+    local save = member(parameter, "SaveParameter")
+
+    local controller_name = "none"
+    local controller = member(character, "Controller")
+    if not valid(controller) then
+        local ok, got = pcall(function() return character:GetAIController() end)
+        if ok then controller = got end
+    end
+    if valid(controller) then
+        local ok, class = pcall(function() return controller:GetClass() end)
+        controller_name = (ok and valid(class) and to_text(class)) or "unnamed"
+    end
+
+    local owner = save and member(save, "OwnerPlayerUId")
+    local owner_hex = owner and guid_hex(owner) or ""
+
+    local spawned_type = nil
+    local static_param = member(character, "StaticCharacterParameterComponent")
+    if valid(static_param) then
+        local ok, value = pcall(function() return static_param:GetSpawnedCharacterType() end)
+        if ok then spawned_type = as_number(value) end
+    end
+
+    return true, nil, {
+        { "pal", p.pal },
+        { "species", pal.species },
+        { "controller", controller_name },
+        { "hasController", valid(controller) },
+        { "owner", owner_hex ~= "" and owner_hex or "none" },
+        { "isOtomo", member(save, "IsOtomo") == true },
+        { "spawnedType", spawned_type },
+        { "hateSystem", hate_system(character) ~= nil },
+    }
 end
 
 IMPL["pal.aggro"] = function(state, p)

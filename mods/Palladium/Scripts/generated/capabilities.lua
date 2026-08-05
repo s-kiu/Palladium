@@ -116,5 +116,10 @@ return {
             { name = "amount", kind = "int", min = 1, max = 100000, default = 1000 },
             },
         },
+        ["pal.inspect"] = {
+            params = {
+            { name = "pal", kind = "string", required = true, max_len = 64 },
+            },
+        },
     },
 }

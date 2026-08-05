@@ -1186,6 +1186,34 @@
         "player_offline",
         "not_supported"
       ]
+    },
+    {
+      "type": "pal.inspect",
+      "kind": "query",
+      "runtime": "agent",
+      "since": "2.8.0",
+      "stability": "experimental",
+      "scope": "read",
+      "summary": "Diagnostic dump for one loaded pal: its AI controller class, whether a player owns it, otomo flag, spawned type and whether it has a hate system. Run it on a wild pal and on a spawned one — the difference is why one fights back and the other does not.",
+      "params": {
+        "pal": {
+          "type": "string",
+          "required": true,
+          "maxLen": 64,
+          "picker": "worldpal"
+        }
+      },
+      "returns": {
+        "controller": "string",
+        "hasController": "bool",
+        "owner": "string",
+        "isOtomo": "bool",
+        "spawnedType": "int",
+        "hateSystem": "bool"
+      },
+      "errors": [
+        "pal_not_found"
+      ]
     }
   ]
 }

@@ -182,6 +182,7 @@ interface PickOption {
               <td class="num">{{ p.level }}</td>
               <td class="mono">{{ p.id || '—' }}</td>
               <td class="actions">
+                <button (click)="inspectPal(p.id)" [disabled]="!p.id">Inspect</button>
                 <button (click)="openStats('pal', p.id, p.species)" [disabled]="!p.id">Stats</button>
               </td>
             </tr>
@@ -190,6 +191,26 @@ interface PickOption {
           }
         </tbody>
       </table>
+      @if (inspected(); as rows) {
+        <p class="small-note">
+          Inspect a wild pal and a spawned one — the row that differs is why one fights back.
+        </p>
+        <table>
+          <thead><tr><th>Pal</th><th>Controller</th><th>Owner</th><th>Otomo</th><th>Spawn type</th><th>Hate</th></tr></thead>
+          <tbody>
+            @for (r of rows; track r.pal) {
+              <tr>
+                <td>{{ r.species }}</td>
+                <td class="mono">{{ r.controller }}</td>
+                <td class="mono">{{ r.owner }}</td>
+                <td>{{ r.isOtomo ? 'yes' : 'no' }}</td>
+                <td class="num">{{ r.spawnedType ?? '—' }}</td>
+                <td>{{ r.hateSystem ? 'yes' : 'no' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </div>
 
     <div class="card">
@@ -506,6 +527,21 @@ export class BridgeComponent implements OnInit, OnDestroy {
   display(key: string): string {
     const v = this.statsValues()[key];
     return v === null || v === undefined ? '—' : String(Math.round(v * 100) / 100);
+  }
+
+  inspected = signal<Record<string, unknown>[] | null>(null);
+
+  inspectPal(id: string): void {
+    this.api.bridgeCall('pal.inspect', null, { pal: id }).subscribe({
+      next: (r) => {
+        if (!r.ok) return;
+        this.inspected.update((prev) => {
+          const rows = (prev ?? []).filter((x) => x['pal'] !== r.data['pal']);
+          return [...rows, r.data];
+        });
+      },
+      error: () => {},
+    });
   }
 
   refreshWorldPals(): void {
