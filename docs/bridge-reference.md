@@ -34,9 +34,8 @@ actually live on the running server.
 | `player.get_tag` | query | daemon | stable | 2.0.0 | `key` · string · required | Read one of a player's tags. ok with value null when the tag is unset. |
 | `player.delete_tag` | action | daemon | stable | 2.0.0 | `key` · string · required | Remove a tag from a player. |
 | `player.position` | query | agent | stable | 2.1.0 | _none_ | The online player's exact world position (Engine Actor location, includes z). |
-| `player.set_hp` | action | agent | experimental | 2.2.0 | `rate` · number · required · 0…1 | Set an online player's HP as a fraction of max (0 downs them, 1 is full). |
-| `player.set_hunger` | action | agent | experimental | 2.2.0 | `value` · number · required · 0…1000 | Set an online player's fullness (hunger bar). 100 is a full stomach. |
-| `player.set_shield` | action | agent | experimental | 2.2.0 | `hp` · number · required · 0…100000<br>`max` · number · 1…100000 | Set an online player's shield HP, optionally its maximum too. |
+| `player.stats` | query | agent | experimental | 2.5.0 | _none_ | Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, level. A stat this build does not expose comes back null rather than absent. |
+| `player.set_stats` | action | agent | experimental | 2.5.0 | `hp` · number · 0…1<br>`hunger` · number · 0…1000<br>`shield` · number · 0…100000<br>`maxShield` · number · 1…100000 | Set any combination of an online player's stats in one call; omitted fields are left alone. hp is a fraction of max (0-1); the rest are absolute. Reports which fields applied and returns the resulting stats. |
 
 ## npc.*
 
@@ -48,9 +47,10 @@ actually live on the running server.
 
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
-| `pal.spawn` | action | agent | experimental | 2.0.0 | `species` · item_id · required<br>`level` · int · default 10 · 1…100<br>`rare` · bool · default false<br>`traits` · string<br>`x` · number<br>`y` · number<br>`z` · number<br>`hostile` · bool · default false | Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true asks the NPC manager for its monster/enemy AI controller instead of the passive base controller — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. |
+| `pal.spawn` | action | agent | experimental | 2.0.0 | `species` · item_id · required<br>`level` · int · default 10 · 1…100<br>`rare` · bool · default false<br>`traits` · string<br>`x` · number<br>`y` · number<br>`z` · number<br>`hostile` · bool · default false | Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true asks the NPC manager for its monster/enemy AI controller instead of the passive base controller — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id, usable straight away with pal.stats / pal.set_stats. |
 | `pal.list` | query | agent | experimental | 2.2.0 | _none_ | Pals currently loaded in the world (players excluded), with species, level and — when the engine exposes it — a stable id usable as a pal.set_hp target. Capped at 100 rows; count reports the true total. |
-| `pal.set_hp` | action | agent | experimental | 2.2.0 | `pal` · string · required<br>`rate` · number · required · 0…1 | Set a loaded pal's HP by rate, targeting the id from pal.list or an npc.spawn event. |
+| `pal.stats` | query | agent | experimental | 2.5.0 | `pal` · string · required | Read a loaded pal's stats, targeting the id from pal.list or a pal.spawn result. |
+| `pal.set_stats` | action | agent | experimental | 2.5.0 | `pal` · string · required<br>`hp` · number · 0…1<br>`hunger` · number · 0…1000<br>`shield` · number · 0…100000<br>`maxShield` · number · 1…100000 | Set any combination of a loaded pal's stats in one call; omitted fields are left alone. |
 
 ## server.*
 

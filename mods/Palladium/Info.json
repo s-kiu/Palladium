@@ -1,7 +1,7 @@
 {
   "ModName": "Palladium",
   "PackageName": "Palladium",
-  "Version": "2.4.0",
+  "Version": "2.5.0",
   "DebugMode": false,
   "Author": "pal-up",
   "Dependencies": ["UE4SS"],

@@ -60,31 +60,36 @@ return {
 
             },
         },
-        ["player.set_hp"] = {
-            params = {
-            { name = "rate", kind = "number", required = true, min = 0, max = 1 },
-            },
-        },
-        ["player.set_hunger"] = {
-            params = {
-            { name = "value", kind = "number", required = true, min = 0, max = 1000 },
-            },
-        },
-        ["player.set_shield"] = {
-            params = {
-            { name = "hp", kind = "number", required = true, min = 0, max = 100000 },
-            { name = "max", kind = "number", min = 1, max = 100000 },
-            },
-        },
         ["pal.list"] = {
             params = {
 
             },
         },
-        ["pal.set_hp"] = {
+        ["player.stats"] = {
+            params = {
+
+            },
+        },
+        ["player.set_stats"] = {
+            params = {
+            { name = "hp", kind = "number", min = 0, max = 1 },
+            { name = "hunger", kind = "number", min = 0, max = 1000 },
+            { name = "shield", kind = "number", min = 0, max = 100000 },
+            { name = "maxShield", kind = "number", min = 1, max = 100000 },
+            },
+        },
+        ["pal.stats"] = {
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
-            { name = "rate", kind = "number", required = true, min = 0, max = 1 },
+            },
+        },
+        ["pal.set_stats"] = {
+            params = {
+            { name = "pal", kind = "string", required = true, max_len = 64 },
+            { name = "hp", kind = "number", min = 0, max = 1 },
+            { name = "hunger", kind = "number", min = 0, max = 1000 },
+            { name = "shield", kind = "number", min = 0, max = 100000 },
+            { name = "maxShield", kind = "number", min = 1, max = 100000 },
             },
         },
     },

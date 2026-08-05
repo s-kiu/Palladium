@@ -137,7 +137,7 @@ interface PickOption {
       <p class="muted">Every id the bridge has seen, kept in the panel's database across restarts.</p>
       <table>
         <thead>
-          <tr><th>Name</th><th>User id</th><th class="num">Joins</th><th class="num">First seen</th><th class="num">Last seen</th><th>Tags</th></tr>
+          <tr><th>Name</th><th>User id</th><th class="num">Joins</th><th class="num">First seen</th><th class="num">Last seen</th><th>Tags</th><th></th></tr>
         </thead>
         <tbody>
           @for (p of players(); track p.userid) {
@@ -148,9 +148,45 @@ interface PickOption {
               <td class="num">{{ date(p.firstSeen) }}</td>
               <td class="num">{{ date(p.lastSeen) }}</td>
               <td class="mono small-tags">{{ tagText(p) }}</td>
+              <td class="actions">
+                <button (click)="openStats('player', p.userid, p.name)" [disabled]="!p.online">Stats</button>
+              </td>
             </tr>
           } @empty {
-            <tr><td colspan="6" class="muted">Nobody has connected while the bridge was running yet.</td></tr>
+            <tr><td colspan="7" class="muted">Nobody has connected while the bridge was running yet.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="row spread">
+        <h2>Pals in the world</h2>
+        <div class="row">
+          <span class="tag">{{ worldPals().length }} loaded</span>
+          <button (click)="refreshWorldPals()" [disabled]="palsLoading()">Refresh</button>
+        </div>
+      </div>
+      <p class="muted">
+        Pals currently loaded near players — spawned ones included. Ids come from the engine, so
+        a pal you just spawned is editable straight away.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Species</th><th class="num">Level</th><th>Id</th><th></th></tr>
+        </thead>
+        <tbody>
+          @for (p of worldPals(); track p.id) {
+            <tr>
+              <td>{{ p.species }} @if (p.rare) { <span class="tag">rare</span> }</td>
+              <td class="num">{{ p.level }}</td>
+              <td class="mono">{{ p.id || '—' }}</td>
+              <td class="actions">
+                <button (click)="openStats('pal', p.id, p.species)" [disabled]="!p.id">Stats</button>
+              </td>
+            </tr>
+          } @empty {
+            <tr><td colspan="4" class="muted">{{ palsNote() }}</td></tr>
           }
         </tbody>
       </table>
@@ -233,6 +269,51 @@ interface PickOption {
       }
     </div>
 
+    <dialog #statsDlg class="dlg picker-dlg">
+      <div class="row spread">
+        <h2>{{ statsTitle() }}</h2>
+        <button class="ghost" (click)="closeStats()">✕</button>
+      </div>
+      @if (statsLoading()) {
+        <p class="muted">reading…</p>
+      } @else {
+        <p class="muted small-note">
+          Editable fields apply on save; blank means leave alone. A stat this build does not
+          expose reads as <code>—</code> and cannot be set.
+        </p>
+        <table>
+          <thead><tr><th>Stat</th><th class="num">Current</th><th>Set to</th></tr></thead>
+          <tbody>
+            @for (f of STAT_FIELDS; track f.key) {
+              <tr>
+                <td>{{ f.label }}</td>
+                <td class="num">{{ display(f.key) }}</td>
+                <td>
+                  @if (f.editable) {
+                    <input
+                      type="number"
+                      [(ngModel)]="statsEdit[f.key]"
+                      [name]="'stat-' + f.key"
+                      [placeholder]="f.hint"
+                    />
+                  } @else {
+                    <span class="muted small-note">read-only</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (statsResult()) {
+          <p class="small-note mono" [class.err]="statsFailed()" [class.muted]="!statsFailed()">{{ statsResult() }}</p>
+        }
+        <div class="row dlg-actions">
+          <button (click)="closeStats()">Close</button>
+          <button class="primary" (click)="saveStats()" [disabled]="statsSaving()">Save changes</button>
+        </div>
+      }
+    </dialog>
+
     <dialog #pickerDlg class="dlg picker-dlg">
       <div class="row spread">
         <h2>{{ pickerTitle() }}</h2>
@@ -312,6 +393,7 @@ interface PickOption {
 export class BridgeComponent implements OnInit, OnDestroy {
   private api = inject(Api);
   @ViewChild('pickerDlg') pickerDlg?: ElementRef<HTMLDialogElement>;
+  @ViewChild('statsDlg') statsDlg?: ElementRef<HTMLDialogElement>;
 
   schema = signal<BridgeSchema | null>(null);
   events = signal<BridgeEvent[]>([]);
@@ -381,6 +463,144 @@ export class BridgeComponent implements OnInit, OnDestroy {
   private cursor = 0;
   private timers: ReturnType<typeof setInterval>[] = [];
   private static readonly KEEP = 500;
+
+  // ── stats drawer ───────────────────────────────────────────────────────────
+  // hp is the one stat the engine takes as a fraction; the drawer works in
+  // absolute HP like the player sees it and converts on save.
+  readonly STAT_FIELDS = [
+    { key: 'hp', label: 'HP', editable: true, hint: 'absolute' },
+    { key: 'maxHp', label: 'Max HP', editable: false, hint: '' },
+    { key: 'hunger', label: 'Hunger', editable: true, hint: 'absolute' },
+    { key: 'maxHunger', label: 'Max hunger', editable: false, hint: '' },
+    { key: 'shield', label: 'Shield', editable: true, hint: 'absolute' },
+    { key: 'maxShield', label: 'Max shield', editable: true, hint: 'absolute' },
+    { key: 'sanity', label: 'Sanity', editable: false, hint: '' },
+    { key: 'level', label: 'Level', editable: false, hint: '' },
+  ];
+
+  worldPals = signal<{ id: string; species: string; level: number; rare: boolean }[]>([]);
+  palsLoading = signal(false);
+  palsNote = signal('Press Refresh to read the world.');
+  statsTarget = signal<{ kind: 'player' | 'pal'; id: string; name: string } | null>(null);
+  statsValues = signal<Record<string, number | null>>({});
+  statsLoading = signal(false);
+  statsSaving = signal(false);
+  statsResult = signal('');
+  statsFailed = signal(false);
+  statsEdit: Record<string, string> = {};
+
+  statsTitle = computed(() => {
+    const t = this.statsTarget();
+    return t ? `${t.name} — stats` : 'Stats';
+  });
+
+  display(key: string): string {
+    const v = this.statsValues()[key];
+    return v === null || v === undefined ? '—' : String(Math.round(v * 100) / 100);
+  }
+
+  refreshWorldPals(): void {
+    this.palsLoading.set(true);
+    this.api.bridgeCall('pal.list', null, {}).subscribe({
+      next: (r) => {
+        this.palsLoading.set(false);
+        const pals = (r.data['pals'] as { id: string; species: string; level: number; rare: boolean }[]) ?? [];
+        this.worldPals.set(pals);
+        this.palsNote.set(
+          r.ok ? 'No pals loaded — nobody is near anything right now.' : `failed (${r.error ?? ''})`,
+        );
+      },
+      error: () => {
+        this.palsLoading.set(false);
+        this.palsNote.set('failed — is the agent loaded?');
+      },
+    });
+  }
+
+  openStats(kind: 'player' | 'pal', id: string, name: string): void {
+    this.statsTarget.set({ kind, id, name });
+    this.statsValues.set({});
+    this.statsEdit = {};
+    this.statsResult.set('');
+    this.statsLoading.set(true);
+    this.statsDlg?.nativeElement.showModal();
+    const call = kind === 'player'
+      ? this.api.bridgeCall('player.stats', id, {})
+      : this.api.bridgeCall('pal.stats', null, { pal: id });
+    call.subscribe({
+      next: (r) => {
+        this.statsLoading.set(false);
+        if (!r.ok) {
+          this.statsFailed.set(true);
+          this.statsResult.set(`failed (${r.error ?? 'unknown'})`);
+          return;
+        }
+        this.statsValues.set((r.data['stats'] as Record<string, number | null>) ?? {});
+      },
+      error: () => {
+        this.statsLoading.set(false);
+        this.statsFailed.set(true);
+        this.statsResult.set('failed — no answer from the game');
+      },
+    });
+  }
+
+  closeStats(): void {
+    this.statsDlg?.nativeElement.close();
+  }
+
+  saveStats(): void {
+    const target = this.statsTarget();
+    if (!target) return;
+    const current = this.statsValues();
+    const data: Record<string, unknown> = {};
+    for (const field of this.STAT_FIELDS) {
+      if (!field.editable) continue;
+      const raw = (this.statsEdit[field.key] ?? '').trim();
+      if (raw === '') continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) continue;
+      if (field.key === 'hp') {
+        // The engine sets HP by rate; convert from the absolute value shown.
+        const max = current['maxHp'];
+        if (!max) {
+          this.statsFailed.set(true);
+          this.statsResult.set('failed (max HP unknown on this build — cannot convert)');
+          return;
+        }
+        data['hp'] = Math.min(1, Math.max(0, value / max));
+      } else {
+        data[field.key] = value;
+      }
+    }
+    if (!Object.keys(data).length) {
+      this.statsFailed.set(true);
+      this.statsResult.set('nothing to change');
+      return;
+    }
+    this.statsSaving.set(true);
+    const call = target.kind === 'player'
+      ? this.api.bridgeCall('player.set_stats', target.id, data)
+      : this.api.bridgeCall('pal.set_stats', null, { pal: target.id, ...data });
+    call.subscribe({
+      next: (r) => {
+        this.statsSaving.set(false);
+        this.statsFailed.set(!r.ok);
+        this.statsResult.set(
+          r.ok ? `applied: ${r.data['applied'] || 'nothing'}` : `failed (${r.error ?? 'unknown'})`,
+        );
+        if (r.ok) {
+          this.statsValues.set((r.data['stats'] as Record<string, number | null>) ?? this.statsValues());
+          this.statsEdit = {};
+        }
+      },
+      error: (err) => {
+        this.statsSaving.set(false);
+        this.statsFailed.set(true);
+        this.statsResult.set(`failed (${err?.error?.error ?? 'no answer'})`);
+      },
+    });
+  }
 
   eventCaps = computed(() =>
     (this.schema()?.capabilities ?? []).filter((c) => c.kind === 'event'),
@@ -479,7 +699,29 @@ export class BridgeComponent implements OnInit, OnDestroy {
     );
   }
 
+  openWorldPalPicker(inputKey: string): void {
+    this.pickerKind.set('worldpal');
+    this.api.bridgeCall('pal.list', null, {}).subscribe({
+      next: (r) => {
+        const pals = (r.data['pals'] as { id: string; species: string; level: number }[]) ?? [];
+        this.worldPals.set(pals as never);
+        this.openPicker(
+          'Pick a loaded pal',
+          pals.filter((p) => p.id).map((p) => ({
+            value: p.id,
+            label: `${p.species} (lv ${p.level})`,
+            sub: p.id,
+          })),
+          false,
+          (v) => (this.inputs[inputKey] = v),
+        );
+      },
+      error: () => {},
+    });
+  }
+
   openCatalogPicker(kind: string, inputKey: string): void {
+    if (kind === 'worldpal') return this.openWorldPalPicker(inputKey);
     const titles: Record<string, string> = {
       item: 'Pick an item',
       pal: 'Pick a pal',
@@ -690,6 +932,9 @@ export class BridgeComponent implements OnInit, OnDestroy {
           ? `ok ${this.flat(r.data)}`
           : `failed (${r.error ?? 'unknown'})`;
         if (c.type.endsWith('_tag')) this.refreshPlayers();
+        // A spawn returns the new pal's id — surface it where it can be acted
+        // on rather than leaving the caller to correlate events.
+        if (r.ok && c.type === 'pal.spawn') this.refreshWorldPals();
       },
       error: (err) => {
         this.busy.set(false);

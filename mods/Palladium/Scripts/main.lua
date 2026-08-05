@@ -23,7 +23,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.4.0"
+local VERSION = "2.5.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -510,7 +510,7 @@ IMPL["player.has_item"] = function(state, p)
     return true, nil, { { "item", p.item }, { "has", count >= p.count }, { "count", count } }
 end
 
-IMPL["pal.spawn"] = function(state, p)
+IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
     if not util or not valid(controller) then return false, "player_offline" end
@@ -593,48 +593,128 @@ IMPL["pal.spawn"] = function(state, p)
             ExecuteWithDelay(500, function() guard("pal.spawn configure", configure, 1) end)
         end
     end
+    -- The individual parameter (and with it the pal's id) exists a moment
+    -- after the spawn call; wait for it so the caller gets an id it can act on
+    -- straight away rather than having to correlate the npc.spawn event.
+    local function settle(attempt)
+        local pal_id = valid(handle) and pal_id_of(handle:TryGetIndividualParameter()) or ""
+        if pal_id == "" and attempt < 6 and type(ExecuteWithDelay) == "function" then
+            ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt + 1) end)
+            return
+        end
+        finish(true, nil, {
+            { "pal", pal_id },
+            { "species", p.species },
+            { "level", p.level },
+            { "hostile", controller_kind ~= "NPCAIControllerBaseClass" },
+            { "controller", controller_kind },
+        })
+    end
+    guard("pal.spawn settle", settle, 1)
+    return "deferred"
+end
+
+-- Numbers arrive raw or wrapped in a fixed-point struct depending on the
+-- field; unwrap both shapes.
+local function as_number(value)
+    if type(value) == "number" then return value end
+    local inner = member(value, "Value")
+    if type(inner) == "number" then return inner end
+    return nil
+end
+
+-- Getters live on the character, its parameter component, or the individual
+-- parameter depending on the stat and the build — try each, take the first
+-- that answers with a number.
+local function stat_of(sources, method)
+    for _, source in ipairs(sources) do
+        if source ~= nil then
+            local ok, value = pcall(function() return source[method](source) end)
+            if ok then
+                local number = as_number(value)
+                if number then return number end
+            end
+        end
+    end
+    return nil
+end
+
+local STAT_GETTERS = {
+    { "hp", "GetHP" }, { "maxHp", "GetMaxHP" },
+    { "hunger", "GetFullStomach" }, { "maxHunger", "GetMaxFullStomach" },
+    { "shield", "GetShieldValue" }, { "maxShield", "GetShieldMaxHP" },
+    { "sanity", "GetSanityValue" }, { "level", "GetLevel" },
+}
+
+local function read_stats(character)
+    local component = member(character, "CharacterParameterComponent")
+    local parameter = pal_parameter(character)
+    local sources = { character, component, parameter }
+    local parts = {}
+    for _, entry in ipairs(STAT_GETTERS) do
+        local value = stat_of(sources, entry[2])
+        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
+            (value and json_value(value) or "null")
+    end
+    if not stat_of(sources, "GetLevel") then
+        local save = parameter and member(parameter, "SaveParameter")
+        local level = save and member(save, "Level")
+        if type(level) == "number" then
+            parts[#parts] = json_string("level", 24) .. ":" .. json_value(level)
+        end
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- Applies whichever stats were supplied; a field left out is left alone.
+local function write_stats(character, p)
+    local util = pal_utility()
+    if not util then return false, "not_supported" end
+    local applied, failed = {}, {}
+    local function attempt(label, ...)
+        local shapes = { ... }
+        for _, shape in ipairs(shapes) do
+            if pcall(shape) then
+                applied[#applied + 1] = label
+                return
+            end
+        end
+        failed[#failed + 1] = label
+    end
+    if p.hp ~= nil then
+        attempt("hp",
+            function() util:SetHPByRateToCharacter(character, p.hp) end,
+            function() util:SetHPByRateToCharacter(FindFirstOf("World"), character, p.hp) end)
+    end
+    if p.hunger ~= nil then
+        attempt("hunger",
+            function() util:SetFullStomach(character, p.hunger) end,
+            function() util:SetFullStomach(FindFirstOf("World"), character, p.hunger) end)
+    end
+    if p.maxShield ~= nil then
+        attempt("maxShield", function() util:SetShieldMaxHP(character, p.maxShield) end)
+    end
+    if p.shield ~= nil then
+        attempt("shield", function() util:SetShieldHP(character, p.shield) end)
+    end
+    if #applied == 0 and #failed > 0 then return false, "not_supported" end
     return true, nil, {
-        { "species", p.species },
-        { "level", p.level },
-        { "hostile", controller_kind ~= "NPCAIControllerBaseClass" },
-        { "controller", controller_kind },
+        { "applied", table.concat(applied, ",") },
+        { "failed", table.concat(failed, ",") },
+        { "stats", { raw = read_stats(character) } },
     }
 end
 
-IMPL["player.set_hp"] = function(state, p)
-    local util = pal_utility()
+IMPL["player.stats"] = function(state)
     local _, pawn = pawn_of(state)
-    if not util or not pawn then return false, "player_offline" end
-    local ok = pcall(function() util:SetHPByRateToCharacter(pawn, p.rate) end)
-    if not ok then
-        ok = pcall(function() util:SetHPByRateToCharacter(FindFirstOf("World"), pawn, p.rate) end)
-    end
-    if not ok then return false, "not_supported" end
-    return true, nil, { { "rate", p.rate } }
+    if not pawn then return false, "player_offline" end
+    return true, nil, { { "stats", { raw = read_stats(pawn) } } }
 end
 
-IMPL["player.set_hunger"] = function(state, p)
-    local util = pal_utility()
+IMPL["player.set_stats"] = function(state, p)
     local _, pawn = pawn_of(state)
-    if not util or not pawn then return false, "player_offline" end
-    local ok = pcall(function() util:SetFullStomach(pawn, p.value) end)
-    if not ok then
-        ok = pcall(function() util:SetFullStomach(FindFirstOf("World"), pawn, p.value) end)
-    end
-    if not ok then return false, "not_supported" end
-    return true, nil, { { "value", p.value } }
-end
-
-IMPL["player.set_shield"] = function(state, p)
-    local util = pal_utility()
-    local _, pawn = pawn_of(state)
-    if not util or not pawn then return false, "player_offline" end
-    if p.max ~= nil then
-        pcall(function() util:SetShieldMaxHP(pawn, p.max) end)
-    end
-    local ok = pcall(function() util:SetShieldHP(pawn, p.hp) end)
-    if not ok then return false, "not_supported" end
-    return true, nil, { { "hp", p.hp } }
+    if not pawn then return false, "player_offline" end
+    return write_stats(pawn, p)
 end
 
 -- ── pals in the world ───────────────────────────────────────────────────────
@@ -688,17 +768,29 @@ IMPL["pal.list"] = function(_, _)
     }
 end
 
-IMPL["pal.set_hp"] = function(_, p)
-    local util = pal_utility()
-    if not util then return false, "not_supported" end
+local function find_pal(pal_id)
     for _, pal in ipairs(world_pals()) do
-        if pal.id ~= "" and pal.id == p.pal then
-            local ok = pcall(function() util:SetHPByRateToCharacter(pal.character, p.rate) end)
-            if not ok then return false, "not_supported" end
-            return true, nil, { { "pal", p.pal }, { "rate", p.rate } }
-        end
+        if pal.id ~= "" and pal.id == pal_id then return pal end
     end
-    return false, "pal_not_found"
+    return nil
+end
+
+IMPL["pal.stats"] = function(_, p)
+    local pal = find_pal(p.pal)
+    if not pal then return false, "pal_not_found" end
+    return true, nil, {
+        { "pal", p.pal }, { "species", pal.species },
+        { "stats", { raw = read_stats(pal.character) } },
+    }
+end
+
+IMPL["pal.set_stats"] = function(_, p)
+    local pal = find_pal(p.pal)
+    if not pal then return false, "pal_not_found" end
+    local ok, err, data = write_stats(pal.character, p)
+    if not ok then return false, err end
+    table.insert(data, 1, { "pal", p.pal })
+    return true, nil, data
 end
 
 -- ── action dispatch ─────────────────────────────────────────────────────────
@@ -729,12 +821,18 @@ local function run_action(request)
             state = find_player_state(request.userid)
         end
         local subject = state and player_subject(state) or nil
-        local ok, result, err, data = pcall(handler, state, params)
+        local function finish(ok_value, err_value, data_value)
+            publish_result(request.id or "", action_type, ok_value == true, err_value, subject, data_value)
+        end
+        -- A handler returning "deferred" publishes its own result later: the
+        -- only way pal.spawn can report an id the engine has not assigned yet.
+        local ok, result, err, data = pcall(handler, state, params, finish)
         if not ok then
-            publish_result(request.id or "", action_type, false, tostring(result), subject, {})
+            finish(false, tostring(result), {})
             return
         end
-        publish_result(request.id or "", action_type, result == true, err, subject, data)
+        if result == "deferred" then return end
+        finish(result, err, data)
     end
     if type(ExecuteInGameThread) == "function" then
         ExecuteInGameThread(execute)

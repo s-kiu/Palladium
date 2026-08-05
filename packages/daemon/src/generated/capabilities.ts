@@ -366,7 +366,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true asks the NPC manager for its monster/enemy AI controller instead of the passive base controller — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them.",
+    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. hostile=true asks the NPC manager for its monster/enemy AI controller instead of the passive base controller — the result reports which controller actually applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id, usable straight away with pal.stats / pal.set_stats.",
     "params": {
       "species": {
         "type": "item_id",
@@ -403,8 +403,11 @@ export const CAPABILITIES: Capability[] = [
       }
     },
     "returns": {
+      "pal": "string",
       "species": "item_id",
-      "level": "int"
+      "level": "int",
+      "hostile": "bool",
+      "controller": "string"
     },
     "errors": [
       "player_offline",
@@ -947,86 +950,6 @@ export const CAPABILITIES: Capability[] = [
     ]
   },
   {
-    "type": "player.set_hp",
-    "kind": "action",
-    "runtime": "agent",
-    "target": "player",
-    "since": "2.2.0",
-    "stability": "experimental",
-    "scope": "write",
-    "summary": "Set an online player's HP as a fraction of max (0 downs them, 1 is full).",
-    "params": {
-      "rate": {
-        "type": "number",
-        "required": true,
-        "min": 0,
-        "max": 1
-      }
-    },
-    "returns": {
-      "rate": "number"
-    },
-    "errors": [
-      "player_offline",
-      "not_supported"
-    ]
-  },
-  {
-    "type": "player.set_hunger",
-    "kind": "action",
-    "runtime": "agent",
-    "target": "player",
-    "since": "2.2.0",
-    "stability": "experimental",
-    "scope": "write",
-    "summary": "Set an online player's fullness (hunger bar). 100 is a full stomach.",
-    "params": {
-      "value": {
-        "type": "number",
-        "required": true,
-        "min": 0,
-        "max": 1000
-      }
-    },
-    "returns": {
-      "value": "number"
-    },
-    "errors": [
-      "player_offline",
-      "not_supported"
-    ]
-  },
-  {
-    "type": "player.set_shield",
-    "kind": "action",
-    "runtime": "agent",
-    "target": "player",
-    "since": "2.2.0",
-    "stability": "experimental",
-    "scope": "write",
-    "summary": "Set an online player's shield HP, optionally its maximum too.",
-    "params": {
-      "hp": {
-        "type": "number",
-        "required": true,
-        "min": 0,
-        "max": 100000
-      },
-      "max": {
-        "type": "number",
-        "min": 1,
-        "max": 100000
-      }
-    },
-    "returns": {
-      "hp": "number"
-    },
-    "errors": [
-      "player_offline",
-      "not_supported"
-    ]
-  },
-  {
     "type": "pal.list",
     "kind": "query",
     "runtime": "agent",
@@ -1043,29 +966,128 @@ export const CAPABILITIES: Capability[] = [
     "errors": []
   },
   {
-    "type": "pal.set_hp",
+    "type": "player.stats",
+    "kind": "query",
+    "runtime": "agent",
+    "target": "player",
+    "since": "2.5.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, level. A stat this build does not expose comes back null rather than absent.",
+    "params": {},
+    "returns": {
+      "stats": "json"
+    },
+    "errors": [
+      "player_offline"
+    ]
+  },
+  {
+    "type": "player.set_stats",
     "kind": "action",
     "runtime": "agent",
-    "since": "2.2.0",
+    "target": "player",
+    "since": "2.5.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Set a loaded pal's HP by rate, targeting the id from pal.list or an npc.spawn event.",
+    "summary": "Set any combination of an online player's stats in one call; omitted fields are left alone. hp is a fraction of max (0-1); the rest are absolute. Reports which fields applied and returns the resulting stats.",
+    "params": {
+      "hp": {
+        "type": "number",
+        "min": 0,
+        "max": 1
+      },
+      "hunger": {
+        "type": "number",
+        "min": 0,
+        "max": 1000
+      },
+      "shield": {
+        "type": "number",
+        "min": 0,
+        "max": 100000
+      },
+      "maxShield": {
+        "type": "number",
+        "min": 1,
+        "max": 100000
+      }
+    },
+    "returns": {
+      "applied": "string",
+      "failed": "string",
+      "stats": "json"
+    },
+    "errors": [
+      "player_offline",
+      "not_supported"
+    ]
+  },
+  {
+    "type": "pal.stats",
+    "kind": "query",
+    "runtime": "agent",
+    "since": "2.5.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Read a loaded pal's stats, targeting the id from pal.list or a pal.spawn result.",
     "params": {
       "pal": {
         "type": "string",
         "required": true,
-        "maxLen": 64
-      },
-      "rate": {
-        "type": "number",
-        "required": true,
-        "min": 0,
-        "max": 1
+        "maxLen": 64,
+        "picker": "worldpal"
       }
     },
     "returns": {
       "pal": "string",
-      "rate": "number"
+      "species": "string",
+      "stats": "json"
+    },
+    "errors": [
+      "pal_not_found"
+    ]
+  },
+  {
+    "type": "pal.set_stats",
+    "kind": "action",
+    "runtime": "agent",
+    "since": "2.5.0",
+    "stability": "experimental",
+    "scope": "write",
+    "summary": "Set any combination of a loaded pal's stats in one call; omitted fields are left alone.",
+    "params": {
+      "pal": {
+        "type": "string",
+        "required": true,
+        "maxLen": 64,
+        "picker": "worldpal"
+      },
+      "hp": {
+        "type": "number",
+        "min": 0,
+        "max": 1
+      },
+      "hunger": {
+        "type": "number",
+        "min": 0,
+        "max": 1000
+      },
+      "shield": {
+        "type": "number",
+        "min": 0,
+        "max": 100000
+      },
+      "maxShield": {
+        "type": "number",
+        "min": 1,
+        "max": 100000
+      }
+    },
+    "returns": {
+      "pal": "string",
+      "applied": "string",
+      "stats": "json"
     },
     "errors": [
       "pal_not_found",
