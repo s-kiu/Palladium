@@ -33,6 +33,11 @@ USER_PAKS_DIR="$PAL_ROOT/paks"
 USER_LOGICMODS_DIR="$PAL_ROOT/logicmods"
 BACKUPS_DIR="$PAL_ROOT/backups"
 STATE_DIR="$PAL_ROOT/.state"
+# Action queue in the other direction: the panel appends requests, the agent
+# consumes them by offset. Same boot lifecycle as the event stream, so a
+# request written for a previous run is never executed against this one.
+# shellcheck disable=SC2034  # consumed by cmd/serve.sh after sourcing
+BRIDGE_ACTIONS="$STATE_DIR/bridge-actions.jsonl"
 
 PANEL_SETTINGS_FILE="$CONFIG_DIR/panel-settings.env"
 GAME_PAL_DIR="$SERVER_DIR/Pal"
