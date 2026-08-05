@@ -59,5 +59,32 @@ return {
 
             },
         },
+        ["player.set_hp"] = {
+            params = {
+            { name = "rate", kind = "number", required = true, min = 0, max = 1 },
+            },
+        },
+        ["player.set_hunger"] = {
+            params = {
+            { name = "value", kind = "number", required = true, min = 0, max = 1000 },
+            },
+        },
+        ["player.set_shield"] = {
+            params = {
+            { name = "hp", kind = "number", required = true, min = 0, max = 100000 },
+            { name = "max", kind = "number", min = 1, max = 100000 },
+            },
+        },
+        ["pal.list"] = {
+            params = {
+
+            },
+        },
+        ["pal.set_hp"] = {
+            params = {
+            { name = "pal", kind = "string", required = true, max_len = 64 },
+            { name = "rate", kind = "number", required = true, min = 0, max = 1 },
+            },
+        },
     },
 }

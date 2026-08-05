@@ -183,6 +183,44 @@ The panel answers `!ping` itself (broadcasts `pong`, one command per player per
   `key=value` requests consumed by the agent. This is the daemon's private
   channel; write to it only if you are replacing the daemon.
 
+## Worked example: a mod with its own mob and its own permission
+
+The pieces above compose into the standard mod shape. A "summon the camp
+guardian" mod, end to end, without touching Palladium's code:
+
+```js
+import { connect } from './lib.mjs';           // or any language: it is 3 HTTP calls
+const bridge = await connect();
+
+// 1. Own your permission. Registration is idempotent, defaults are yours;
+//    operators override per group or per player on the permissions page.
+await bridge.call('permission.register', null, {
+  mod: 'guardian',
+  nodes: [{ node: 'guardian.summon', description: 'summon the camp guardian', default: 'deny' }],
+});
+
+// 2. React to chat, check the permission, act.
+for await (const event of bridge.follow({ types: ['player.chat'] })) {
+  if (event.data.message !== '!guardian') continue;
+  const { subject } = event;
+  const perm = await bridge.call('permission.check', subject.id, { node: 'guardian.summon' });
+  if (!perm.data.allowed) continue;
+
+  // 3. The mob: any species id works, modded ones included — a species added
+  //    by a .pak mod is spawnable by its id, and appears in the pal picker
+  //    once one has been seen in the world.
+  await bridge.call('pal.spawn', subject.id, {
+    species: 'BOSS_Anubis', level: 50, rare: true, traits: 'Legend',
+  });
+  // The npc.spawn event that follows carries the new pal's id — keep it if
+  // you want to heal or inspect the guardian later (pal.set_hp, pal.list).
+}
+```
+
+Grant `guardian.summon` to a group on the permissions page and the command
+starts working for its members; the constraint syntax can narrow it further
+("only Lamball", "only below level 20") without changing the mod.
+
 ## What the engine allows
 
 Hook targets must be native (`/Script/…`) functions: Blueprint (`/Game/…`)

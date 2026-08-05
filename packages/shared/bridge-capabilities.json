@@ -335,7 +335,7 @@
       "since": "2.0.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. The spawn pattern is community-proven but marked experimental by its authors.",
+      "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. Spawned pals use the base NPC AI (they do not initiate attacks) and are not part of the world save — a server restart removes them. The npc.spawn event that follows carries the new pal's id.",
       "params": {
         "species": {
           "type": "item_id",
@@ -909,6 +909,132 @@
       },
       "errors": [
         "unknown_location"
+      ]
+    },
+    {
+      "type": "player.set_hp",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "2.2.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Set an online player's HP as a fraction of max (0 downs them, 1 is full).",
+      "params": {
+        "rate": {
+          "type": "number",
+          "required": true,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "returns": {
+        "rate": "number"
+      },
+      "errors": [
+        "player_offline",
+        "not_supported"
+      ]
+    },
+    {
+      "type": "player.set_hunger",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "2.2.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Set an online player's fullness (hunger bar). 100 is a full stomach.",
+      "params": {
+        "value": {
+          "type": "number",
+          "required": true,
+          "min": 0,
+          "max": 1000
+        }
+      },
+      "returns": {
+        "value": "number"
+      },
+      "errors": [
+        "player_offline",
+        "not_supported"
+      ]
+    },
+    {
+      "type": "player.set_shield",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "2.2.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Set an online player's shield HP, optionally its maximum too.",
+      "params": {
+        "hp": {
+          "type": "number",
+          "required": true,
+          "min": 0,
+          "max": 100000
+        },
+        "max": {
+          "type": "number",
+          "min": 1,
+          "max": 100000
+        }
+      },
+      "returns": {
+        "hp": "number"
+      },
+      "errors": [
+        "player_offline",
+        "not_supported"
+      ]
+    },
+    {
+      "type": "pal.list",
+      "kind": "query",
+      "runtime": "agent",
+      "since": "2.2.0",
+      "stability": "experimental",
+      "scope": "read",
+      "summary": "Pals currently loaded in the world (players excluded), with species, level and — when the engine exposes it — a stable id usable as a pal.set_hp target. Capped at 100 rows; count reports the true total.",
+      "params": {},
+      "returns": {
+        "count": "int",
+        "truncated": "bool",
+        "pals": "json"
+      },
+      "errors": []
+    },
+    {
+      "type": "pal.set_hp",
+      "kind": "action",
+      "runtime": "agent",
+      "since": "2.2.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Set a loaded pal's HP by rate, targeting the id from pal.list or an npc.spawn event.",
+      "params": {
+        "pal": {
+          "type": "string",
+          "required": true,
+          "maxLen": 64
+        },
+        "rate": {
+          "type": "number",
+          "required": true,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "returns": {
+        "pal": "string",
+        "rate": "number"
+      },
+      "errors": [
+        "pal_not_found",
+        "not_supported"
       ]
     }
   ]

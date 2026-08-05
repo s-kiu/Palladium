@@ -22,7 +22,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.1.0"
+local VERSION = "2.2.0"
 
 local CAPS = require("generated/capabilities")
 
@@ -177,6 +177,34 @@ local function player_userid(state)
     return ""
 end
 
+local function guid_hex(guid)
+    if guid == nil then return "" end
+    local ok, text = pcall(function()
+        return hex32(guid.A) .. hex32(guid.B) .. hex32(guid.C) .. hex32(guid.D)
+    end)
+    if ok and text and text ~= ZERO_UID then return text end
+    return ""
+end
+
+-- A pal's stable identity: CharacterParameterComponent → IndividualParameter →
+-- IndividualId.InstanceId. Every step probed — shapes move between builds.
+local function pal_parameter(character)
+    local component = member(character, "CharacterParameterComponent")
+    if not valid(component) then return nil end
+    local parameter = member(component, "IndividualParameter")
+    if valid(parameter) then return parameter end
+    local ok, got = pcall(function() return component:GetIndividualParameter() end)
+    if ok and valid(got) then return got end
+    return nil
+end
+
+local function pal_id_of(parameter)
+    if parameter == nil then return "" end
+    local individual = member(parameter, "IndividualId")
+    if individual == nil then return "" end
+    return guid_hex(member(individual, "InstanceId"))
+end
+
 local function state_of(character)
     local state = member(character, "PlayerState")
     if valid(state) then return state end
@@ -196,9 +224,10 @@ local function player_subject(state)
         .. ',"name":' .. json_string(player_name(state), 64) .. "}"
 end
 
-local function pal_subject(species, location)
+local function pal_subject(species, location, pal_id)
+    local id = (pal_id and pal_id ~= "") and (',"id":' .. json_string(pal_id, 64)) or ""
     local pos = location and position_json(location) or ""
-    return '{"kind":"pal","name":' .. json_string(species, 64) .. (pos or "") .. "}"
+    return '{"kind":"pal"' .. id .. ',"name":' .. json_string(species, 64) .. (pos or "") .. "}"
 end
 
 local BRIDGE_SUBJECT = '{"kind":"bridge","id":"' .. MOD .. '"}'
@@ -232,15 +261,22 @@ local function poll_roles()
     if content == roles_raw then return end
     roles_raw = content
     roles = {}
+    local count = 0
     for line in content:gmatch("[^\n]+") do
         local userid, tag = line:match("^(%w+)\t(.+)$")
-        if userid and tag and #tag <= 16 then roles[userid] = tag end
+        if userid and tag and #tag <= 16 then
+            roles[userid] = tag
+            count = count + 1
+        end
     end
+    prefix_reported = false
+    info(string.format("role prefixes %s (%d player(s))", count > 0 and "active" or "cleared", count))
 end
 
 -- ── hook handlers ───────────────────────────────────────────────────────────
 local MESSAGE_FIELDS = { "Message", "message", "Text", "ChatMessage" }
 local reported_chat_shape = false
+local prefix_reported = false
 
 local function chat_text(payload)
     local direct = to_text(payload)
@@ -272,7 +308,17 @@ local function on_chat(context, first, second)
     -- gains the prefix. Failure here loses the prefix, never the message.
     local tag = roles[player_userid(state)]
     if tag and first ~= nil and #message < 400 then
-        pcall(function() first:set("[" .. tag .. "] " .. message) end)
+        -- Diagnosed loudly on purpose: parameter writes are unproven on this
+        -- loader, and a silent no-op is indistinguishable from success.
+        local ok, err = pcall(function() first:set("[" .. tag .. "] " .. message) end)
+        if not prefix_reported then
+            prefix_reported = true
+            if ok then
+                info("role prefix write succeeded for [" .. tag .. "] — check in game whether it shows")
+            else
+                info("role prefix write FAILED: " .. tostring(err) .. " — this loader rejects hook parameter writes")
+            end
+        end
     end
 end
 
@@ -366,7 +412,7 @@ local function on_param_init(context)
     end
 
     local level = member(save, "Level")
-    publish("npc.spawn", pal_subject(species, location), {
+    publish("npc.spawn", pal_subject(species, location, pal_id_of(parameter)), {
         { "species", species },
         { "level", type(level) == "number" and level or 0 },
         { "rare", member(save, "IsRarePal") == true },
@@ -577,6 +623,106 @@ IMPL["pal.spawn"] = function(state, p)
     return true, nil, { { "species", p.species }, { "level", p.level } }
 end
 
+IMPL["player.set_hp"] = function(state, p)
+    local util = pal_utility()
+    local _, pawn = pawn_of(state)
+    if not util or not pawn then return false, "player_offline" end
+    local ok = pcall(function() util:SetHPByRateToCharacter(pawn, p.rate) end)
+    if not ok then
+        ok = pcall(function() util:SetHPByRateToCharacter(FindFirstOf("World"), pawn, p.rate) end)
+    end
+    if not ok then return false, "not_supported" end
+    return true, nil, { { "rate", p.rate } }
+end
+
+IMPL["player.set_hunger"] = function(state, p)
+    local util = pal_utility()
+    local _, pawn = pawn_of(state)
+    if not util or not pawn then return false, "player_offline" end
+    local ok = pcall(function() util:SetFullStomach(pawn, p.value) end)
+    if not ok then
+        ok = pcall(function() util:SetFullStomach(FindFirstOf("World"), pawn, p.value) end)
+    end
+    if not ok then return false, "not_supported" end
+    return true, nil, { { "value", p.value } }
+end
+
+IMPL["player.set_shield"] = function(state, p)
+    local util = pal_utility()
+    local _, pawn = pawn_of(state)
+    if not util or not pawn then return false, "player_offline" end
+    if p.max ~= nil then
+        pcall(function() util:SetShieldMaxHP(pawn, p.max) end)
+    end
+    local ok = pcall(function() util:SetShieldHP(pawn, p.hp) end)
+    if not ok then return false, "not_supported" end
+    return true, nil, { { "hp", p.hp } }
+end
+
+-- ── pals in the world ───────────────────────────────────────────────────────
+local function world_pals()
+    local ok, characters = pcall(FindAllOf, "PalCharacter")
+    if not ok or type(characters) ~= "table" then return {} end
+    local out = {}
+    for _, character in ipairs(characters) do
+        if valid(character) and state_of(character) == nil then -- players excluded
+            local parameter = pal_parameter(character)
+            if parameter then
+                local save = member(parameter, "SaveParameter")
+                local species = save and to_text(member(save, "CharacterID"))
+                if species and species ~= "None" then
+                    out[#out + 1] = {
+                        character = character,
+                        parameter = parameter,
+                        id = pal_id_of(parameter),
+                        species = species,
+                        level = type(member(save, "Level")) == "number" and member(save, "Level") or 0,
+                        rare = member(save, "IsRarePal") == true,
+                    }
+                end
+            end
+        end
+    end
+    return out
+end
+
+local MAX_PAL_LIST = 100
+
+IMPL["pal.list"] = function(_, _)
+    local rows = {}
+    local pals = world_pals()
+    for i = 1, math.min(#pals, MAX_PAL_LIST) do
+        local pal = pals[i]
+        local pos = ""
+        local ok, at = pcall(function() return pal.character:K2_GetActorLocation() end)
+        if ok and type(member(at, "X")) == "number" then
+            pos = string.format(',"x":%.1f,"y":%.1f,"z":%.1f', at.X, at.Y, at.Z)
+        end
+        rows[#rows + 1] = string.format(
+            '{"id":%s,"species":%s,"level":%d,"rare":%s%s}',
+            json_string(pal.id, 64), json_string(pal.species, 64),
+            pal.level, pal.rare and "true" or "false", pos)
+    end
+    return true, nil, {
+        { "count", #pals },
+        { "truncated", #pals > MAX_PAL_LIST },
+        { "pals", { raw = "[" .. table.concat(rows, ",") .. "]" } },
+    }
+end
+
+IMPL["pal.set_hp"] = function(_, p)
+    local util = pal_utility()
+    if not util then return false, "not_supported" end
+    for _, pal in ipairs(world_pals()) do
+        if pal.id ~= "" and pal.id == p.pal then
+            local ok = pcall(function() util:SetHPByRateToCharacter(pal.character, p.rate) end)
+            if not ok then return false, "not_supported" end
+            return true, nil, { { "pal", p.pal }, { "rate", p.rate } }
+        end
+    end
+    return false, "pal_not_found"
+end
+
 -- ── action dispatch ─────────────────────────────────────────────────────────
 local function run_action(request)
     local action_type = request.action or ""
@@ -592,18 +738,25 @@ local function run_action(request)
         return
     end
 
+    local needs_player = action_type:sub(1, 4) ~= "pal."
     local function execute()
-        local state = find_player_state(request.userid)
-        if not state then
-            publish_result(request.id or "", action_type, false, "player_offline", nil, {})
-            return
+        local state = nil
+        if needs_player then
+            state = find_player_state(request.userid)
+            if not state then
+                publish_result(request.id or "", action_type, false, "player_offline", nil, {})
+                return
+            end
+        elseif request.userid and request.userid ~= "" then
+            state = find_player_state(request.userid)
         end
+        local subject = state and player_subject(state) or nil
         local ok, result, err, data = pcall(handler, state, params)
         if not ok then
-            publish_result(request.id or "", action_type, false, tostring(result), player_subject(state), {})
+            publish_result(request.id or "", action_type, false, tostring(result), subject, {})
             return
         end
-        publish_result(request.id or "", action_type, result == true, err, player_subject(state), data)
+        publish_result(request.id or "", action_type, result == true, err, subject, data)
     end
     if type(ExecuteInGameThread) == "function" then
         ExecuteInGameThread(execute)
