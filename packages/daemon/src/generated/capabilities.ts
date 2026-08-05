@@ -260,7 +260,8 @@ export const CAPABILITIES: Capability[] = [
     "params": {
       "x": {
         "type": "number",
-        "required": true
+        "required": true,
+        "picker": "location"
       },
       "y": {
         "type": "number",
@@ -851,6 +852,95 @@ export const CAPABILITIES: Capability[] = [
       "groups": "json"
     },
     "errors": []
+  },
+  {
+    "type": "player.position",
+    "kind": "query",
+    "runtime": "agent",
+    "target": "player",
+    "since": "2.1.0",
+    "stability": "stable",
+    "scope": "read",
+    "summary": "The online player's exact world position (Engine Actor location, includes z).",
+    "params": {},
+    "returns": {
+      "x": "number",
+      "y": "number",
+      "z": "number"
+    },
+    "errors": [
+      "player_offline"
+    ]
+  },
+  {
+    "type": "location.save",
+    "kind": "action",
+    "runtime": "daemon",
+    "since": "2.1.0",
+    "stability": "stable",
+    "scope": "write",
+    "summary": "Save a named world location for the teleport picker. Stand somewhere, read player.position, save it — fast-travel points, arenas, meeting spots.",
+    "params": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "maxLen": 64
+      },
+      "x": {
+        "type": "number",
+        "required": true
+      },
+      "y": {
+        "type": "number",
+        "required": true
+      },
+      "z": {
+        "type": "number",
+        "required": true
+      }
+    },
+    "returns": {
+      "name": "string"
+    },
+    "errors": [
+      "invalid_params"
+    ]
+  },
+  {
+    "type": "location.list",
+    "kind": "query",
+    "runtime": "daemon",
+    "since": "2.1.0",
+    "stability": "stable",
+    "scope": "read",
+    "summary": "Saved locations plus boss-spawn positions observed live (source: manual | boss).",
+    "params": {},
+    "returns": {
+      "locations": "json"
+    },
+    "errors": []
+  },
+  {
+    "type": "location.delete",
+    "kind": "action",
+    "runtime": "daemon",
+    "since": "2.1.0",
+    "stability": "stable",
+    "scope": "write",
+    "summary": "Remove a saved location.",
+    "params": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "maxLen": 64
+      }
+    },
+    "returns": {
+      "name": "string"
+    },
+    "errors": [
+      "unknown_location"
+    ]
   }
 ];
 

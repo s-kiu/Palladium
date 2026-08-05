@@ -107,6 +107,14 @@ export class BridgeDb {
         constraints TEXT,
         PRIMARY KEY (userid, node)
       );
+      CREATE TABLE IF NOT EXISTS locations (
+        name       TEXT PRIMARY KEY,
+        x          REAL NOT NULL,
+        y          REAL NOT NULL,
+        z          REAL NOT NULL,
+        source     TEXT NOT NULL DEFAULT 'manual',
+        updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS bridge_options (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -516,6 +524,44 @@ export class BridgeDb {
     const dflt = this.db.prepare("SELECT tag FROM perm_groups WHERE is_default = 1 AND tag != ''")
       .get() as { tag: string } | undefined;
     return dflt?.tag ?? null;
+  }
+
+  // ── locations ──────────────────────────────────────────────────────────────
+  locationSave(name: string, x: number, y: number, z: number, source: string): void {
+    this.db.prepare(`
+      INSERT INTO locations (name, x, y, z, source, updated_at) VALUES (?, ?, ?, ?, ?, unixepoch())
+      ON CONFLICT(name) DO UPDATE SET
+        x = excluded.x, y = excluded.y, z = excluded.z,
+        source = excluded.source, updated_at = excluded.updated_at
+    `).run(name, x, y, z, source);
+  }
+
+  locations(): { name: string; x: number; y: number; z: number; source: string }[] {
+    const rows = this.db.prepare('SELECT * FROM locations ORDER BY source, name').all() as
+      Record<string, unknown>[];
+    return rows.map((r) => ({
+      name: String(r.name),
+      x: Number(r.x),
+      y: Number(r.y),
+      z: Number(r.z),
+      source: String(r.source),
+    }));
+  }
+
+  locationDelete(name: string): boolean {
+    return Number(this.db.prepare('DELETE FROM locations WHERE name = ?').run(name).changes) > 0;
+  }
+
+  // Every player that currently resolves to a role tag — the in-game prefix
+  // file is generated from this.
+  rolesForAll(): { userid: string; tag: string }[] {
+    const out: { userid: string; tag: string }[] = [];
+    const rows = this.db.prepare('SELECT userid FROM players').all() as { userid: string }[];
+    for (const row of rows) {
+      const tag = this.roleTag(String(row.userid));
+      if (tag) out.push({ userid: String(row.userid), tag });
+    }
+    return out;
   }
 
   // ── options ────────────────────────────────────────────────────────────────

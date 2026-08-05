@@ -890,14 +890,29 @@ app.delete<{ Params: { id: string } }>('/api/tokens/:id', async (req, reply) => 
 // is panel configuration, not part of the bridge API surface.
 app.get('/api/bridge/options', async (req, reply) => {
   if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
-  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
+  return {
+    chatRoles: bridgeDb.optionGet('chat_roles') === 'on',
+    chatRolesInGame: bridgeDb.optionGet('chat_roles_ingame') === 'on',
+  };
 });
 
-app.put<{ Body: { chatRoles?: boolean } }>('/api/bridge/options', async (req, reply) => {
-  if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
-  bridgeDb.optionSet('chat_roles', req.body?.chatRoles ? 'on' : 'off');
-  return { chatRoles: bridgeDb.optionGet('chat_roles') === 'on' };
-});
+app.put<{ Body: { chatRoles?: boolean; chatRolesInGame?: boolean } }>(
+  '/api/bridge/options',
+  async (req, reply) => {
+    if (!requireSession(req)) return reply.code(403).send({ error: 'panel session required' });
+    if (req.body?.chatRoles !== undefined) {
+      bridgeDb.optionSet('chat_roles', req.body.chatRoles ? 'on' : 'off');
+    }
+    if (req.body?.chatRolesInGame !== undefined) {
+      bridgeDb.optionSet('chat_roles_ingame', req.body.chatRolesInGame ? 'on' : 'off');
+      await writeRolesFile();
+    }
+    return {
+      chatRoles: bridgeDb.optionGet('chat_roles') === 'on',
+      chatRolesInGame: bridgeDb.optionGet('chat_roles_ingame') === 'on',
+    };
+  },
+);
 
 // ── in-game event bridge ─────────────────────────────────────────────────────
 // UE4SS Lua has no sockets, so the in-game agent talks to the rest of the world
@@ -1040,14 +1055,18 @@ function ingest(event: BridgeEvent): void {
     case 'player.leave':
       bridgeDb.leave(subjectId, Number(event.at) || 0);
       break;
-    case 'npc.spawn':
-      bridgeDb.speciesSeen(
-        String(event.data.species ?? ''),
-        Number(event.data.level) || 0,
-        event.data.rare === true,
-        Number(event.at) || 0,
-      );
+    case 'npc.spawn': {
+      const species = String(event.data.species ?? '');
+      bridgeDb.speciesSeen(species, Number(event.data.level) || 0, event.data.rare === true, Number(event.at) || 0);
+      // Boss-shaped spawns become teleport targets: the world announces where
+      // its arenas are, nobody has to type coordinates in.
+      const pos = event.subject?.position;
+      if (pos && /^(BOSS_|Boss_|RAID_|GYM_)/.test(species)) {
+        const label = `Boss: ${palNames.get(species) ?? species}`;
+        bridgeDb.locationSave(label, pos.x, pos.y, pos.z, 'boss');
+      }
       break;
+    }
     default:
       if (event.subject?.kind === 'player') {
         bridgeDb.seen(subjectId, subjectName, Number(event.at) || 0);
@@ -1391,6 +1410,15 @@ const DAEMON_IMPL: Record<
     return { ok: true, data: { group: p.group } };
   },
   'group.list': () => ({ ok: true, data: { groups: bridgeDb.groups() } }),
+  'location.save': (_t, p) => {
+    bridgeDb.locationSave(String(p.name), Number(p.x), Number(p.y), Number(p.z), 'manual');
+    return { ok: true, data: { name: p.name } };
+  },
+  'location.list': () => ({ ok: true, data: { locations: bridgeDb.locations() } }),
+  'location.delete': (_t, p) => {
+    if (!bridgeDb.locationDelete(String(p.name))) return { ok: false, error: 'unknown_location', data: {} };
+    return { ok: true, data: { name: p.name } };
+  },
 };
 
 // Constraint matchers: {"param": {"equals": v} | {"in": [...]} | {"min": n, "max": n}}.
@@ -1426,8 +1454,25 @@ function matchConstraints(
 // permission mutation.
 const roleCache = new Map<string, string | null>();
 
+const ROLES_FILE = path.join(STATE_DIR, 'bridge-roles.tsv');
+
+// The agent prefixes in-game chat from this file — experimental, so it only
+// carries content while the operator has the option on.
+async function writeRolesFile(): Promise<void> {
+  const enabled = bridgeDb.optionGet('chat_roles_ingame') === 'on';
+  const lines = enabled
+    ? bridgeDb.rolesForAll().map((r) => `${r.userid}\t${r.tag}`).join('\n')
+    : '';
+  const tmp = `${ROLES_FILE}.tmp`;
+  try {
+    await fs.writeFile(tmp, lines ? lines + '\n' : '');
+    await fs.rename(tmp, ROLES_FILE);
+  } catch { /* volume hiccup — the next mutation rewrites it */ }
+}
+
 function permCacheBust(): void {
   roleCache.clear();
+  void writeRolesFile();
 }
 
 function roleOf(userid: string): string | null {
@@ -1737,6 +1782,13 @@ app.setNotFoundHandler((req, reply) => {
 });
 
 bridgeDb.ensureDefaultGroup();
+// Species id → display name, for labelling observed boss locations.
+const palNames = new Map<string, string>();
+{
+  const base = await loadCatalog();
+  for (const p of base.pals as { id: string; name: string }[]) palNames.set(p.id, p.name);
+}
+await writeRolesFile();
 // Every callable capability is also a permission node (checked when a call is
 // made on behalf of a player). Default deny: acting as a player needs an
 // explicit grant, which is the entire point of the system.

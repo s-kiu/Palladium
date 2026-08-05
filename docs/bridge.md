@@ -148,9 +148,22 @@ always needs an explicit grant.
 **Roles.** A group can carry a `tag` (`VIP`, `ADMIN`); a player's role is the
 tag of their highest-weight tagged group. It rides on served events as
 `subject.role`, and the panel's chat card shows `[ROLE]` before names when the
-option is on. The in-game chat itself cannot be rewritten — the hook only
-observes messages — so the role is visible everywhere the bridge renders chat,
-not inside the game client.
+option is on. A second, experimental option prefixes the role into the in-game
+chat itself: the agent edits the chat message parameter as the server receives
+it, before the game broadcasts — the one engine write the agent performs, which
+is why it is opt-in. The daemon feeds it via `.state/bridge-roles.tsv`; an
+empty file disables the path entirely, and turning the option off takes effect
+within a second.
+
+## Positions and locations
+
+`player.position` reads an online player's exact world coordinates from the
+engine. `location.save` / `location.list` / `location.delete` keep a named
+location book: stand somewhere worth returning to, read the position, save it
+under a name, and the panel's teleport form offers it from a picker. Boss-
+shaped spawns the world reports (`BOSS_*`, `RAID_*`, `GYM_*` species with a
+position) are recorded automatically as `source: "boss"` — arenas announce
+themselves; nobody types coordinates.
 
 ## Chat commands
 
