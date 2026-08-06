@@ -87,11 +87,9 @@ jobs:
 
       - name: notes
         if: steps.check.outputs.exists == 'false'
-        id: notes
         run: |
           dir="${{ steps.mod.outputs.dir }}"
           {
-            echo 'body<<EOF'
             if [ -f "$dir/mod.json" ]; then
               echo "A script mod: it runs in the pal-up panel, not in the game."
               echo
@@ -107,8 +105,7 @@ jobs:
             fi
             echo
             echo "Writing a mod: [docs/mods.md](https://github.com/${{ github.repository }}/blob/main/docs/mods.md)"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          } > release-notes.md
 
       - name: publish
         if: steps.check.outputs.exists == 'false'
@@ -117,6 +114,6 @@ jobs:
         run: |
           gh release create "${{ steps.mod.outputs.tag }}" \
             --title "${{ matrix.mod }} ${{ steps.mod.outputs.version }}" \
-            --notes "${{ steps.notes.outputs.body }}" \
+            --notes-file release-notes.md \
             "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip" \
             "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip.sha256"
