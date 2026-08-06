@@ -27,11 +27,17 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "3.1.2"
+local VERSION = "4.0.0"
 
 local CAPS = require("generated/capabilities")
+local framework = require("framework")
+local Store = require("store")
+local Collections = require("collections")
+local Permissions = require("permissions")
 
-local PAL_ROOT = os.getenv("PAL_ROOT") or "/palworld"
+local MODS_DIR, MODS_DIR_SOURCE = Store.mods_dir(debug.getinfo(1, "S").source)
+
+local PAL_ROOT, ROOT_SOURCE = Store.resolve_root()
 local EVENT_FILE = PAL_ROOT .. "/logs/bridge-events.jsonl"
 local ACTION_FILE = PAL_ROOT .. "/.state/bridge-actions.jsonl"
 
@@ -52,6 +58,56 @@ local function guard(what, fn, ...)
         info(string.format("%s failed: %s", what, tostring(err)))
     end
     return ok
+end
+
+Store.ensure_dir(PAL_ROOT .. "/logs")
+Store.ensure_dir(PAL_ROOT .. "/.state")
+
+-- Where a mod's own files go. On pal-up the loader reads an rsync mirror, so
+-- the originals — the folders somebody actually dropped mods into — are named
+-- explicitly rather than guessed at; writing to the mirror would be undone on
+-- the next boot.
+local MODS_SOURCE = Store.mods_source()
+local function home_for(folder)
+    return (MODS_SOURCE or MODS_DIR) .. "/" .. folder
+end
+
+Collections.init({ root = PAL_ROOT, info = info, home_for = home_for })
+Collections.home("bridge", home_for(MOD))
+local perms = Permissions.new(Collections)
+
+-- Who has been here, so `firstEver` survives a reboot. A collection like any
+-- other, kept beside Palladium itself.
+local registry = Collections.declare("bridge", "registry", {
+    description = "every player this server has seen, and how often",
+    fields = { name = "string", first = "int", last = "int", joins = "int" },
+})
+
+-- Tags are not a special case any more: they are the collection every mod gets
+-- for free, namespaced per mod so two can both keep a "count".
+local tags = Collections.declare("bridge", "tags", {
+    description = "per-player values mods keep — the persistence primitive",
+    fields = { uid = "player", key = "string", value = "string" },
+})
+
+local locations = Collections.declare("bridge", "locations", {
+    description = "named places worth returning to, and the arenas the world announced",
+    fields = { x = "number", y = "number", z = "number", source = "string", species = "string" },
+})
+
+local species_seen = Collections.declare("bridge", "species", {
+    description = "pal species this world has actually spawned, with the levels they came at",
+    fields = { min_level = "int", max_level = "int", count = "int", rare = "bool", last_at = "int" },
+})
+
+-- → firstEver, firstSeen, joins
+local function record_join(userid, name, now)
+    if userid == "" then return false, now, 1 end
+    local player = registry:get(userid)
+    local joins = (player and tonumber(player.joins) or 0) + 1
+    local first = player and tonumber(player.first) or now
+    registry:set(userid, { name = name, first = first, last = now, joins = joins })
+    return player == nil, first, joins
 end
 
 -- ── JSON ────────────────────────────────────────────────────────────────────
@@ -120,8 +176,15 @@ local function emit(kind, event_type, subject_json, data_fields, extra_fields)
     append_line(table.concat(parts))
 end
 
-local function publish(event_type, subject_json, data_fields)
+-- `subject` is the same subject as a Lua table, for mods loaded into this
+-- state. It is separate from the JSON because nothing here can read JSON back.
+local function publish(event_type, subject_json, data_fields, subject)
     guard("emit " .. event_type, emit, "event", event_type, subject_json, data_fields)
+    -- Mods see the event off the engine thread: this only queues, and the
+    -- action poll delivers, so a slow handler cannot stall a hook.
+    local data = {}
+    for _, pair in ipairs(data_fields or {}) do data[pair[1]] = pair[2] end
+    framework.enqueue(event_type, subject, data)
 end
 
 local function publish_result(id, action_type, ok, err, subject_json, data_fields)
@@ -341,9 +404,26 @@ local function position_json(location)
     return string.format(',"position":{"x":%.1f,"y":%.1f,"z":%.1f}', x, y or 0, z or 0)
 end
 
+-- The role is the tag of a player's highest-weight group, and it is attached
+-- here because this is the process that can answer it — the panel used to add
+-- it from a database it no longer owns.
+local function role_of(userid)
+    if not perms or userid == "" then return nil end
+    local ok, tag = pcall(function() return perms:role(userid) end)
+    return ok and tag or nil
+end
+
 local function player_subject(state)
-    return '{"kind":"player","id":' .. json_string(player_userid(state), 64)
-        .. ',"name":' .. json_string(player_name(state), 64) .. "}"
+    local userid = player_userid(state)
+    local role = role_of(userid)
+    return '{"kind":"player","id":' .. json_string(userid, 64)
+        .. ',"name":' .. json_string(player_name(state), 64)
+        .. (role and (',"role":' .. json_string(role, 32)) or "") .. "}"
+end
+
+local function subject_of(state)
+    local userid = player_userid(state)
+    return { kind = "player", id = userid, name = player_name(state), role = role_of(userid) }
 end
 
 local function pal_subject(species, location, pal_id)
@@ -362,6 +442,57 @@ local BRIDGE_SUBJECT = '{"kind":"bridge","id":"' .. MOD .. '"}'
 local online = {}            -- userid → last event epoch
 local seen_this_run = {}     -- userid → true
 local expecting_respawn = {} -- userid → true after a death
+
+-- Leaving is the one thing the engine will not announce: no native disconnect
+-- exists on this loader, and a Blueprint hook faults the process rather than
+-- failing. So the agent watches who is still in the world instead.
+--
+-- A player has to be missing from two consecutive scans before it counts. One
+-- empty result is a level transition or a bad moment to ask, not an empty
+-- server, and announcing that everybody left is the kind of mistake a mod acts
+-- on.
+local LEAVE_SCAN_MS = 2000
+local LEAVE_MISSES = 2
+local present = {}  -- userid → name, as of the last scan
+local missing = {}  -- userid → consecutive scans not seen
+
+local function scan_for_leaves()
+    local ok, states = pcall(FindAllOf, "PalPlayerState")
+    if not ok or type(states) ~= "table" then return end -- asking failed; nobody left
+
+    local seen = {}
+    for _, state in ipairs(states) do
+        if valid(state) then
+            local userid = player_userid(state)
+            if userid ~= "" then seen[userid] = player_name(state) end
+        end
+    end
+
+    for userid, name in pairs(seen) do
+        present[userid] = name
+        missing[userid] = nil
+    end
+
+    for userid, name in pairs(present) do
+        if seen[userid] == nil then
+            local misses = (missing[userid] or 0) + 1
+            missing[userid] = misses
+            if misses >= LEAVE_MISSES then
+                present[userid] = nil
+                missing[userid] = nil
+                -- A rejoin has to read as a join, not get deduplicated away as
+                -- engine noise from the session that just ended.
+                online[userid] = nil
+                expecting_respawn[userid] = nil
+                publish("player.leave",
+                    '{"kind":"player","id":' .. json_string(userid, 64)
+                        .. ',"name":' .. json_string(name, 64) .. "}",
+                    { { "source", "agent" } },
+                    { kind = "player", id = userid, name = name })
+            end
+        end
+    end
+end
 
 -- ── hook handlers ───────────────────────────────────────────────────────────
 local MESSAGE_FIELDS = { "Message", "message", "Text", "ChatMessage" }
@@ -391,7 +522,7 @@ local function on_chat(context, first, second)
         return
     end
     local state = state_of(controller)
-    publish("player.chat", player_subject(state), { { "message", message } })
+    publish("player.chat", player_subject(state), { { "message", message } }, subject_of(state))
 end
 
 local function on_character_init(context)
@@ -412,7 +543,7 @@ local function on_character_init(context)
     if expecting_respawn[userid] then
         expecting_respawn[userid] = nil
         online[userid] = now
-        publish("player.respawn", player_subject(state), {})
+        publish("player.respawn", player_subject(state), {}, subject_of(state))
         return
     end
     if online[userid] and (now - online[userid]) < JOIN_DEDUP_SECONDS then
@@ -421,9 +552,21 @@ local function on_character_init(context)
     end
 
     online[userid] = now
+    -- firstEver comes from the registry, not from this run: the event file is
+    -- emptied every boot, so nothing in it can answer "have they ever been
+    -- here" on its own.
+    -- Tracked from the join rather than waiting for the next scan, so a player
+    -- who joins and leaves inside one scan window still produces a leave.
+    present[userid] = player_name(state)
+    missing[userid] = nil
+
+    local first_ever, first_seen, joins = record_join(userid, player_name(state), now)
     publish("player.join", player_subject(state), {
         { "firstThisRun", seen_this_run[userid] == nil },
-    })
+        { "firstEver", first_ever },
+        { "firstSeen", first_seen },
+        { "joins", joins },
+    }, subject_of(state))
     seen_this_run[userid] = true
 end
 
@@ -450,7 +593,7 @@ local function on_death(_, event)
             end
         end
     end
-    publish("player.death", player_subject(victim_state), data)
+    publish("player.death", player_subject(victim_state), data, subject_of(victim_state))
 end
 
 -- Fires for every character parameter init near players — the world spawning.
@@ -484,11 +627,37 @@ local function on_param_init(context)
     end
 
     local level = member(save, "Level")
+    local at_level = type(level) == "number" and level or 0
+    local rare = member(save, "IsRarePal") == true
+
+    -- What this world actually spawns, so a picker can offer the species that
+    -- exist here rather than the whole datamined list.
+    local seen = species_seen:get(species)
+    species_seen:set(species, {
+        min_level = math.min(tonumber(seen and seen.min_level) or at_level, at_level),
+        max_level = math.max(tonumber(seen and seen.max_level) or at_level, at_level),
+        count = (tonumber(seen and seen.count) or 0) + 1,
+        rare = (rare or (seen and seen.rare == "true")) and "true" or "false",
+        last_at = os.time(),
+    })
+
+    -- Boss-shaped spawns become teleport targets: the world announces where
+    -- its arenas are, and nobody has to type coordinates in.
+    if location and species:match("^BOSS_") or species:match("^Boss_")
+        or species:match("^RAID_") or species:match("^GYM_") then
+        local x, y, z = member(location, "X"), member(location, "Y"), member(location, "Z")
+        if type(x) == "number" then
+            locations:set("Boss: " .. species, {
+                x = x, y = y or 0, z = z or 0, source = "boss", species = species,
+            })
+        end
+    end
+
     publish("npc.spawn", pal_subject(species, location, pal_id_of(parameter)), {
         { "species", species },
         { "level", type(level) == "number" and level or 0 },
         { "rare", member(save, "IsRarePal") == true },
-    })
+    }, { kind = "pal", id = pal_id_of(parameter), name = species })
 end
 
 -- ── action parameter validation (specs come from the generated table) ───────
@@ -1863,18 +2032,292 @@ IMPL["bridge.probe"] = function(state, p)
     }
 end
 
+
+
+-- ── permissions and tags, in the process that owns them ─────────────────────
+-- These used to be answered by the panel against its database. They are the
+-- agent's now, because a mod running in here has to be able to ask the same
+-- questions with no panel in the picture — and because two copies of the
+-- answer is one copy too many.
+
+IMPL["permission.register"] = function(_state, p)
+    local mod = tostring(p.mod or ""):lower()
+    if not mod:match("^[a-z0-9_-][a-z0-9_-]*$") then return false, "invalid_params: mod", {} end
+    local node = tostring(p.node or ""):lower()
+    -- A mod may only name nodes under itself. `bridge` is the exception on
+    -- purpose: it is not a mod competing for names, it is the framework, and
+    -- its nodes are the capability types themselves — `pal.spawn` gates
+    -- pal.spawn.
+    if mod ~= "bridge" and node:sub(1, #mod + 1) ~= mod .. "." then
+        return false, string.format("invalid_params: node '%s' must start with '%s.'", node, mod), {}
+    end
+    perms:register(mod, { { node = node, description = p.description, default = p.default } })
+    return true, nil, { { "node", node } }
+end
+
+IMPL["permission.check"] = function(_state, p, _finish, raw)
+    -- Everything beyond the node is the call being asked about, so a
+    -- constrained grant is matched here rather than by whoever asked.
+    local params = {}
+    for key, value in pairs(raw or {}) do
+        if key ~= "id" and key ~= "action" and key ~= "userid" and key ~= "node" then
+            params[key] = value
+        end
+    end
+    local allowed, source, where, violation = perms:resolve(raw.userid or "", p.node, params)
+    return true, nil, {
+        { "allowed", allowed == true },
+        { "source", source },
+        { "constraints", where },
+        { "violation", violation },
+    }
+end
+
+IMPL["permission.nodes"] = function()
+    local parts = {}
+    local ids = {}
+    for node in pairs(perms:nodes()) do ids[#ids + 1] = node end
+    table.sort(ids)
+    for _, node in ipairs(ids) do
+        local record = perms:nodes()[node]
+        parts[#parts + 1] = string.format('{"node":%s,"mod":%s,"description":%s,"default":%s}',
+            json_string(node, 128), json_string(perms.owner_of(node), 32),
+            json_string(record.description or "", 200), json_string(record.default, 8))
+    end
+    return true, nil, { { "nodes", { raw = "[" .. table.concat(parts, ",") .. "]" } } }
+end
+
+IMPL["permission.grant"] = function(_state, p, _finish, raw)
+    perms:grant(raw.userid or "", p.node, p.effect, p.where)
+    return true, nil, { { "node", p.node } }
+end
+
+IMPL["permission.revoke"] = function(_state, p, _finish, raw)
+    return perms:revoke(raw.userid or "", p.node) == true, nil, { { "node", p.node } }
+end
+
+IMPL["permission.player"] = function(_state, p, _finish, raw)
+    local uid = raw.userid or ""
+    local groups = {}
+    for _, group in ipairs(perms:groups_of(uid)) do groups[#groups + 1] = json_string(group.name, 64) end
+    local entries = {}
+    for _, entry in ipairs(perms:user_entries(uid)) do
+        entries[#entries + 1] = string.format('{"node":%s,"effect":%s}',
+            json_string(entry.node, 128), json_string(entry.effect, 8))
+    end
+    return true, nil, {
+        { "groups", { raw = "[" .. table.concat(groups, ",") .. "]" } },
+        { "entries", { raw = "[" .. table.concat(entries, ",") .. "]" } },
+        { "role", perms:role(uid) },
+    }
+end
+
+IMPL["group.create"] = function(_state, p)
+    local ok, err = perms:group_create(p.name, p.tag, p.weight)
+    return ok == true, err, { { "name", p.name } }
+end
+
+IMPL["group.update"] = function(_state, p)
+    local ok, err = perms:group_update(p.name, p.tag, p.weight)
+    return ok == true, err, { { "name", p.name } }
+end
+
+IMPL["group.delete"] = function(_state, p)
+    local ok, err = perms:group_delete(p.name)
+    return ok == true, err, { { "name", p.name } }
+end
+
+IMPL["group.set_entry"] = function(_state, p)
+    local ok, err = perms:group_set_entry(p.group, p.node, p.effect, p.where)
+    return ok == true, err, { { "group", p.group }, { "node", p.node } }
+end
+
+IMPL["group.remove_entry"] = function(_state, p)
+    local ok, err = perms:group_remove_entry(p.group, p.node)
+    return ok == true, err, { { "group", p.group }, { "node", p.node } }
+end
+
+IMPL["group.assign"] = function(_state, p, _finish, raw)
+    local ok, err = perms:assign(raw.userid or "", p.group)
+    return ok == true, err, { { "group", p.group } }
+end
+
+IMPL["group.unassign"] = function(_state, p, _finish, raw)
+    return perms:unassign(raw.userid or "", p.group) == true, nil, { { "group", p.group } }
+end
+
+IMPL["group.list"] = function()
+    local parts = {}
+    local names = {}
+    for name in pairs(perms:groups()) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local record = perms:groups()[name]
+        local entries = {}
+        for _, entry in ipairs(perms:entries_of(name)) do
+            entries[#entries + 1] = string.format('{"node":%s,"effect":%s}',
+                json_string(entry.node, 128), json_string(entry.effect, 8))
+        end
+        parts[#parts + 1] = string.format(
+            '{"name":%s,"tag":%s,"weight":%d,"isDefault":%s,"entries":[%s]}',
+            json_string(name, 64), json_string(record.tag or "", 32),
+            tonumber(record.weight) or 0, record.is_default == "true" and "true" or "false",
+            table.concat(entries, ","))
+    end
+    return true, nil, { { "groups", { raw = "[" .. table.concat(parts, ",") .. "]" } } }
+end
+
+-- Tags keep their own capability names; underneath they are the bridge.tags
+-- collection like everything else.
+IMPL["player.set_tag"] = function(_state, p, _finish, raw)
+    local uid = raw.userid or ""
+    tags:set(uid .. "\30" .. tostring(p.key), { uid = uid, key = p.key, value = p.value })
+    return true, nil, { { "key", p.key }, { "value", p.value } }
+end
+
+IMPL["player.get_tag"] = function(_state, p, _finish, raw)
+    local record = tags:get((raw.userid or "") .. "\30" .. tostring(p.key))
+    return true, nil, { { "key", p.key }, { "value", record and record.value or nil } }
+end
+
+IMPL["player.delete_tag"] = function(_state, p, _finish, raw)
+    local removed = tags:delete((raw.userid or "") .. "\30" .. tostring(p.key))
+    return true, nil, { { "key", p.key }, { "removed", removed == true } }
+end
+
+
+IMPL["location.save"] = function(_state, p)
+    locations:set(p.name, { x = p.x, y = p.y, z = p.z, source = "manual" })
+    return true, nil, { { "name", p.name } }
+end
+
+IMPL["location.list"] = function()
+    local parts = {}
+    local names = {}
+    for name in pairs(locations:all()) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local r = locations:get(name)
+        parts[#parts + 1] = string.format('{"name":%s,"x":%s,"y":%s,"z":%s,"source":%s,"species":%s}',
+            json_string(name, 96), tostring(tonumber(r.x) or 0), tostring(tonumber(r.y) or 0),
+            tostring(tonumber(r.z) or 0), json_string(r.source or "manual", 16),
+            json_string(r.species or "", 64))
+    end
+    return true, nil, { { "locations", { raw = "[" .. table.concat(parts, ",") .. "]" } } }
+end
+
+IMPL["location.delete"] = function(_state, p)
+    if not locations:delete(p.name) then return false, "unknown_location", {} end
+    return true, nil, { { "name", p.name } }
+end
+
+-- ── collections over the wire ───────────────────────────────────────────────
+-- The generic door onto everything stored. A caller that has never heard of a
+-- collection can list what exists, read its shape, and edit it — which is what
+-- lets the panel show a mod's data without being taught about the mod.
+
+local COLLECTION_RESERVED = { id = true, action = true, userid = true, collection = true, record = true }
+
+local function collection_or_error(name)
+    local spec = Collections.spec(tostring(name or ""))
+    if not spec then return nil, "unknown_collection: " .. tostring(name) end
+    return Collections.open(spec.qualified), spec
+end
+
+local function record_json(fields)
+    if fields == nil then return "null" end
+    local parts = {}
+    for _, key in ipairs((function()
+        local keys = {}
+        for k in pairs(fields) do keys[#keys + 1] = k end
+        table.sort(keys)
+        return keys
+    end)()) do
+        local value = fields[key]
+        if type(value) == "table" then
+            local items = {}
+            for _, item in ipairs(value) do items[#items + 1] = json_string(item, MAX_TEXT) end
+            parts[#parts + 1] = json_string(key, 64) .. ":[" .. table.concat(items, ",") .. "]"
+        else
+            parts[#parts + 1] = json_string(key, 64) .. ":" .. json_string(value, MAX_TEXT)
+        end
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+IMPL["data.collections"] = function()
+    local parts = {}
+    for _, c in ipairs(Collections.all()) do
+        local fields = {}
+        for field, kind in pairs(c.fields or {}) do
+            fields[#fields + 1] = json_string(field, 48) .. ":" .. json_string(kind, 24)
+        end
+        table.sort(fields)
+        parts[#parts + 1] = string.format(
+            '{"name":%s,"owner":%s,"description":%s,"storage":%s,"file":%s,"count":%d,"fields":{%s}}',
+            json_string(c.qualified, 96), json_string(c.owner, 32),
+            json_string(c.description or "", 200), json_string(c.storage, 8),
+            c.file and json_string(c.file, 64) or "null", c.count, table.concat(fields, ","))
+    end
+    return true, nil, { { "collections", { raw = "[" .. table.concat(parts, ",") .. "]" } } }
+end
+
+IMPL["data.list"] = function(_state, p)
+    local handle, err = collection_or_error(p.collection)
+    if not handle then return false, err, {} end
+    local parts, count = {}, 0
+    local ids = {}
+    for id in pairs(handle:all()) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+        parts[#parts + 1] = json_string(id, 128) .. ":" .. record_json(handle:get(id))
+        count = count + 1
+    end
+    return true, nil, {
+        { "collection", p.collection },
+        { "count", count },
+        { "records", { raw = "{" .. table.concat(parts, ",") .. "}" } },
+    }
+end
+
+IMPL["data.get"] = function(_state, p)
+    local handle, err = collection_or_error(p.collection)
+    if not handle then return false, err, {} end
+    return true, nil, { { "record", { raw = record_json(handle:get(p.record)) } } }
+end
+
+IMPL["data.set"] = function(_state, p, _finish, raw)
+    local handle, err = collection_or_error(p.collection)
+    if not handle then return false, err, {} end
+    local fields = {}
+    for key, value in pairs(raw or {}) do
+        if not COLLECTION_RESERVED[key] then fields[key] = value end
+    end
+    if not handle:set(p.record, fields) then return false, "write_failed", {} end
+    return true, nil, { { "collection", p.collection }, { "record", p.record } }
+end
+
+IMPL["data.delete"] = function(_state, p)
+    local handle, err = collection_or_error(p.collection)
+    if not handle then return false, err, {} end
+    return true, nil, { { "removed", handle:delete(p.record) == true } }
+end
+
 -- ── action dispatch ─────────────────────────────────────────────────────────
-local function run_action(request)
-    local action_type = request.action or ""
+-- One path for both doors: the action file the daemon writes, and a mod in
+-- this state calling pal.call. `report` receives (ok, err, data, subject) when
+-- the engine has answered, which is later than the return — actions run on the
+-- game thread, and some of them defer beyond that.
+local function invoke(action_type, userid, raw, report)
     local spec = CAPS.actions[action_type]
     local handler = IMPL[action_type]
     if not spec or not handler then
-        publish_result(request.id or "", action_type, false, "unknown_action", nil, {})
+        report(false, "unknown_action", {}, nil)
         return
     end
-    local params, invalid = validate(spec.params, request)
+    local params, invalid = validate(spec.params, raw)
     if not params then
-        publish_result(request.id or "", action_type, false, invalid, nil, {})
+        report(false, invalid, {}, nil)
         return
     end
 
@@ -1885,21 +2328,21 @@ local function run_action(request)
     local function execute()
         local state = nil
         if needs_player then
-            state = find_player_state(request.userid)
+            state = find_player_state(userid)
             if not state then
-                publish_result(request.id or "", action_type, false, "player_offline", nil, {})
+                report(false, "player_offline", {}, nil)
                 return
             end
-        elseif request.userid and request.userid ~= "" then
-            state = find_player_state(request.userid)
+        elseif userid and userid ~= "" then
+            state = find_player_state(userid)
         end
         local subject = state and player_subject(state) or nil
         local function finish(ok_value, err_value, data_value)
-            publish_result(request.id or "", action_type, ok_value == true, err_value, subject, data_value)
+            report(ok_value == true, err_value, data_value, subject)
         end
         -- A handler returning "deferred" publishes its own result later: the
         -- only way pal.spawn can report an id the engine has not assigned yet.
-        local ok, result, err, data = pcall(handler, state, params, finish)
+        local ok, result, err, data = pcall(handler, state, params, finish, raw)
         if not ok then
             finish(false, tostring(result), {})
             return
@@ -1912,6 +2355,13 @@ local function run_action(request)
     else
         execute()
     end
+end
+
+local function run_action(request)
+    local action_type = request.action or ""
+    invoke(action_type, request.userid, request, function(ok, err, data, subject)
+        publish_result(request.id or "", action_type, ok, err, subject, data or {})
+    end)
 end
 
 local function parse_request(line)
@@ -2012,9 +2462,50 @@ else
     register_all()
 end
 
+-- Mods are loaded into this state and driven from here: every capability
+-- above is theirs to call, and the registry snapshot is how anything outside
+-- the game learns what they added.
+-- What a mod may hold a handler for: everything with a hook, plus the ones the
+-- agent produces without one.
+local PUBLISHED = { ["player.leave"] = true, ["bridge.ready"] = true, ["bridge.hook"] = true }
+for _, event in ipairs(CAPS.events or {}) do PUBLISHED[event.type] = true end
+
+framework.init({
+    info = info,
+    call = invoke,
+    event_types = PUBLISHED,
+    capabilities = CAPS.actions,
+    collections = Collections,
+    home_for = home_for,
+    tags = tags,
+    root = PAL_ROOT,
+    mods_dir = MODS_DIR,
+    json_string = json_string,
+    agent = MOD,
+    permissions = perms,
+})
+guard("mod loading", framework.load)
+guard("mod registry snapshot", framework.snapshot)
+
 if type(LoopAsync) == "function" then
+    local LEAVE_SCAN_TICKS = math.max(1, math.floor(LEAVE_SCAN_MS / ACTION_POLL_MS))
+    local tick = 0
     LoopAsync(ACTION_POLL_MS, function()
         guard("action poll", poll_actions)
+        guard("mod dispatch", framework.drain)
+        tick = tick + 1
+        -- An operator editing permissions.config by hand is meant to work, so
+        -- the config files are re-read on the same cadence as the leave scan.
+        if tick % LEAVE_SCAN_TICKS == 0 then guard("config reload", Collections.reload_changed) end
+        if tick % LEAVE_SCAN_TICKS == 0 then
+            -- Enumerating actors is engine work, so it goes where every other
+            -- engine call in this file goes.
+            if type(ExecuteInGameThread) == "function" then
+                ExecuteInGameThread(function() guard("leave scan", scan_for_leaves) end)
+            else
+                guard("leave scan", scan_for_leaves)
+            end
+        end
         return false
     end)
 else
@@ -2022,3 +2513,7 @@ else
 end
 
 info(string.format("v%s loaded (envelope %d), events -> %s", VERSION, CAPS.envelope, EVENT_FILE))
+info(string.format("state root %s (%s)", PAL_ROOT, ROOT_SOURCE))
+info(string.format("each mod keeps its files in %s/<Mod>/",
+    MODS_SOURCE or MODS_DIR))
+info(string.format("mods from %s (%s)", MODS_DIR, MODS_DIR_SOURCE))

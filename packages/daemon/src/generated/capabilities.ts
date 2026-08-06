@@ -105,23 +105,20 @@ export const CAPABILITIES: Capability[] = [
     "subject": "player",
     "since": "1.1.0",
     "stability": "stable",
-    "summary": "A player's character finished initialising after connecting. firstEver/joins/firstSeen are enriched by the daemon from its database and are present on the HTTP door only.",
+    "summary": "A player's character finished initialising after connecting. firstEver, firstSeen and joins come from the agent's own registry, which outlives the event file.",
     "scope": "read",
     "data": {
       "firstThisRun": {
         "type": "bool"
       },
       "firstEver": {
-        "type": "bool",
-        "enriched": true
+        "type": "bool"
       },
       "firstSeen": {
-        "type": "int",
-        "enriched": true
+        "type": "int"
       },
       "joins": {
-        "type": "int",
-        "enriched": true
+        "type": "int"
       }
     }
   },
@@ -161,12 +158,12 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "player.leave",
     "kind": "event",
-    "runtime": "daemon",
+    "runtime": "agent",
     "subject": "player",
     "since": "1.1.0",
     "stability": "stable",
     "scope": "read",
-    "summary": "A player disconnected. Derived from the game's REST player list (no hookable disconnect exists on this loader), so it arrives within a few seconds rather than instantly.",
+    "summary": "A player disconnected. No hookable disconnect exists on this loader, so the agent notices by watching who is still in the world and reports it within a few seconds rather than instantly.",
     "data": {
       "source": {
         "type": "string"
@@ -438,7 +435,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "player.set_tag",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "player",
     "target": "player",
     "since": "2.0.0",
@@ -464,12 +461,13 @@ export const CAPABILITIES: Capability[] = [
     "errors": [
       "unknown_player",
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "player.get_tag",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "player",
     "target": "player",
     "since": "2.0.0",
@@ -489,12 +487,13 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "player.delete_tag",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "player",
     "target": "player",
     "since": "2.0.0",
@@ -513,7 +512,8 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "server.announce",
@@ -541,25 +541,34 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "permission.register",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
-    "summary": "A mod registers the permission nodes it owns, namespaced by its name, each with a description and a default effect. Registration is idempotent — call it on every startup.",
+    "summary": "A mod registers one permission node it owns, namespaced by its name, with a description and a default effect. Idempotent, and an operator's change to the default in permissions.config outranks it.",
     "params": {
       "mod": {
         "type": "string",
         "required": true,
         "maxLen": 32
       },
-      "nodes": {
-        "type": "json",
-        "required": true
+      "node": {
+        "type": "string",
+        "required": true,
+        "maxLen": 128
+      },
+      "description": {
+        "type": "string",
+        "maxLen": 200
+      },
+      "default": {
+        "type": "string",
+        "maxLen": 8
       }
     },
     "returns": {
-      "registered": "int"
+      "node": "string"
     },
     "errors": [
       "invalid_params"
@@ -568,36 +577,35 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "permission.check",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "read",
-    "summary": "May this player do this? Resolves user overrides, then groups by weight, then the default group; deny beats allow. With `where`, the winning entry's constraints are also enforced — 'may spawn, but only Lamball' is one node plus a constraint.",
+    "summary": "May this player do this? Resolves user overrides, then groups by weight, then the default group, then the node's default; deny beats allow. Any parameter beyond `node` is taken as the call being asked about and matched against the winning entry's constraint — 'may spawn, but only Lamball' is one node plus a constraint.",
     "params": {
       "node": {
         "type": "string",
         "required": true,
         "maxLen": 128
-      },
-      "where": {
-        "type": "json"
       }
     },
     "returns": {
       "allowed": "bool",
       "source": "string",
-      "constraints": "json"
+      "constraints": "string",
+      "violation": "string"
     },
     "errors": [
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "permission.grant",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
@@ -625,12 +633,13 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "permission.revoke",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
@@ -649,12 +658,13 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "invalid_params"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "permission.nodes",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -669,7 +679,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "permission.player",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
@@ -682,12 +692,13 @@ export const CAPABILITIES: Capability[] = [
       "entries": "json",
       "role": "string|null"
     },
-    "errors": []
+    "errors": [],
+    "targetOptional": true
   },
   {
     "type": "group.create",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -720,7 +731,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "group.update",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -752,7 +763,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "group.delete",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -774,7 +785,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "group.set_entry",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -811,7 +822,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "group.remove_entry",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -839,7 +850,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "group.assign",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
@@ -858,12 +869,13 @@ export const CAPABILITIES: Capability[] = [
     "errors": [
       "unknown_group",
       "unknown_player"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "group.unassign",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "target": "player",
     "since": "2.1.0",
@@ -881,12 +893,13 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "unknown_group"
-    ]
+    ],
+    "targetOptional": true
   },
   {
     "type": "group.list",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
@@ -921,7 +934,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "location.save",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "world",
     "since": "2.1.0",
     "stability": "stable",
@@ -956,7 +969,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "location.list",
     "kind": "query",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "world",
     "since": "2.1.0",
     "stability": "stable",
@@ -971,7 +984,7 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "location.delete",
     "kind": "action",
-    "runtime": "daemon",
+    "runtime": "agent",
     "group": "world",
     "since": "2.1.0",
     "stability": "stable",
@@ -1439,6 +1452,135 @@ export const CAPABILITIES: Capability[] = [
       "player_offline",
       "pal_not_found",
       "not_supported"
+    ]
+  },
+  {
+    "type": "data.collections",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "world",
+    "since": "3.2.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Every collection the agent and its mods have declared, with its owner, storage class and field shape — enough to render one this caller has never heard of.",
+    "params": {},
+    "returns": {
+      "collections": "json"
+    },
+    "errors": []
+  },
+  {
+    "type": "data.list",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "world",
+    "since": "3.2.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Every record in one collection, by its qualified name (owner.name).",
+    "params": {
+      "collection": {
+        "type": "string",
+        "required": true,
+        "maxLen": 96
+      }
+    },
+    "returns": {
+      "collection": "string",
+      "records": "json",
+      "count": "int"
+    },
+    "errors": [
+      "unknown_collection",
+      "invalid_params"
+    ]
+  },
+  {
+    "type": "data.get",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "world",
+    "since": "3.2.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "One record from a collection. ok with record null when it is not there.",
+    "params": {
+      "collection": {
+        "type": "string",
+        "required": true,
+        "maxLen": 96
+      },
+      "record": {
+        "type": "string",
+        "required": true,
+        "maxLen": 128
+      }
+    },
+    "returns": {
+      "record": "json"
+    },
+    "errors": [
+      "unknown_collection",
+      "invalid_params"
+    ]
+  },
+  {
+    "type": "data.set",
+    "kind": "action",
+    "runtime": "agent",
+    "group": "world",
+    "since": "3.2.0",
+    "stability": "experimental",
+    "scope": "write",
+    "summary": "Write one record. Every parameter beyond collection and record becomes a field on it, so the call carries the shape the collection declared. List-valued fields cannot be set this way yet.",
+    "params": {
+      "collection": {
+        "type": "string",
+        "required": true,
+        "maxLen": 96
+      },
+      "record": {
+        "type": "string",
+        "required": true,
+        "maxLen": 128
+      }
+    },
+    "returns": {
+      "collection": "string",
+      "record": "string"
+    },
+    "errors": [
+      "unknown_collection",
+      "invalid_params"
+    ]
+  },
+  {
+    "type": "data.delete",
+    "kind": "action",
+    "runtime": "agent",
+    "group": "world",
+    "since": "3.2.0",
+    "stability": "experimental",
+    "scope": "write",
+    "summary": "Remove one record from a collection.",
+    "params": {
+      "collection": {
+        "type": "string",
+        "required": true,
+        "maxLen": 96
+      },
+      "record": {
+        "type": "string",
+        "required": true,
+        "maxLen": 128
+      }
+    },
+    "returns": {
+      "removed": "bool"
+    },
+    "errors": [
+      "unknown_collection",
+      "invalid_params"
     ]
   }
 ];

@@ -226,9 +226,14 @@ _G.ExecuteInGameThread = function(fn) fn() end
 _G.LoopAsync = function(_, fn) poll_fn = fn end
 _G.GetOwnerController = function() return nil end
 
+os.execute("mkdir -p '" .. ROOT .. "/Mods/Palladium'")
 local host_getenv = os.getenv
 os.getenv = function(name)
     if name == "PAL_ROOT" then return ROOT end
+    -- Without these the agent finds the repo's own mods and writes its files
+    -- into them: the feature working, in the last place a test should touch.
+    if name == "PALLADIUM_MODS_DIR" then return ROOT .. "/Mods" end
+    if name == "PALLADIUM_MODS_SOURCE" then return nil end
     return host_getenv(name)
 end
 
@@ -447,6 +452,148 @@ check("probe reports properties, not only functions",
     last_result():find('"properties":%["StatusPointList"%]') ~= nil, last_result())
 check("probe reports the functions in the same answer",
     last_result():find('"functions":') ~= nil, last_result())
+
+
+-- ── leaving ─────────────────────────────────────────────────────────────────
+-- The engine announces joins and never announces leaves, so the agent watches
+-- who is still in the world. Two consecutive misses before it counts, because
+-- one bad scan is a level transition and not an empty server.
+
+local function last_event(event_type)
+    local last = ""
+    for line in io.lines(EVENTS) do
+        if line:find('"type":"' .. event_type .. '"', 1, true) then last = line end
+    end
+    return last
+end
+
+local connected = { player_state }
+_G.FindAllOf = function(class)
+    if class == "PalPlayerState" then return connected end
+    if class == "PalCharacter" then return loaded_pals end
+    return {}
+end
+
+-- The scan runs on every fourth poll; one call here is one scan.
+local function scan()
+    for _ = 1, 4 do poll_fn() end
+    drain()
+end
+
+scan()
+check("a player still in the world produces no leave", last_event("player.leave") == "",
+    last_event("player.leave"))
+
+connected = {}
+scan()
+check("one missed scan is not a leave", last_event("player.leave") == "", last_event("player.leave"))
+
+scan()
+local left = last_event("player.leave")
+check("a second missed scan is", left ~= "", "no leave event")
+check("and it names the player who went", left:find(USERID, 1, true) ~= nil, left)
+check("and says the agent noticed, not the panel",
+    left:find('"source":"agent"', 1, true) ~= nil, left)
+
+-- Coming back has to read as a join, so the leave must clear the dedup window.
+connected = { player_state }
+scan()
+local leaves = 0
+for line in io.lines(EVENTS) do
+    if line:find('"type":"player.leave"', 1, true) then leaves = leaves + 1 end
+end
+check("returning does not produce a second leave", leaves == 1, leaves)
+
+
+-- ── collections over the wire ───────────────────────────────────────────────
+-- The generic door: list what exists, read a record, write one, remove it —
+-- without the caller knowing anything about the collection beforehand.
+
+send("id=d1\taction=data.collections")
+check("collections can be enumerated",
+    last_result():find('"name":"bridge.tags"', 1, true) ~= nil, last_result())
+check("with the shape needed to render one",
+    last_result():find('"storage":"data"', 1, true) ~= nil, last_result())
+
+send("id=d2\taction=data.set\tcollection=bridge.tags\trecord=" .. USERID .. "\30demo.count\tvalue=7\tuid=" .. USERID)
+check("a record can be written", last_result():find('"ok":true', 1, true) ~= nil, last_result())
+
+send("id=d3\taction=data.get\tcollection=bridge.tags\trecord=" .. USERID .. "\30demo.count")
+check("and read back with the fields it was given",
+    last_result():find('"value":"7"', 1, true) ~= nil, last_result())
+
+send("id=d4\taction=data.list\tcollection=bridge.tags")
+check("listing a collection answers its records and a count",
+    last_result():find('"count":1', 1, true) ~= nil, last_result())
+
+send("id=d5\taction=data.delete\tcollection=bridge.tags\trecord=" .. USERID .. "\30demo.count")
+check("a record can be removed", last_result():find('"removed":true', 1, true) ~= nil, last_result())
+
+send("id=d6\taction=data.get\tcollection=bridge.tags\trecord=" .. USERID .. "\30demo.count")
+check("and is gone afterwards", last_result():find('"record":null', 1, true) ~= nil, last_result())
+
+send("id=d7\taction=data.list\tcollection=nope.nothing")
+check("an unknown collection is refused by name",
+    last_result():find("unknown_collection: nope.nothing", 1, true) ~= nil, last_result())
+
+
+-- ── permissions, answered by the agent ──────────────────────────────────────
+-- These used to be the panel's. Asking through the same door a script mod or
+-- an external program uses proves the move is real.
+
+send("id=p1\taction=permission.register\tmod=demo\tnode=demo.thing\tdescription=do the thing\tdefault=allow")
+check("a mod registers a node", last_result():find('"ok":true', 1, true) ~= nil, last_result())
+
+send("id=p2\taction=permission.register\tmod=demo\tnode=other.thing")
+check("but not one outside its own namespace",
+    last_result():find("must start with 'demo.'", 1, true) ~= nil, last_result())
+
+-- The framework's own nodes are the capability names, which start with no
+-- mod's name. Rejecting those would leave every built-in ungated.
+send("id=p2b\taction=permission.register\tmod=bridge\tnode=pal.spawn\tdescription=call pal.spawn on behalf of a player\tdefault=deny")
+check("bridge may register a capability node under its own name",
+    last_result():find('"ok":true', 1, true) ~= nil, last_result())
+send("id=p2c\taction=permission.check\tuserid=" .. USERID .. "\tnode=pal.spawn")
+check("and it gates that capability, denied by default",
+    last_result():find('"allowed":false', 1, true) ~= nil, last_result())
+
+send("id=p3\taction=permission.check\tuserid=" .. USERID .. "\tnode=demo.thing")
+check("checking a node falls back to its default",
+    last_result():find('"allowed":true', 1, true) ~= nil, last_result())
+
+send("id=p4\taction=group.create\tname=vip\ttag=VIP\tweight=10")
+send("id=p5\taction=group.set_entry\tgroup=vip\tnode=demo.thing\teffect=deny")
+send("id=p6\taction=group.assign\tuserid=" .. USERID .. "\tgroup=vip")
+send("id=p7\taction=permission.check\tuserid=" .. USERID .. "\tnode=demo.thing")
+check("a group the player is in beats the default",
+    last_result():find('"allowed":false', 1, true) ~= nil, last_result())
+
+send("id=p8\taction=permission.grant\tuserid=" .. USERID .. "\tnode=demo.thing\teffect=allow")
+send("id=p9\taction=permission.check\tuserid=" .. USERID .. "\tnode=demo.thing")
+check("and a personal grant beats the group",
+    last_result():find('"allowed":true', 1, true) ~= nil, last_result())
+
+send("id=p10\taction=permission.player\tuserid=" .. USERID)
+check("a player's groups and role come back together",
+    last_result():find('"role":"VIP"', 1, true) ~= nil, last_result())
+
+send("id=p11\taction=group.list")
+check("groups list with what they grant",
+    last_result():find('"name":"vip"', 1, true) ~= nil, last_result())
+
+send("id=p12\taction=permission.nodes")
+check("and every node says which mod owns it",
+    last_result():find('"mod":"demo"', 1, true) ~= nil, last_result())
+
+-- Granting to somebody who is not online has to work: that is most of the job.
+send("id=p13\taction=permission.grant\tuserid=00000000000000000000000000000000\tnode=demo.thing\teffect=deny")
+send("id=p14\taction=permission.check\tuserid=00000000000000000000000000000000\tnode=demo.thing")
+check("an offline player can be granted and checked",
+    last_result():find('"allowed":false', 1, true) ~= nil, last_result())
+
+send("id=p15\taction=player.set_tag\tuserid=" .. USERID .. "\tkey=demo.count\tvalue=4")
+send("id=p16\taction=player.get_tag\tuserid=" .. USERID .. "\tkey=demo.count")
+check("tags are the agent's too", last_result():find('"value":"4"', 1, true) ~= nil, last_result())
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

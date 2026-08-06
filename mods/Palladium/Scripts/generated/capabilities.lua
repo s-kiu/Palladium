@@ -63,10 +63,145 @@ return {
             { name = "hostile", kind = "bool", default = false },
             },
         },
+        ["player.set_tag"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "key", kind = "string", required = true, max_len = 64 },
+            { name = "value", kind = "string", required = true, max_len = 512 },
+            },
+        },
+        ["player.get_tag"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "key", kind = "string", required = true, max_len = 64 },
+            },
+        },
+        ["player.delete_tag"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "key", kind = "string", required = true, max_len = 64 },
+            },
+        },
+        ["permission.register"] = {
+            params = {
+            { name = "mod", kind = "string", required = true, max_len = 32 },
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            { name = "description", kind = "string", max_len = 200 },
+            { name = "default", kind = "string", max_len = 8 },
+            },
+        },
+        ["permission.check"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            },
+        },
+        ["permission.grant"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            { name = "effect", kind = "string", max_len = 8, default = "allow" },
+            { name = "constraints", kind = "json" },
+            },
+        },
+        ["permission.revoke"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            },
+        },
+        ["permission.nodes"] = {
+            params = {
+
+            },
+        },
+        ["permission.player"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+
+            },
+        },
+        ["group.create"] = {
+            params = {
+            { name = "name", kind = "item_id", required = true },
+            { name = "tag", kind = "string", max_len = 16 },
+            { name = "weight", kind = "int", min = 0, max = 1000, default = 0 },
+            },
+        },
+        ["group.update"] = {
+            params = {
+            { name = "name", kind = "item_id", required = true },
+            { name = "tag", kind = "string", max_len = 16 },
+            { name = "weight", kind = "int", min = 0, max = 1000, default = 0 },
+            },
+        },
+        ["group.delete"] = {
+            params = {
+            { name = "name", kind = "item_id", required = true },
+            },
+        },
+        ["group.set_entry"] = {
+            params = {
+            { name = "group", kind = "item_id", required = true },
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            { name = "effect", kind = "string", max_len = 8, default = "allow" },
+            { name = "constraints", kind = "json" },
+            },
+        },
+        ["group.remove_entry"] = {
+            params = {
+            { name = "group", kind = "item_id", required = true },
+            { name = "node", kind = "string", required = true, max_len = 128 },
+            },
+        },
+        ["group.assign"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "group", kind = "item_id", required = true },
+            },
+        },
+        ["group.unassign"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "group", kind = "item_id", required = true },
+            },
+        },
+        ["group.list"] = {
+            params = {
+
+            },
+        },
         ["player.position"] = {
             target = "player",
             params = {
 
+            },
+        },
+        ["location.save"] = {
+            params = {
+            { name = "name", kind = "string", required = true, max_len = 64 },
+            { name = "x", kind = "number", required = true },
+            { name = "y", kind = "number", required = true },
+            { name = "z", kind = "number", required = true },
+            },
+        },
+        ["location.list"] = {
+            params = {
+
+            },
+        },
+        ["location.delete"] = {
+            params = {
+            { name = "name", kind = "string", required = true, max_len = 64 },
             },
         },
         ["pal.list"] = {
@@ -162,6 +297,34 @@ return {
             { name = "on", kind = "string", max_len = 64, default = "player" },
             { name = "pal", kind = "string", max_len = 64 },
             { name = "filter", kind = "string", max_len = 32 },
+            },
+        },
+        ["data.collections"] = {
+            params = {
+
+            },
+        },
+        ["data.list"] = {
+            params = {
+            { name = "collection", kind = "string", required = true, max_len = 96 },
+            },
+        },
+        ["data.get"] = {
+            params = {
+            { name = "collection", kind = "string", required = true, max_len = 96 },
+            { name = "record", kind = "string", required = true, max_len = 128 },
+            },
+        },
+        ["data.set"] = {
+            params = {
+            { name = "collection", kind = "string", required = true, max_len = 96 },
+            { name = "record", kind = "string", required = true, max_len = 128 },
+            },
+        },
+        ["data.delete"] = {
+            params = {
+            { name = "collection", kind = "string", required = true, max_len = 96 },
+            { name = "record", kind = "string", required = true, max_len = 128 },
             },
         },
     },

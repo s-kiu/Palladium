@@ -20,6 +20,31 @@ run() {
     : > "$root/logs/bridge-events.jsonl"
     : > "$root/.state/bridge-actions.jsonl"
     PALLADIUM_TEST_ROOT="$root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/actions.lua
+
+    echo "── store & permissions ─────────────────────────────────────"
+    local store_root
+    store_root="$(mktemp -d)"
+    PALLADIUM_TEST_ROOT="$store_root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/store.lua
+    local store_status=$?
+    rm -rf "$store_root"
+    [[ $store_status -eq 0 ]] || return $store_status
+
+    echo "── collections ─────────────────────────────────────────────"
+    local col_root
+    col_root="$(mktemp -d)"
+    PALLADIUM_TEST_ROOT="$col_root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/collections.lua
+    local col_status=$?
+    rm -rf "$col_root"
+    [[ $col_status -eq 0 ]] || return $col_status
+
+    echo "── framework ───────────────────────────────────────────────"
+    local fw_root
+    fw_root="$(mktemp -d)"
+    mkdir -p "$fw_root/.state"
+    PALLADIUM_TEST_ROOT="$fw_root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/framework.lua
+    local status=$?
+    rm -rf "$fw_root"
+    return $status
 }
 
 if command -v lua5.4 >/dev/null 2>&1 && command -v luac5.4 >/dev/null 2>&1; then
