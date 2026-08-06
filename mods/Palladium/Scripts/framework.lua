@@ -212,10 +212,13 @@ local function api_for(name, mod)
     -- so an answer is not available on return.
     function pal.call(action_type, userid, params, done)
         host.call(action_type, userid or "", params or {}, function(ok, err, data)
-            if done then
-                local safe, failure = pcall(done, ok, err, data)
-                if not safe then host.info(name .. ": " .. action_type .. " callback failed: " .. tostring(failure)) end
-            end
+            if not done then return end
+            -- Results come back as the pairs the envelope is built from; a mod
+            -- wants `data.count`, not `data[2][2]`.
+            local fields = {}
+            for _, pair in ipairs(data or {}) do fields[pair[1]] = pair[2] end
+            local safe, failure = pcall(done, ok, err, fields)
+            if not safe then host.info(name .. ": " .. action_type .. " callback failed: " .. tostring(failure)) end
         end)
     end
 
@@ -223,8 +226,27 @@ local function api_for(name, mod)
         pal.call("player.message", userid, { text = text }, done)
     end
 
+    -- The engine accepts a grant of an unknown item id and reports success
+    -- having added nothing, so the count is read before and after: `done` is
+    -- told whether the items arrived, not merely whether the call returned. A
+    -- build that cannot answer the count is not an empty inventory, so an
+    -- unanswerable check is taken as delivered rather than as a failure.
     function pal.give(userid, item, count, done)
-        pal.call("player.give_item", userid, { item = item, count = count or 1 }, done)
+        count = count or 1
+        pal.call("player.count_item", userid, { item = item }, function(ok_before, _, before)
+            local had = ok_before and tonumber(before.count) or nil
+            pal.call("player.give_item", userid, { item = item, count = count }, function(ok, err)
+                if not ok then
+                    if done then done(false, err) end
+                    return
+                end
+                pal.call("player.count_item", userid, { item = item }, function(ok_after, _, after)
+                    local now = ok_after and tonumber(after.count) or nil
+                    local arrived = not (had and now and now < had + count)
+                    if done then done(arrived, arrived and nil or "did not arrive") end
+                end)
+            end)
+        end)
     end
 
     function pal.heal(userid, done)

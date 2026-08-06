@@ -85,7 +85,7 @@ call that loads the file is the call that reads the manifest.
 | Call | Does |
 |---|---|
 | `pal.call(type, userid, params, done)` | Any capability in [bridge-reference.md](bridge-reference.md). `done` receives `(ok, err, data)` |
-| `pal.give(userid, item, count, done)` | Sugar for `player.give_item` |
+| `pal.give(userid, item, count, done)` | Hand over items. Reads the inventory back, so `done` is told whether they arrived, not merely whether the call returned |
 | `pal.message(userid, text, done)` | Private system-chat line |
 | `pal.heal(userid, done)` | Sugar for `player.heal` |
 | `pal.announce(text, done)` | Tell everyone online, as system chat |
@@ -97,7 +97,8 @@ call that loads the file is the call that reads the manifest.
 | `pal.log(text)` | A line in the server log, prefixed with the mod's name |
 
 Answers arrive through a callback rather than a return value, because actions
-run on the game thread and some of them defer past it.
+run on the game thread and some of them defer past it. The callback is given
+`(ok, err, data)`, where `data` is the result's fields by name.
 
 `pal.can` resolves against `permissions.config`: the player's overrides first,
 then their groups by weight, then the default group, then the node's registered
