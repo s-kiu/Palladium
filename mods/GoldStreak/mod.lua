@@ -30,8 +30,8 @@ return {
             pal.set_tag(who, "respawns", streak)
             if streak % pal.settings.every ~= 0 then return end
 
-            -- The engine accepts a grant of an unknown item id and adds
-            -- nothing, so the payout is only announced once the call answers.
+            -- pal.give reads the inventory back, so ok means the gold is
+            -- there — a payout that did not arrive is logged, not announced.
             pal.give(who, pal.settings.item, pal.settings.count, function(ok, err)
                 if not ok then
                     pal.log(string.format("%s: %s x%d failed — %s",
