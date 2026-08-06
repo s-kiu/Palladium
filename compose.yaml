@@ -19,6 +19,12 @@ services:
       # reachable from inside this compose network. See docs/security.md.
     env_file:
       - .env
+    environment:
+      # The mod folders here are the originals; the loader reads an rsync copy
+      # of them inside the volume. A mod's own config and records are written
+      # back to the original, so they show up beside the mod and survive the
+      # next boot's sync.
+      - PALLADIUM_MODS_SOURCE=/palworld/mods
     volumes:
       # Everything lives under /palworld in one named volume: the ~15 GB Steam
       # install, saves, config, state. Survives container recreation.

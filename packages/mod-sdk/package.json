@@ -1,0 +1,12 @@
+{
+  "name": "@pal-up/mod-sdk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The client and host process for a pal-up mod's script half",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "index.mjs",
+  "engines": {
+    "node": ">=22"
+  }
+}

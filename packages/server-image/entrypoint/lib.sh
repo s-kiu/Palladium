@@ -544,6 +544,23 @@ sync_tree() { # <src> <dst> — dst becomes an exact mirror of src
     rsync -a --delete "$src"/ "$dst"/
 }
 
+# What kind of mod a folder holds, which decides where it has to end up:
+#
+#   lua        Scripts/main.lua — UE4SS loads it, so it needs a mods.txt entry
+#   framework  mod.lua — Palladium loads it, so it needs to be in the server
+#              tree but NOT in mods.txt: UE4SS would find nothing to load
+#   script     mod.json only — the panel runs it outside the game; syncing it
+#              would copy the author's source into the game server for nothing
+#   plain      neither, and mods with unusual layouts predate all of this
+mod_kind() { # <mod-dir>
+    local d="${1%/}"
+    if [[ -d "$d/Scripts" || -d "$d/scripts" ]]; then echo lua
+    elif [[ -f "$d/mod.lua" ]]; then echo framework
+    elif [[ -f "$d/mod.json" ]]; then echo script
+    else echo plain
+    fi
+}
+
 sync_lua_mods() { # <user-mods-dir> <target-Mods-dir> <manifest-file>
     local src="$1" target="$2" manifest="$3"
     mkdir -p "$target"
@@ -554,6 +571,10 @@ sync_lua_mods() { # <user-mods-dir> <target-Mods-dir> <manifest-file>
         name="$(basename "$d")"
         if ! valid_mod_name "$name"; then
             warn "skipping mod folder with unsafe name: '$name' (allowed: letters, digits, _ . -)"
+            continue
+        fi
+        if [[ "$(mod_kind "$d")" == "script" ]]; then
+            log "mod '$name' runs in the panel, not the game server — not synced"
             continue
         fi
         current+=("$name")
@@ -616,6 +637,10 @@ gen_mods_txt() { # <user-mods-dir> <target-Mods-dir> [base-mods.txt]
         [[ -d "$d" ]] || continue
         name="$(basename "$d")"
         valid_mod_name "$name" || continue
+        case "$(mod_kind "$d")" in
+            lua | plain) ;;
+            *) continue ;;
+        esac
         state=1
         [[ -e "$d/.disabled" ]] && state=0
         add_entry "$name" "$state"
@@ -631,6 +656,35 @@ gen_mods_txt() { # <user-mods-dir> <target-Mods-dir> [base-mods.txt]
             printf '%s : %s\n' "${names[i]}" "${states[i]}"
         done
     } >"$target/mods.txt"
+}
+
+# Palladium loads framework mods itself, and plain Lua cannot list a directory.
+# This is the answer: the names it should load, in order, minus the ones a
+# .disabled marker turns off. Written after the sync, because the sync mirrors
+# Palladium's own folder and would delete it.
+gen_mods_list() { # <user-mods-dir> <target-Mods-dir>
+    local src="$1" target="$2"
+    local list="$target/Palladium/mods.list"
+    [[ -d "$target/Palladium" ]] || return 0
+
+    local -a names=()
+    local d name
+    for d in "$src"/*/; do
+        [[ -d "$d" ]] || continue
+        name="$(basename "$d")"
+        valid_mod_name "$name" || continue
+        [[ "$(mod_kind "$d")" == "framework" ]] || continue
+        if [[ -e "$d/.disabled" ]]; then continue; fi
+        names+=("$name")
+    done
+
+    {
+        echo "; Managed by pal-up — regenerated on every boot."
+        echo "; Palladium loads these mods; disable one with mods/<Name>/.disabled."
+        local n
+        for n in "${names[@]}"; do printf '%s\n' "$n"; done
+    } >"$list"
+    log "framework mods: ${#names[@]} listed for Palladium"
 }
 
 ue4ss_base_modstxt() { # → path of the base mods.txt to merge, or ""

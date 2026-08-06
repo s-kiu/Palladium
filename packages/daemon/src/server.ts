@@ -19,6 +19,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeDb } from './db.js';
+import { ModRunner, scanMods, type ScannedMod } from './mods.js';
 import { ACTIONS, CAPABILITIES, ENVELOPE_VERSION } from './generated/capabilities.js';
 
 const execFileP = promisify(execFile);
@@ -159,12 +160,15 @@ async function fastcrashCount(): Promise<number> {
 
 interface ModEntry { name: string; enabled: boolean; user: boolean; disabledMarker: boolean }
 
-async function luaMods(): Promise<ModEntry[]> {
+// `skip` names folders that are script-only mods: they have an entry file and
+// no Lua at all, so UE4SS never sees them and listing them here would offer a
+// toggle over something the game server does not load.
+async function luaMods(skip: Set<string> = new Set()): Promise<ModEntry[]> {
   const userDir = path.join(PAL_ROOT, 'mods');
   const userNames = new Map<string, boolean>(); // name → has .disabled marker
   try {
     for (const e of await fs.readdir(userDir, { withFileTypes: true })) {
-      if (e.isDirectory()) {
+      if (e.isDirectory() && !skip.has(e.name)) {
         userNames.set(e.name, await exists(path.join(userDir, e.name, '.disabled')));
       }
     }
@@ -175,7 +179,7 @@ async function luaMods(): Promise<ModEntry[]> {
   const modsTxt = await readOpt(path.join(PAL_ROOT, 'server', 'Mods', 'mods.txt'));
   for (const line of modsTxt?.split('\n') ?? []) {
     const m = line.match(/^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)\s*:\s*([01])/);
-    if (!m) continue;
+    if (!m || skip.has(m[1])) continue;
     seen.add(m[1]);
     entries.push({
       name: m[1],
@@ -476,11 +480,174 @@ app.post('/api/save', async () => {
 });
 
 // ── mods ─────────────────────────────────────────────────────────────────────
+// One folder is one mod, and it may have two halves: Lua that UE4SS loads
+// inside the game, and a script half the panel runs out here. The Lua half
+// needs a game restart to take effect; the script half is a child process of
+// this daemon, so it starts and stops while the server keeps running.
+const MODS_DIR = path.join(PAL_ROOT, 'mods');
+
+// One token per mod, minted on demand and kept for the life of the daemon so a
+// crash-restarting mod does not mint a new credential every few seconds.
+const modTokens = new Map<string, string>();
+
+function modToken(mod: string): string {
+  const existing = modTokens.get(mod);
+  if (existing) return existing;
+  const { token } = bridgeDb.createToken(`mod:${mod}`, ['read', 'write']);
+  modTokens.set(mod, token);
+  return token;
+}
+
+const modRunner = new ModRunner({
+  panelUrl: `http://127.0.0.1:${PANEL_PORT}`,
+  mintToken: modToken,
+  log: (text) => void panelLog(text),
+});
+
+let scanned: ScannedMod[] = [];
+let registeredSignature = '';
+const reportedProblems = new Map<string, string>();
+
+// The manifest is where a mod's permission nodes come from: the author
+// declares them, the panel registers them. Doing it here rather than in the
+// mod means the nodes exist on the permissions page whether or not the mod has
+// managed to start — a mod that is failing is exactly when an operator wants
+// to see what it wanted to own.
+async function rescanMods(): Promise<void> {
+  scanned = await scanMods(MODS_DIR);
+
+  const signature = JSON.stringify(
+    scanned.map((m) => [m.name, m.manifest?.permissions ?? []]),
+  );
+  if (signature !== registeredSignature) {
+    registeredSignature = signature;
+    // One call per node, through the same door a mod or an operator uses.
+    // The agent owns permissions; this daemon only relays what the manifests
+    // declared.
+    for (const mod of scanned) {
+      for (const node of mod.manifest?.permissions ?? []) {
+        await enqueueAction('permission.register', '', {
+          mod: mod.name.toLowerCase(),
+          node: node.node,
+          description: node.description,
+          default: node.default,
+        }).catch(() => undefined);
+      }
+    }
+  }
+
+  // The scan repeats every few seconds; its complaints should not.
+  for (const mod of scanned) {
+    const problems = mod.errors.join(' | ');
+    if (reportedProblems.get(mod.name) === problems) continue;
+    reportedProblems.set(mod.name, problems);
+    for (const problem of mod.errors) app.log.warn(`mod ${mod.name}: ${problem}`);
+  }
+  for (const name of [...reportedProblems.keys()]) {
+    if (!scanned.some((m) => m.name === name)) reportedProblems.delete(name);
+  }
+
+  await modRunner.sync(scanned);
+}
+
+// A folder with no Scripts/ is invisible to UE4SS, so listing it as a Lua mod
+// would offer a toggle over something the game server never loads. Script mods
+// and Palladium mods are both listed in their own right instead — including
+// when their manifest is broken, which is when being listed matters most.
+function notLuaMods(): Set<string> {
+  return new Set(
+    scanned.filter((m) => (m.hasManifest || m.hasFramework) && !m.hasLua).map((m) => m.name),
+  );
+}
+
+// Mods Palladium loaded inside the game. It writes this snapshot because it
+// can produce JSON but not parse it, which fixes the direction of everything
+// shared between the two: Lua reads Lua, and the panel reads this.
+interface CollectionEntry {
+  name: string;
+  owner: string;
+  description: string;
+  storage: string;
+  file: string | null;
+  count: number;
+  fields: Record<string, string>;
+}
+
+interface FrameworkMod {
+  name: string;
+  version: string;
+  description: string;
+  ok: boolean;
+  error: string | null;
+  pending?: boolean;
+  permissions: { node: string; description: string; default: string }[];
+  commands: string[];
+  events: string[];
+  warnings?: string[];
+}
+
+async function frameworkMods(): Promise<{ at: number; mods: FrameworkMod[]; collections: CollectionEntry[] }> {
+  const text = await readOpt(path.join(STATE_DIR, 'palladium-mods.json'));
+  let at = 0;
+  let mods: FrameworkMod[] = [];
+  let collections: CollectionEntry[] = [];
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as
+        { at?: number; mods?: FrameworkMod[]; collections?: CollectionEntry[] };
+      at = Number(parsed.at) || 0;
+      mods = Array.isArray(parsed.mods) ? parsed.mods : [];
+      collections = Array.isArray(parsed.collections) ? parsed.collections : [];
+    } catch { /* Palladium wrote it mid-read, or not at all */ }
+  }
+
+  // A folder dropped in since the last server start is on disk but not in the
+  // snapshot. Saying so beats showing nothing and leaving the operator to
+  // wonder whether the mod was seen at all.
+  const known = new Set(mods.map((m) => m.name));
+  for (const mod of scanned) {
+    if (!mod.hasFramework || known.has(mod.name)) continue;
+    mods.push({
+      name: mod.name,
+      version: '',
+      description: '',
+      ok: false,
+      error: null,
+      pending: true,
+      permissions: [],
+      commands: [],
+      events: [],
+      warnings: [],
+    });
+  }
+  return { at, mods, collections };
+}
+
 app.get('/api/mods', async () => ({
-  mods: await luaMods(),
+  mods: await luaMods(notLuaMods()),
+  framework: await frameworkMods(),
+  script: scanned
+    .filter((m) => m.hasManifest)
+    .map((m) => ({
+      name: m.name,
+      version: m.manifest?.version ?? '',
+      description: m.manifest?.description ?? '',
+      entry: m.manifest?.entry ?? null,
+      hasLua: m.hasLua,
+      disabled: m.disabled,
+      permissions: m.manifest?.permissions ?? [],
+      errors: m.errors,
+      ...modRunner.view(m),
+    })),
   logicmods: await pakList('logicmods'),
   paks: await pakList('paks'),
 }));
+
+app.get<{ Querystring: { name?: string } }>('/api/mods/logs', async (req, reply) => {
+  const name = req.query.name ?? '';
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) return reply.code(400).send({ error: 'bad mod name' });
+  return { name, lines: modRunner.logs(name) };
+});
 
 app.post<{ Body: { name?: string; disabled?: boolean } }>('/api/mods/toggle', async (req, reply) => {
   const name = req.body?.name ?? '';
@@ -490,7 +657,17 @@ app.post<{ Body: { name?: string; disabled?: boolean } }>('/api/mods/toggle', as
   const marker = path.join(dir, '.disabled');
   if (req.body?.disabled) await fs.writeFile(marker, '');
   else await fs.rm(marker, { force: true });
-  return { ok: true, note: 'takes effect on next server restart' };
+
+  const mod = scanned.find((m) => m.name === name);
+  const script = Boolean(mod?.manifest?.entry);
+  await rescanMods();
+  return {
+    ok: true,
+    note:
+      script && !mod?.hasLua
+        ? `${req.body?.disabled ? 'stopped' : 'started'} now`
+        : 'takes effect on next server restart',
+  };
 });
 
 // ── backups ──────────────────────────────────────────────────────────────────
@@ -1024,6 +1201,10 @@ function ingest(event: BridgeEvent): void {
       bridgeRun.agent = String(event.data.agent ?? 'unknown');
       bridgeRun.version = String(event.data.version ?? '');
       bridgeRun.envelope = Number(event.data.envelope) || null;
+      // The agent is the one holding permissions, and it has just started, so
+      // everything this daemon knows about gets declared to it again.
+      void registerBuiltinNodes();
+      registeredSignature = '';
       break;
     case 'bridge.hook': {
       const hook = {
@@ -1042,18 +1223,6 @@ function ingest(event: BridgeEvent): void {
     case 'player.leave':
       bridgeDb.leave(subjectId, Number(event.at) || 0);
       break;
-    case 'npc.spawn': {
-      const species = String(event.data.species ?? '');
-      bridgeDb.speciesSeen(species, Number(event.data.level) || 0, event.data.rare === true, Number(event.at) || 0);
-      // Boss-shaped spawns become teleport targets: the world announces where
-      // its arenas are, nobody has to type coordinates in.
-      const pos = event.subject?.position;
-      if (pos && /^(BOSS_|Boss_|RAID_|GYM_)/.test(species)) {
-        const label = `Boss: ${palNames.get(species) ?? species}`;
-        bridgeDb.locationSave(label, pos.x, pos.y, pos.z, 'boss');
-      }
-      break;
-    }
     default:
       if (event.subject?.kind === 'player') {
         bridgeDb.seen(subjectId, subjectName, Number(event.at) || 0);
@@ -1066,11 +1235,11 @@ function ingest(event: BridgeEvent): void {
 function enrich(event: BridgeEvent): BridgeEvent {
   let out = event;
   const userid = String(event.subject?.id ?? '');
-  if (event.subject?.kind === 'player' && userid) {
-    const role = roleOf(userid);
-    if (role) out = { ...out, subject: { ...out.subject!, role } };
-  }
-  if (event.kind === 'event' && event.type === 'player.join' && userid) {
+  // The agent computes firstEver from its own registry and puts it on the
+  // event. This fills it in only for an agent old enough not to, so a panel
+  // that restarts before the game server does not serve joins with it missing.
+  if (event.kind === 'event' && event.type === 'player.join' && userid
+      && event.data.firstEver === undefined) {
     const player = bridgeDb.player(userid);
     out = {
       ...out,
@@ -1129,7 +1298,21 @@ app.get('/api/bridge/schema', async () => ({
   })),
 }));
 
-app.get('/api/bridge/players', async () => ({ players: bridgeDb.players() }));
+// Tags belong to the agent, so they are fetched from it rather than kept here
+// in a second copy. One query per page load, and the list still works when the
+// game server is down — it just has no tags to show.
+app.get('/api/bridge/players', async () => {
+  const players = bridgeDb.players().map((p) => ({ ...p, tags: {} as Record<string, string> }));
+  const byId = new Map(players.map((p) => [p.userid, p]));
+  const id = await enqueueAction('data.list', '', { collection: 'bridge.tags' });
+  const answered = await awaitAction(id, ACTION_TIMEOUT_MS);
+  const records = (answered?.data?.records ?? {}) as Record<string, { uid?: string; key?: string; value?: string }>;
+  for (const record of Object.values(records)) {
+    const player = record.uid ? byId.get(record.uid) : undefined;
+    if (player && record.key) player.tags[record.key] = String(record.value ?? '');
+  }
+  return { players };
+});
 
 // ── game-data catalogs ───────────────────────────────────────────────────────
 // Static id → display-name tables (items, pal species, passive-skill traits)
@@ -1166,13 +1349,33 @@ interface PalEntry {
   unlisted?: boolean;
 }
 
+// What this world has actually spawned. The agent records it as it publishes
+// npc.spawn, so this asks the agent rather than keeping a second tally that
+// could disagree with it.
+async function observedSpecies(): Promise<Map<string, { min: number; max: number; count: number; rare: boolean }>> {
+  const out = new Map<string, { min: number; max: number; count: number; rare: boolean }>();
+  if (!bridgeRun.agent) return out;
+  const id = await enqueueAction('data.list', '', { collection: 'bridge.species' });
+  const answered = await awaitAction(id, ACTION_TIMEOUT_MS);
+  const records = (answered?.data?.records ?? {}) as Record<string, Record<string, string>>;
+  for (const [species, r] of Object.entries(records)) {
+    out.set(species, {
+      min: Number(r.min_level) || 0,
+      max: Number(r.max_level) || 0,
+      count: Number(r.count) || 0,
+      rare: r.rare === 'true',
+    });
+  }
+  return out;
+}
+
 app.get('/api/bridge/catalog', async () => {
   const base = await loadCatalog();
   // The static table is what shipped; the world reports what exists. Observed
   // spawn-level ranges annotate known species, and species absent from the
   // table — a mod's mobs, or a patch's — are appended so they are pickable the
   // moment one has spawned near a player.
-  const observed = bridgeDb.species();
+  const observed = await observedSpecies();
   const pals: PalEntry[] = (base.pals as PalEntry[]).map((p) => {
     const seen = observed.get(p.id);
     return seen ? { ...p, seen } : p;
@@ -1272,187 +1475,9 @@ function resultEnvelope(
   };
 }
 
-// Handlers for runtime "daemon" — capabilities the database answers directly.
-const DAEMON_IMPL: Record<
-  string,
-  (target: string, p: Validated) => { ok: boolean; error?: string; data: Record<string, unknown> }
-> = {
-  'player.set_tag': (target, p) => {
-    if (!bridgeDb.player(target)) return { ok: false, error: 'unknown_player', data: {} };
-    bridgeDb.setTag(target, String(p.key), String(p.value));
-    return { ok: true, data: { key: p.key, value: p.value } };
-  },
-  'player.get_tag': (target, p) => ({
-    ok: true,
-    data: { key: p.key, value: bridgeDb.getTag(target, String(p.key)) },
-  }),
-  'player.delete_tag': (target, p) => {
-    bridgeDb.deleteTag(target, String(p.key));
-    return { ok: true, data: { key: p.key } };
-  },
-  'permission.register': (_t, p) => {
-    const mod = String(p.mod).toLowerCase();
-    if (!/^[a-z0-9_-]{2,32}$/.test(mod)) return { ok: false, error: 'invalid_params: mod', data: {} };
-    const raw = Array.isArray(p.nodes) ? (p.nodes as unknown[]) : null;
-    if (!raw || raw.length === 0 || raw.length > 100) {
-      return { ok: false, error: 'invalid_params: nodes must be a non-empty array (max 100)', data: {} };
-    }
-    const nodes: { node: string; description?: string; default?: string }[] = [];
-    for (const entry of raw) {
-      const n = entry as { node?: unknown; description?: unknown; default?: unknown };
-      const node = String(n.node ?? '');
-      // A mod may only register nodes under its own name — that is what keeps
-      // one mod from quietly redefining another's permissions.
-      if (!/^[a-z0-9_.-]{3,128}$/i.test(node) || !node.startsWith(mod + '.')) {
-        return { ok: false, error: `invalid_params: node '${node}' must start with '${mod}.'`, data: {} };
-      }
-      nodes.push({
-        node,
-        description: String(n.description ?? '').slice(0, 200),
-        default: n.default === 'allow' ? 'allow' : 'deny',
-      });
-    }
-    const registered = bridgeDb.registerNodes(mod, nodes);
-    permCacheBust();
-    return { ok: true, data: { registered } };
-  },
-  'permission.check': (target, p) => {
-    const resolved = bridgeDb.resolve(target, String(p.node));
-    let allowed = resolved.allowed;
-    let violation: string | null = null;
-    if (allowed && p.where !== undefined && resolved.constraints) {
-      violation = matchConstraints(resolved.constraints, p.where as Record<string, unknown>);
-      if (violation) allowed = false;
-    }
-    return {
-      ok: true,
-      data: {
-        allowed,
-        source: resolved.source,
-        constraints: resolved.constraints,
-        ...(violation ? { violated: violation } : {}),
-      },
-    };
-  },
-  'permission.grant': (target, p) => {
-    const effect = p.effect === 'deny' ? 'deny' : 'allow';
-    bridgeDb.userSetEntry(target, String(p.node), effect, p.constraints ?? null);
-    permCacheBust();
-    return { ok: true, data: { node: p.node, effect } };
-  },
-  'permission.revoke': (target, p) => {
-    bridgeDb.userRemoveEntry(target, String(p.node));
-    permCacheBust();
-    return { ok: true, data: { node: p.node } };
-  },
-  'permission.nodes': () => ({ ok: true, data: { nodes: bridgeDb.nodes() } }),
-  'permission.player': (target) => ({
-    ok: true,
-    data: {
-      groups: bridgeDb.userGroups(target),
-      entries: bridgeDb.userEntries(target),
-      role: bridgeDb.roleTag(target),
-    },
-  }),
-  'group.create': (_t, p) => {
-    if (bridgeDb.groupExists(String(p.name))) return { ok: false, error: 'exists', data: {} };
-    bridgeDb.groupCreate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0);
-    permCacheBust();
-    return { ok: true, data: { name: p.name } };
-  },
-  'group.update': (_t, p) => {
-    if (!bridgeDb.groupUpdate(String(p.name), String(p.tag ?? ''), Number(p.weight) || 0)) {
-      return { ok: false, error: 'unknown_group', data: {} };
-    }
-    permCacheBust();
-    return { ok: true, data: { name: p.name } };
-  },
-  'group.delete': (_t, p) => {
-    if (!bridgeDb.groupDelete(String(p.name))) return { ok: false, error: 'unknown_group', data: {} };
-    permCacheBust();
-    return { ok: true, data: { name: p.name } };
-  },
-  'group.set_entry': (_t, p) => {
-    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
-    const effect = p.effect === 'deny' ? 'deny' : 'allow';
-    bridgeDb.groupSetEntry(String(p.group), String(p.node), effect, p.constraints ?? null);
-    permCacheBust();
-    return { ok: true, data: { group: p.group, node: p.node } };
-  },
-  'group.remove_entry': (_t, p) => {
-    if (!bridgeDb.groupRemoveEntry(String(p.group), String(p.node))) {
-      return { ok: false, error: 'unknown_group', data: {} };
-    }
-    permCacheBust();
-    return { ok: true, data: { group: p.group, node: p.node } };
-  },
-  'group.assign': (target, p) => {
-    if (!bridgeDb.groupExists(String(p.group))) return { ok: false, error: 'unknown_group', data: {} };
-    if (!bridgeDb.player(target)) return { ok: false, error: 'unknown_player', data: {} };
-    bridgeDb.groupAssign(target, String(p.group));
-    permCacheBust();
-    return { ok: true, data: { group: p.group } };
-  },
-  'group.unassign': (target, p) => {
-    bridgeDb.groupUnassign(target, String(p.group));
-    permCacheBust();
-    return { ok: true, data: { group: p.group } };
-  },
-  'group.list': () => ({ ok: true, data: { groups: bridgeDb.groups() } }),
-  'location.save': (_t, p) => {
-    bridgeDb.locationSave(String(p.name), Number(p.x), Number(p.y), Number(p.z), 'manual');
-    return { ok: true, data: { name: p.name } };
-  },
-  'location.list': () => ({ ok: true, data: { locations: bridgeDb.locations() } }),
-  'location.delete': (_t, p) => {
-    if (!bridgeDb.locationDelete(String(p.name))) return { ok: false, error: 'unknown_location', data: {} };
-    return { ok: true, data: { name: p.name } };
-  },
-};
-
-// Constraint matchers: {"param": {"equals": v} | {"in": [...]} | {"min": n, "max": n}}.
-// All listed params must satisfy their matcher; a constrained param missing
-// from the request is a violation, not a pass.
-function matchConstraints(
-  constraints: unknown,
-  where: Record<string, unknown>,
-): string | null {
-  if (typeof constraints !== 'object' || constraints === null) return null;
-  for (const [param, rawMatcher] of Object.entries(constraints as Record<string, unknown>)) {
-    const matcher = rawMatcher as { equals?: unknown; in?: unknown[]; min?: number; max?: number };
-    const value = where[param];
-    if (value === undefined) return `${param} is constrained but missing`;
-    if (matcher.equals !== undefined && String(value) !== String(matcher.equals)) {
-      return `${param} must equal ${matcher.equals}`;
-    }
-    if (Array.isArray(matcher.in) && !matcher.in.map(String).includes(String(value))) {
-      return `${param} not in the allowed set`;
-    }
-    const n = Number(value);
-    if (matcher.min !== undefined && (!Number.isFinite(n) || n < matcher.min)) {
-      return `${param} below ${matcher.min}`;
-    }
-    if (matcher.max !== undefined && (!Number.isFinite(n) || n > matcher.max)) {
-      return `${param} above ${matcher.max}`;
-    }
-  }
-  return null;
-}
-
-// Role tags are read on every served event; cache per player, dropped on any
-// permission mutation.
-const roleCache = new Map<string, string | null>();
-
-function permCacheBust(): void {
-  roleCache.clear();
-}
-
-function roleOf(userid: string): string | null {
-  if (!roleCache.has(userid)) roleCache.set(userid, bridgeDb.roleTag(userid));
-  return roleCache.get(userid) ?? null;
-}
-
-// Handlers for runtime "game-rest" — proxied to the game's own admin API.
+// The one capability this daemon still answers itself, because it is the only
+// one that does not go through the game process: announcing uses the game's own
+// REST API. Everything else is the agent's.
 const REST_IMPL: Record<string, (p: Validated) => Promise<void>> = {
   'server.announce': async (p) => {
     await pal('POST', 'announce', { message: String(p.message) });
@@ -1521,11 +1546,17 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
     const asPlayer = String(req.body?.as ?? '');
     if (asPlayer) {
       if (!ID_RE.test(asPlayer)) return reply.code(400).send({ error: 'as must be a 32-hex player id' });
-      const resolved = bridgeDb.resolve(asPlayer, type);
-      let denied = !resolved.allowed ? 'permission_denied' : null;
-      if (!denied && resolved.constraints) {
-        const violation = matchConstraints(resolved.constraints, checked.params as Record<string, unknown>);
-        if (violation) denied = `permission_denied: ${violation}`;
+      // The call's own parameters go with the question, so a constraint like
+      // "only Lamball" is matched by the one thing that holds the rules.
+      const checkId = await enqueueAction('permission.check', asPlayer, {
+        node: type, ...(checked.params as Record<string, unknown>),
+      });
+      const answer = await awaitAction(checkId, ACTION_TIMEOUT_MS);
+      const resolved = (answer?.data ?? {}) as { allowed?: boolean; violation?: string };
+      let denied: string | null = null;
+      if (!answer) denied = 'permission_denied: the agent did not answer';
+      else if (resolved.allowed !== true) {
+        denied = resolved.violation ? `permission_denied: ${resolved.violation}` : 'permission_denied';
       }
       actor = `${actor} as:${asPlayer.slice(0, 8)}`;
       if (denied) {
@@ -1545,11 +1576,6 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
         return reply.code(504).send({ error: 'the game did not answer in time', id });
       }
       result = answered;
-    } else if (cap.runtime === 'daemon') {
-      const impl = DAEMON_IMPL[type];
-      if (!impl) return reply.code(500).send({ error: 'capability declared but not implemented' });
-      const out = impl(target, checked.params);
-      result = resultEnvelope(type, out.ok, out.error, playerSubject(target), out.data);
     } else {
       const impl = REST_IMPL[type];
       if (!impl) return reply.code(500).send({ error: 'capability declared but not implemented' });
@@ -1569,6 +1595,20 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
     return result;
   },
 );
+
+
+// Acting on behalf of a player needs an explicit grant, so every capability is
+// also a node, defaulting to deny. The agent stores them like any other.
+async function registerBuiltinNodes(): Promise<void> {
+  for (const type of ACTIONS.keys()) {
+    await enqueueAction('permission.register', '', {
+      mod: 'bridge',
+      node: type,
+      description: `call ${type} on behalf of a player`,
+      default: 'deny',
+    }).catch(() => undefined);
+  }
+}
 
 // ── chat command routing ─────────────────────────────────────────────────────
 // Routing lives here, not in the mod: the in-game agent stays a plain event
@@ -1655,48 +1695,6 @@ async function pollBridge(route: boolean): Promise<void> {
   }
 }
 
-// ── leave events ─────────────────────────────────────────────────────────────
-// Nothing in the engine exposes a disconnect this loader can hook — Blueprint
-// function targets fault the process — so leaves are derived from the game's
-// own player list and appended to the same stream, marked source:"rest".
-let lastSeenPlayers: Map<string, string> | null = null; // game id → name
-
-async function appendLeave(gameId: string, name: string): Promise<void> {
-  const id = gameId.toUpperCase();
-  const known = bridgeDb.player(id) ?? bridgeDb.players().find((p) => p.online && p.name === name);
-  const line = JSON.stringify({
-    v: ENVELOPE_VERSION,
-    at: Math.floor(Date.now() / 1000),
-    kind: 'event',
-    type: 'player.leave',
-    subject: { kind: 'player', id: known?.userid ?? id, name: name || known?.name || 'Unknown' },
-    data: { source: 'rest' },
-  });
-  await fs.appendFile(BRIDGE_EVENTS, line + '\n').catch(() => {});
-}
-
-async function pollPlayers(): Promise<void> {
-  if (!bridgeRun.agent) return; // no agent, no stream to contribute to
-  const payload = (await palSafe('GET', 'players')) as { players?: Record<string, unknown>[] } | null;
-  if (payload === null) {
-    // The API being unreachable is not everyone leaving at once; forget the
-    // previous list so the next successful poll starts a fresh comparison.
-    lastSeenPlayers = null;
-    return;
-  }
-  const current = new Map<string, string>();
-  for (const p of payload.players ?? []) {
-    const id = String(p.playerId ?? p.userId ?? p.name ?? '');
-    if (id) current.set(id, String(p.name ?? ''));
-  }
-  if (lastSeenPlayers) {
-    for (const [id, name] of lastSeenPlayers) {
-      if (!current.has(id)) await appendLeave(id, name);
-    }
-  }
-  lastSeenPlayers = current;
-}
-
 // Startup reads the whole run so status and the database reflect it, but with
 // routing off: commands answered before this daemon started must not fire again.
 async function hydrateBridge(): Promise<void> {
@@ -1755,7 +1753,6 @@ app.setNotFoundHandler((req, reply) => {
   return reply.code(404).send({ error: 'not found' });
 });
 
-bridgeDb.ensureDefaultGroup();
 // Species id → display name, for labelling observed boss locations.
 const palNames = new Map<string, string>();
 {
@@ -1765,13 +1762,31 @@ const palNames = new Map<string, string>();
 // Every callable capability is also a permission node (checked when a call is
 // made on behalf of a player). Default deny: acting as a player needs an
 // explicit grant, which is the entire point of the system.
-bridgeDb.registerNodes('bridge', [...ACTIONS.keys()].map((t) => ({
-  node: t,
-  description: `call ${t} on behalf of a player`,
-  default: 'deny',
-})));
+
 await hydrateBridge();
 setInterval(() => void pollBridge(true), 1000).unref();
-setInterval(() => void pollPlayers(), 5000).unref();
+
+// A mod's token belongs to the process that is running now. Any left over from
+// a previous run cannot be handed back out — the value only ever existed in
+// that run's memory — so they are revoked rather than left valid forever.
+for (const token of bridgeDb.listTokens()) {
+  if (token.name.startsWith('mod:')) bridgeDb.revokeToken(token.id);
+}
+if (!modRunner.hostFound) app.log.warn('the mod host is missing — script mods will not run');
 
 await app.listen({ host: '0.0.0.0', port: PANEL_PORT });
+
+// Mods start after the port is open: the first thing a mod does is ask this
+// daemon whether the game server is ready.
+await rescanMods();
+// Dropping a folder into ./mods is the whole install step, so the folder is
+// what gets watched. A poll rather than a watcher: this is a bind mount, and
+// inotify across one is not something to depend on.
+setInterval(() => void rescanMods(), 10_000).unref();
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    modRunner.stopAll();
+    void app.close().then(() => process.exit(0));
+  });
+}

@@ -33,6 +33,9 @@ COPY --from=panel /panel/dist/panel/browser ./public
 COPY packages/server-image/config/settings.map ./settings.map
 # Game-data catalogs (items, pals, traits) behind /api/bridge/catalog.
 COPY packages/shared/game-data ./game-data
+# The host process and client a mod's script half runs against. Spawned per
+# mod, so it ships with the panel rather than with each mod.
+COPY packages/mod-sdk ./mod-sdk
 
 LABEL org.opencontainers.image.title="pal-up Panel" \
       org.opencontainers.image.description="Web panel for pal-up Palworld servers" \

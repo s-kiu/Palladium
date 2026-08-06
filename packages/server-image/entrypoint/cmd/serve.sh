@@ -60,6 +60,7 @@ main() {
         if ue4ss_staged; then
             install_ue4ss
             sync_lua_mods "$USER_MODS_DIR" "$UE4SS_MODS_TARGET" "$STATE_DIR/lua-mods.manifest"
+            gen_mods_list "$USER_MODS_DIR" "$UE4SS_MODS_TARGET"
             if [[ "$MODS_TXT_MODE" == "managed" ]]; then
                 gen_mods_txt "$USER_MODS_DIR" "$UE4SS_MODS_TARGET" "$(ue4ss_base_modstxt)"
             else

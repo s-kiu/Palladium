@@ -25,6 +25,55 @@ export interface PakEntry {
   sizeBytes: number;
 }
 
+// A mod's script half: declared in its mod.json, run by the panel as a child
+// process rather than by UE4SS inside the game.
+export interface ScriptModEntry {
+  name: string;
+  version: string;
+  description: string;
+  entry: string | null;
+  hasLua: boolean;
+  disabled: boolean;
+  permissions: { node: string; description: string; default: string }[];
+  errors: string[];
+  state: 'running' | 'starting' | 'stopped' | 'disabled' | 'failed' | 'invalid' | 'none';
+  note: string;
+  restarts: number;
+  startedAt: number;
+}
+
+export interface ModLogLine {
+  at: number;
+  stream: 'out' | 'err';
+  text: string;
+}
+
+// A declared collection: everything stored, described well enough to render
+// without knowing what it holds.
+export interface CollectionEntry {
+  name: string;
+  owner: string;
+  description: string;
+  storage: 'data' | 'config';
+  file: string | null;
+  count: number;
+  fields: Record<string, string>;
+}
+
+// A mod Palladium loaded inside the game, from the registry snapshot it writes.
+export interface FrameworkMod {
+  name: string;
+  version: string;
+  description: string;
+  ok: boolean;
+  error: string | null;
+  pending?: boolean;
+  permissions: { node: string; description: string; default: string }[];
+  commands: string[];
+  events: string[];
+  warnings?: string[];
+}
+
 export interface BackupEntry {
   name: string;
   sizeBytes: number;
@@ -267,10 +316,23 @@ export class Api {
   }
 
   mods() {
-    return this.http.get<{ mods: ModEntry[]; logicmods: PakEntry[]; paks: PakEntry[] }>('/api/mods');
+    return this.http.get<{
+      mods: ModEntry[];
+      framework: { at: number; mods: FrameworkMod[]; collections?: CollectionEntry[] };
+      script: ScriptModEntry[];
+      logicmods: PakEntry[];
+      paks: PakEntry[];
+    }>('/api/mods');
   }
   toggleMod(name: string, disabled: boolean) {
     return this.http.post<{ ok: boolean; note: string }>('/api/mods/toggle', { name, disabled });
+  }
+  collectionRecords(collection: string) {
+    return this.http.post<{ ok: boolean; data: { records: Record<string, Record<string, unknown>>; count: number } }>(
+      '/api/bridge/call', { type: 'data.list', target: null, data: { collection } });
+  }
+  modLogs(name: string) {
+    return this.http.get<{ name: string; lines: ModLogLine[] }>('/api/mods/logs', { params: { name } });
   }
 
   connect() {
