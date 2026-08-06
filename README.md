@@ -242,7 +242,8 @@ one auth header and JSON.
 - Protocol and endpoints: [docs/bridge.md](docs/bridge.md)
 - Every capability, generated from one manifest: [docs/bridge-reference.md](docs/bridge-reference.md)
 - A worked Palladium mod: [GoldStreak](mods/GoldStreak)
-- A worked script mod: [WelcomeKit](mods/WelcomeKit) · the client it runs against: [packages/mod-sdk](packages/mod-sdk)
+- Another: [WelcomeKit](mods/WelcomeKit) — a starter kit on a player's first ever join
+- The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
 - External programs with a token: [examples/bridge/](examples/bridge)
 - The framework on its own, for servers not running pal-up: [mods/Palladium](mods/Palladium)
 
@@ -273,7 +274,7 @@ pal-up/
 ├── mods/                     # ← drop mod folders here
 │   ├── Palladium/            # the modding framework (ships here, released standalone)
 │   ├── GoldStreak/           # a Palladium mod: gold on every fifth respawn
-│   └── WelcomeKit/           # a script mod: starter kit for first-time players
+│   └── WelcomeKit/           # a Palladium mod: starter kit for first-time players
 ├── examples/bridge/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here

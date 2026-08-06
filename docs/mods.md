@@ -280,9 +280,9 @@ A mod that must reach the network cannot live in the game process: UE4SS Lua
 has no sockets. That is what script mods are for — a folder with a `mod.json`
 and an entry file in JavaScript or TypeScript, run by the panel, with
 permissions and tags reached through the same capabilities.
-[WelcomeKit](../mods/WelcomeKit) is one, and the client it runs against is
-[packages/mod-sdk](../packages/mod-sdk). Script mods need pal-up; Palladium
-mods do not.
+The client one runs against is [packages/mod-sdk](../packages/mod-sdk), which
+documents what a mod exports and everything `pal` offers on that side. Script
+mods need pal-up; Palladium mods do not.
 
 ## How the Lua half is loaded
 

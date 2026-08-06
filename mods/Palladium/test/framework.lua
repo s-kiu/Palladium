@@ -390,5 +390,88 @@ framework.enqueue("player.chat", { kind = "player", id = "OTHERONE", name = "Nix
 framework.drain()
 check("a word that is not a capability is left alone", #calls == 0, #calls)
 
+-- ── WelcomeKit, driven for real ─────────────────────────────────────────────
+-- The other mod that ships: one kit ever, and only once the items arrived.
+
+os.execute("mkdir -p '" .. MODS .. "/WelcomeKit'")
+os.execute("cp '" .. SCRIPTS .. "/../../WelcomeKit/mod.lua' '" .. MODS .. "/WelcomeKit/mod.lua'")
+write(MODS .. "/Palladium/mods.list", "WelcomeKit\n")
+
+-- An inventory the stub actually tracks, so the read-back means something.
+local carried = {}
+framework.init({
+    call = function(action_type, userid, params, report)
+        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
+        if action_type == "player.count_item" then
+            return report(true, nil, { { "count", carried[userid .. params.item] or 0 } })
+        end
+        if action_type == "player.give_item" then
+            local key = userid .. params.item
+            -- PalSphere lands; Pan is the unknown id that silently adds nothing.
+            if params.item ~= "Pan" then
+                carried[key] = (carried[key] or 0) + tonumber(params.count)
+            end
+        end
+        report(true, nil, {})
+    end,
+})
+framework.load()
+
+local newcomer = { kind = "player", id = "NEW", name = "Wren" }
+calls = {}
+framework.enqueue("player.join", newcomer, { firstEver = true })
+framework.drain()
+
+local welcomed, announced = nil, false
+for _, call in ipairs(calls) do
+    if call.type == "player.message" then welcomed = welcomed or call.params.text end
+    if call.type == "server.announce" then announced = true end
+end
+check("a first-ever join is welcomed", welcomed and welcomed:find("Welcome to the server", 1, true) ~= nil, welcomed)
+check("and announced to everyone", announced)
+-- The claim is a tag, not a call, so it is read where it is actually written.
+local tags_c = Collections.open("bridge.tags")
+check("a kit that only half arrived is not marked claimed",
+    tags_c:get("NEW\30welcomekit.claimed") == nil, tags_c:get("NEW\30welcomekit.claimed"))
+
+local told = nil
+for _, call in ipairs(calls) do
+    if call.type == "player.message" then told = call.params.text end
+end
+check("and the player is told rather than left thinking they got it",
+    told and told:find("could not be handed over", 1, true) ~= nil, told)
+
+-- Now let everything land, and the claim is written.
+carried = {}
+framework.init({
+    call = function(action_type, userid, params, report)
+        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
+        if action_type == "player.count_item" then
+            return report(true, nil, { { "count", carried[userid .. params.item] or 0 } })
+        end
+        if action_type == "player.give_item" then
+            local key = userid .. params.item
+            carried[key] = (carried[key] or 0) + tonumber(params.count)
+        end
+        report(true, nil, {})
+    end,
+})
+local second = { kind = "player", id = "NEW2", name = "Wren" }
+calls = {}
+framework.enqueue("player.join", second, { firstEver = true })
+framework.drain()
+local claim = Collections.open("bridge.tags"):get("NEW2\30welcomekit.claimed")
+check("a kit that fully arrived is marked claimed", claim ~= nil and claim.value ~= nil, claim)
+
+-- A returning player is greeted, not re-kitted.
+calls = {}
+framework.enqueue("player.join", second, { firstEver = false, joins = 4 })
+framework.drain()
+local gave = 0
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" then gave = gave + 1 end
+end
+check("a returning player gets a greeting and no kit", gave == 0, gave)
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

@@ -105,10 +105,10 @@ unzip CoolMod.zip -d mods/          # → mods/CoolMod/mod.lua
 docker compose restart palworld     # syncs mods, regenerates mods.txt + mods.list
 ```
 
-Two mods ship with the project, so you can see both shapes working before
-writing one: [GoldStreak](../mods/GoldStreak) (a Palladium mod — 50 gold on
-every fifth respawn) and [WelcomeKit](../mods/WelcomeKit) (a script mod — a
-starter kit for first-time players). Both are enabled out of the box.
+Two Palladium mods ship with the project, so you can read a working one before
+writing your own: [GoldStreak](../mods/GoldStreak) (50 gold on every fifth
+respawn) and [WelcomeKit](../mods/WelcomeKit) (a starter kit on a player's first
+ever join). Both are enabled out of the box.
 
 Disable without deleting: `touch mods/CoolMod/.disabled`. A script mod stops
 immediately; the other kinds need a restart. The panel's mods page has a button

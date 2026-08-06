@@ -43,7 +43,7 @@ Rewriting either in another language means one auth header and JSON.
 | You want | Write | Needs |
 |---|---|---|
 | Server behaviour — rewards, rules, commands | a Palladium mod ([GoldStreak](../../mods/GoldStreak)) | Palladium |
-| The same, but reaching the network | a script mod ([WelcomeKit](../../mods/WelcomeKit)) | pal-up |
+| The same, but reaching the network | a script mod ([packages/mod-sdk](../../packages/mod-sdk)) | pal-up |
 | A program that lives elsewhere — Discord bot, dashboard, CLI | one of these | pal-up + a token |
 
 The game process has no sockets, so anything that must call out lives on this
