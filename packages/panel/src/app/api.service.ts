@@ -144,7 +144,9 @@ export interface BridgeCapability {
   type: string;
   kind: 'event' | 'action' | 'query';
   runtime: 'agent' | 'daemon' | 'game-rest';
+  group?: 'player' | 'pals' | 'world' | 'permissions';
   target?: string;
+  targetOptional?: boolean;
   source?: { hook: string };
   since: string;
   stability: 'stable' | 'experimental' | 'deprecated';
@@ -305,7 +307,8 @@ export class Api {
         seen?: { min: number; max: number; count: number };
         unlisted?: boolean;
       }[];
-      traits: { id: string; name: string; tier: number; effect: string }[];
+      // effect is a summary where one is known for certain, absent otherwise
+      traits: { id: string; name: string; tier: number; effect?: string }[];
     }>('/api/bridge/catalog');
   }
   tokens() {

@@ -37,7 +37,14 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permiss
             <button [class.active]="tab() === t" (click)="tab.set(t)">{{ t }}</button>
           }
         </nav>
-        <button class="ghost" (click)="logout()">sign out</button>
+        <button class="ghost signout" (click)="logout()" title="sign out">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+            <path d="M10 17l-5-5 5-5" />
+            <path d="M5 12h11" />
+          </svg>
+          <span>sign out</span>
+        </button>
       </header>
       <main>
         @switch (tab()) {

@@ -40,7 +40,12 @@ const luaActions = caps
   .filter((c) => (c.kind === 'action' || c.kind === 'query') && c.runtime === 'agent')
   .map((c) => {
     const params = Object.entries(c.params ?? {}).map(([n, p]) => `            ${luaParam(n, p)},`);
-    return `        [${luaStr(c.type)}] = {\n            params = {\n${params.join('\n')}\n            },\n        },`;
+    // The agent needs to know whether an action can run without a player, so
+    // targeting travels with the params rather than being inferred from names.
+    const head = [];
+    if (c.target) head.push(`            target = ${luaStr(c.target)},\n`);
+    if (c.targetOptional) head.push('            target_optional = true,\n');
+    return `        [${luaStr(c.type)}] = {\n${head.join('')}            params = {\n${params.join('\n')}\n            },\n        },`;
   });
 
 const lua = `-- ${HEADER}
@@ -75,8 +80,10 @@ export interface Capability {
   type: string;
   kind: 'event' | 'action' | 'query';
   runtime: 'agent' | 'daemon' | 'game-rest';
+  group?: 'player' | 'pals' | 'world' | 'permissions' | 'agent';
   subject?: string;
   target?: string;
+  targetOptional?: boolean;
   source?: { hook: string };
   since: string;
   stability: 'stable' | 'experimental' | 'deprecated';

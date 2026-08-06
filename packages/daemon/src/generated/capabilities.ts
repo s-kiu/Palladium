@@ -17,8 +17,10 @@ export interface Capability {
   type: string;
   kind: 'event' | 'action' | 'query';
   runtime: 'agent' | 'daemon' | 'game-rest';
+  group?: 'player' | 'pals' | 'world' | 'permissions' | 'agent';
   subject?: string;
   target?: string;
+  targetOptional?: boolean;
   source?: { hook: string };
   since: string;
   stability: 'stable' | 'experimental' | 'deprecated';
@@ -199,6 +201,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.message",
     "kind": "action",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "1.1.0",
     "stability": "stable",
@@ -221,6 +224,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.give_item",
     "kind": "action",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "1.1.0",
     "stability": "stable",
@@ -252,11 +256,12 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.teleport",
     "kind": "action",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Teleport an online player to world coordinates (Engine Actor K2_TeleportTo).",
+    "summary": "Teleport an online player to world coordinates. Uses the engine's own placement call, then reads the position back — an ok carries where the player actually landed, and a teleport that did not move anyone fails rather than reporting success.",
     "params": {
       "x": {
         "type": "number",
@@ -275,25 +280,32 @@ export const CAPABILITIES: Capability[] = [
     "returns": {
       "x": "number",
       "y": "number",
-      "z": "number"
+      "z": "number",
+      "via": "string"
     },
     "errors": [
       "player_offline",
       "invalid_params",
-      "not_supported"
+      "teleport_failed"
     ]
   },
   {
     "type": "player.heal",
     "kind": "action",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Fully restore an online player's HP (PalUtility FullRecoveryHP).",
+    "summary": "Restore an online player to full: HP back to maximum and a full stomach, shield included where the build exposes it. Reports which of the three actually moved, and why any of them did not.",
     "params": {},
-    "returns": {},
+    "returns": {
+      "applied": "string",
+      "failed": "string",
+      "detail": "string",
+      "stats": "json"
+    },
     "errors": [
       "player_offline",
       "not_supported"
@@ -303,6 +315,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.count_item",
     "kind": "query",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "experimental",
@@ -329,6 +342,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.has_item",
     "kind": "query",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "experimental",
@@ -362,11 +376,13 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.spawn",
     "kind": "action",
     "runtime": "agent",
+    "group": "pals",
     "target": "player",
+    "targetOptional": true,
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Spawn a pal near the target player (or at explicit coordinates), with level, rarity and passive-skill traits. Spawned pals use the base NPC AI: they do not attack and do not fight back — use pal.aggro to make one target a player. hostile=true asks for a combat AI controller class if this build exposes one (most do not) and reports which controller applied. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id.",
+    "summary": "Spawn a pal, at explicit coordinates or beside a target player. One of the two is required; with coordinates the pal is placed there and the result reports where it landed. Level, rarity and passive-skill traits apply on spawn. hostile=true additionally turns the new pal on the target player through pal.aggro and reports whether that took. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id.",
     "params": {
       "species": {
         "type": "item_id",
@@ -406,8 +422,12 @@ export const CAPABILITIES: Capability[] = [
       "pal": "string",
       "species": "item_id",
       "level": "int",
+      "x": "number",
+      "y": "number",
+      "z": "number",
       "hostile": "bool",
-      "controller": "string"
+      "controller": "string",
+      "aggro": "string"
     },
     "errors": [
       "player_offline",
@@ -419,6 +439,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.set_tag",
     "kind": "action",
     "runtime": "daemon",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "stable",
@@ -449,6 +470,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.get_tag",
     "kind": "query",
     "runtime": "daemon",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "stable",
@@ -473,6 +495,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.delete_tag",
     "kind": "action",
     "runtime": "daemon",
+    "group": "player",
     "target": "player",
     "since": "2.0.0",
     "stability": "stable",
@@ -496,6 +519,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "server.announce",
     "kind": "action",
     "runtime": "game-rest",
+    "group": "world",
     "target": "server",
     "since": "1.0.0",
     "stability": "stable",
@@ -518,6 +542,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.register",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -544,6 +569,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.check",
     "kind": "query",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -572,6 +598,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.grant",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -604,6 +631,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.revoke",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -627,6 +655,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.nodes",
     "kind": "query",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "read",
@@ -641,6 +670,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "permission.player",
     "kind": "query",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -658,6 +688,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.create",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -690,6 +721,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.update",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -721,6 +753,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.delete",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -742,6 +775,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.set_entry",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -778,6 +812,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.remove_entry",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -805,6 +840,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.assign",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -828,6 +864,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.unassign",
     "kind": "action",
     "runtime": "daemon",
+    "group": "permissions",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -850,6 +887,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "group.list",
     "kind": "query",
     "runtime": "daemon",
+    "group": "permissions",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "read",
@@ -864,6 +902,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.position",
     "kind": "query",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.1.0",
     "stability": "stable",
@@ -883,6 +922,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "location.save",
     "kind": "action",
     "runtime": "daemon",
+    "group": "world",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -917,6 +957,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "location.list",
     "kind": "query",
     "runtime": "daemon",
+    "group": "world",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "read",
@@ -931,6 +972,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "location.delete",
     "kind": "action",
     "runtime": "daemon",
+    "group": "world",
     "since": "2.1.0",
     "stability": "stable",
     "scope": "write",
@@ -953,6 +995,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.list",
     "kind": "query",
     "runtime": "agent",
+    "group": "pals",
     "since": "2.2.0",
     "stability": "experimental",
     "scope": "read",
@@ -969,6 +1012,7 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.stats",
     "kind": "query",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.5.0",
     "stability": "experimental",
@@ -986,16 +1030,22 @@ export const CAPABILITIES: Capability[] = [
     "type": "player.set_stats",
     "kind": "action",
     "runtime": "agent",
+    "group": "player",
     "target": "player",
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Set any combination of an online player's stats in one call; omitted fields are left alone. hp is a fraction of max (0-1); the rest are absolute. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — pals carry all of them; a player character carries only what its own parameter exposes. Reports which fields applied and returns the resulting stats.",
+    "summary": "Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused.",
     "params": {
       "hp": {
         "type": "number",
         "min": 0,
-        "max": 1
+        "max": 100000000
+      },
+      "maxHp": {
+        "type": "number",
+        "min": 1,
+        "max": 100000000
       },
       "hunger": {
         "type": "number",
@@ -1060,7 +1110,9 @@ export const CAPABILITIES: Capability[] = [
     },
     "returns": {
       "applied": "string",
+      "unverified": "string",
       "failed": "string",
+      "detail": "string",
       "stats": "json"
     },
     "errors": [
@@ -1069,9 +1121,67 @@ export const CAPABILITIES: Capability[] = [
     ]
   },
   {
+    "type": "player.status_points",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "player",
+    "target": "player",
+    "since": "3.1.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back.",
+    "params": {},
+    "returns": {
+      "via": "string",
+      "holder": "string",
+      "points": "json"
+    },
+    "errors": [
+      "player_offline",
+      "not_supported"
+    ]
+  },
+  {
+    "type": "player.status_point",
+    "kind": "action",
+    "runtime": "agent",
+    "group": "player",
+    "target": "player",
+    "since": "3.1.0",
+    "stability": "experimental",
+    "scope": "write",
+    "summary": "Spend status points on one of a player's stats, the way a level-up does. This is how a player's max HP goes up: it is computed from the points, not stored, so nothing else can raise it. Additive. stat is the game's own FName for the stat and is passed through verbatim — this build spends through the player controller and exposes no way to read the allocation back, so the result reports which readable stat moved instead. player.status_points lists the names to try.",
+    "params": {
+      "stat": {
+        "type": "string",
+        "required": true,
+        "maxLen": 32
+      },
+      "points": {
+        "type": "int",
+        "min": 1,
+        "max": 1000,
+        "default": 1
+      }
+    },
+    "returns": {
+      "stat": "string",
+      "points": "int",
+      "via": "string",
+      "verified": "bool",
+      "stats": "json"
+    },
+    "errors": [
+      "player_offline",
+      "invalid_params",
+      "not_supported"
+    ]
+  },
+  {
     "type": "pal.stats",
     "kind": "query",
     "runtime": "agent",
+    "group": "pals",
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "read",
@@ -1097,10 +1207,11 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.set_stats",
     "kind": "action",
     "runtime": "agent",
+    "group": "pals",
     "since": "2.5.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Set any combination of a loaded pal's stats in one call; omitted fields are left alone. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated.",
+    "summary": "Set any combination of a loaded pal's stats in one call; omitted fields are left alone. Values are absolute, on the same scale pal.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused.",
     "params": {
       "pal": {
         "type": "string",
@@ -1111,7 +1222,12 @@ export const CAPABILITIES: Capability[] = [
       "hp": {
         "type": "number",
         "min": 0,
-        "max": 1
+        "max": 100000000
+      },
+      "maxHp": {
+        "type": "number",
+        "min": 1,
+        "max": 100000000
       },
       "hunger": {
         "type": "number",
@@ -1177,6 +1293,9 @@ export const CAPABILITIES: Capability[] = [
     "returns": {
       "pal": "string",
       "applied": "string",
+      "unverified": "string",
+      "failed": "string",
+      "detail": "string",
       "stats": "json"
     },
     "errors": [
@@ -1188,11 +1307,12 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.aggro",
     "kind": "action",
     "runtime": "agent",
+    "group": "pals",
     "target": "player",
     "since": "2.7.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Make a loaded pal hate a player, so it turns on them and fights. Seeds the engine's hate system directly — the mechanism damage normally uses, which spawned pals never receive. Signatures are probed; the result names the call that worked.",
+    "summary": "Make a loaded pal hate a player, so it turns on them and fights. The hate system itself is not callable on this build, so the pal, its controller and its parameter component are searched for a hate function that is, and the engine's own damage path is the last resort. The result names the call that worked; a failure lists the hate-related functions this build does expose.",
     "params": {
       "pal": {
         "type": "string",
@@ -1222,10 +1342,11 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.inspect",
     "kind": "query",
     "runtime": "agent",
+    "group": "pals",
     "since": "2.8.0",
     "stability": "experimental",
     "scope": "read",
-    "summary": "Diagnostic dump for one loaded pal: its AI controller class, whether a player owns it, otomo flag, spawned type and whether it has a hate system. Run it on a wild pal and on a spawned one — the difference is why one fights back and the other does not.",
+    "summary": "Diagnostic dump for one loaded pal: its AI controller class, whether a player owns it, otomo flag, spawned type, and whether a hate system exists on it (which is not the same as it hating anyone). Run it on a wild pal and on a spawned one — the difference is why one fights back and the other does not.",
     "params": {
       "pal": {
         "type": "string",
@@ -1250,11 +1371,12 @@ export const CAPABILITIES: Capability[] = [
     "type": "pal.force_spawn",
     "kind": "action",
     "runtime": "agent",
+    "group": "pals",
     "target": "player",
     "since": "2.9.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Ask one of the world's own spawners near the player to fire. Unlike pal.spawn this does not construct an NPC by hand — the game spawns it through its normal path, so it gets the AI a wild pal has and will fight back. kind=boss prefers a boss/alpha spawner (hostile by design), anything else takes the nearest. Uses the same spawner calls AlphaRespawnScheduler relies on. The spawner decides species and location, not you.",
+    "summary": "Ask one of the world's own spawners near the player to fire. Unlike pal.spawn this does not construct an NPC by hand — the game spawns it through its normal path, so it gets the AI a wild pal has and will fight back. kind=boss prefers a boss/alpha spawner (hostile by design), anything else takes the nearest. radius is in world units, where 100 units is one metre. The spawner decides species and location, not you.",
     "params": {
       "kind": {
         "type": "string",
@@ -1263,8 +1385,8 @@ export const CAPABILITIES: Capability[] = [
       },
       "radius": {
         "type": "number",
-        "min": 1000,
-        "max": 500000,
+        "min": 0,
+        "max": 1000000,
         "default": 50000
       }
     },
@@ -1276,6 +1398,46 @@ export const CAPABILITIES: Capability[] = [
     },
     "errors": [
       "player_offline",
+      "not_supported"
+    ]
+  },
+  {
+    "type": "bridge.probe",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "agent",
+    "target": "player",
+    "targetOptional": true,
+    "since": "3.0.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Which engine functions and properties this build actually exposes on an object, narrowed by substring. Reads the class chain through reflection and calls nothing, so it is safe to point anywhere. This is the answer to a not_supported: it names what does exist, fields included — a value the engine keeps in a property rather than behind a getter is invisible to a function list alone. on: player | state | controller | params | pal | palai | palparams | utility | manager | spawner, or class:<UClassName> for any live object by its class.",
+    "params": {
+      "on": {
+        "type": "string",
+        "default": "player",
+        "maxLen": 64
+      },
+      "pal": {
+        "type": "string",
+        "maxLen": 64,
+        "picker": "worldpal"
+      },
+      "filter": {
+        "type": "string",
+        "maxLen": 32
+      }
+    },
+    "returns": {
+      "on": "string",
+      "class": "string",
+      "count": "int",
+      "functions": "json",
+      "properties": "json"
+    },
+    "errors": [
+      "player_offline",
+      "pal_not_found",
       "not_supported"
     ]
   }

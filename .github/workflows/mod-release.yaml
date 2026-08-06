@@ -43,19 +43,20 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: syntax-check the Lua
+      - name: test the mod
         if: steps.check.outputs.exists == 'false'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
-          find mods/Palladium -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+          mods/Palladium/test/run-tests.sh
 
       - name: package
         if: steps.check.outputs.exists == 'false'
         run: |
           # Archive root is the mod folder itself, so unzipping into ./mods (or
-          # a server's Mods directory) lands it at the path UE4SS expects.
+          # a server's Mods directory) lands it at the path UE4SS expects. The
+          # tests are not part of what a server runs.
           zip -r "Palladium-${{ steps.mod.outputs.version }}.zip" mods/Palladium \
-            -x '*/.disabled'
+            -x '*/.disabled' 'mods/Palladium/test/*'
           sha256sum "Palladium-${{ steps.mod.outputs.version }}.zip" \
             > "Palladium-${{ steps.mod.outputs.version }}.zip.sha256"
 

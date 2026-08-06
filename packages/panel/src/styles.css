@@ -134,6 +134,30 @@ button.danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.08); bord
 button.ghost { background: none; border: none; color: var(--muted); }
 button.ghost:hover { color: var(--text); background: none; }
 
+/* Sign out: the icon carries it, the word underneath removes any doubt. */
+.signout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 4px 10px;
+  line-height: 1;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+}
+.signout svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+button.signout:hover { background: var(--surface-2); }
+
 input, select {
   background: #0d0f12;
   border: 1px solid var(--border-strong);
@@ -231,6 +255,33 @@ td.actions button + button { margin-left: 6px; }
   color: var(--muted);
 }
 .chip.on { color: #fff; background: var(--accent-strong); border-color: transparent; }
+/* The bridge page's own tab bar: a second row under the app bar, and pinned
+   there — the tabs stay reachable however far down the page you are. */
+.subnav {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  position: sticky;
+  top: 52px; /* the app bar's height: the two bars meet with no gap to see through */
+  z-index: 4;
+}
+.subnav button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 7px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.subnav button:hover { color: var(--text); }
+.subnav button.active { color: var(--text); background: var(--surface-2); }
 .mono {
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
   font-size: 12px;
@@ -385,3 +436,4 @@ select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+.drawer-heading { margin-top: 18px; }

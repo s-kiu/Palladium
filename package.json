@@ -18,7 +18,8 @@
     "build:image": "docker build -t pal-up/palworld-server:dev packages/server-image",
     "build:panel": "docker build -f packages/daemon/Dockerfile -t pal-up/panel:dev .",
     "test:image": "packages/server-image/test/run-tests.sh",
-    "test": "npm run test:image",
+    "test:agent": "mods/Palladium/test/run-tests.sh",
+    "test": "npm run test:image && npm run test:agent",
     "dev:daemon": "npm run dev --workspace @pal-up/daemon",
     "dev:panel": "npm run dev --workspace @pal-up/panel"
   }

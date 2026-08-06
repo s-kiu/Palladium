@@ -1217,8 +1217,10 @@ function validateParams(
         const n = Number(value);
         if (!Number.isFinite(n)) return { ok: false, error: `invalid_params: ${name} not a number` };
         const v = spec.type === 'int' ? Math.floor(n) : n;
-        if (spec.min !== undefined && v < spec.min) return { ok: false, error: `invalid_params: ${name} out of range` };
-        if (spec.max !== undefined && v > spec.max) return { ok: false, error: `invalid_params: ${name} out of range` };
+        if ((spec.min !== undefined && v < spec.min) || (spec.max !== undefined && v > spec.max)) {
+          const bounds = `${spec.min ?? 'any'} to ${spec.max ?? 'any'}`;
+          return { ok: false, error: `invalid_params: ${name} out of range (${bounds})` };
+        }
         params[name] = v;
         break;
       }
@@ -1501,8 +1503,10 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
     if (!scopeAllowed(req, cap.scope)) {
       return reply.code(403).send({ error: `scope '${cap.scope}' required` });
     }
+    // A capability whose target is optional accepts no target at all, but not
+    // a malformed one — an unusable id is a mistake, not a choice to omit it.
     const target = String(req.body?.target ?? '');
-    if (cap.target === 'player' && !ID_RE.test(target)) {
+    if (cap.target === 'player' && !(cap.targetOptional && target === '') && !ID_RE.test(target)) {
       return reply.code(400).send({ error: 'target must be a 32-hex player id' });
     }
     const checked = validateParams(cap.params, req.body?.data ?? {});

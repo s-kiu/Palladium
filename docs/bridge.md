@@ -210,8 +210,8 @@ for await (const event of bridge.follow({ types: ['player.chat'] })) {
   await bridge.call('pal.spawn', subject.id, {
     species: 'BOSS_Anubis', level: 50, rare: true, traits: 'Legend',
   });
-  // The npc.spawn event that follows carries the new pal's id — keep it if
-  // you want to heal or inspect the guardian later (pal.set_hp, pal.list).
+  // The result carries the new pal's id — keep it if you want to buff or
+  // inspect the guardian later (pal.set_stats, pal.inspect).
 }
 ```
 
@@ -229,13 +229,21 @@ stands there.
 `pal.aggro` is the way round it. Retaliation in this game is the hate system:
 damage normally adds hate toward the attacker and the AI goes for whoever it
 hates most. A spawned pal never receives that first entry, so `pal.aggro`
-seeds it directly against a chosen player. `hostile: true` on a spawn remains
-a request for a combat controller class, honoured only if the build exposes
-one — the result always names the controller that actually applied, so it is
-never ambiguous.
+seeds it — through whichever hate function the build declares on the pal, its
+controller or its parameter component, falling back to the engine's own damage
+path with the player as the instigator. The result names the call that worked;
+a failure lists the hate-related functions that do exist, which is the same
+thing `bridge.probe` reports for any object.
 
-Neither changes the other limit: spawns are absent from the world save and
-disappear on restart.
+`hostile: true` on a spawn is that same seeding applied to the target player as
+soon as the new pal exists, so one call both creates the mob and points it.
+
+`pal.force_spawn` takes the other route entirely: it asks one of the world's
+own spawners near the player to fire, and a pal that arrives that way has the
+AI a wild one has.
+
+None of this changes the other limit: `pal.spawn` spawns are absent from the
+world save and disappear on restart.
 
 ## What the engine allows
 
@@ -248,6 +256,16 @@ not available. Capabilities marked `experimental` in the reference use engine
 calls that are unproven against a live player, and may fail with
 `not_supported` rather than doing nothing quietly; the fastcrash guard (three
 rapid crashes → unmodded boot) is the safety net around them.
+
+Which functions exist at all differs between builds, so the agent asks the
+class chain rather than assuming: a handler calls only shapes the engine
+declares, and `bridge.probe` answers the same question directly —
+`{"type":"bridge.probe","data":{"on":"params","filter":"stomach"}}` lists what
+a player's parameter component actually exposes. It reads and calls nothing,
+so it is safe to point anywhere. Actions that write a value read it back, which
+is why `player.set_stats` reports `applied`, `unverified` and `failed`
+separately: an engine call that returns cleanly has not necessarily done
+anything.
 
 Everything outside the agent keys on the envelope and the manifest, not on
 engine internals. If an event type stops appearing after a game patch,

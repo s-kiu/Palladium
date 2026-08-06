@@ -20,10 +20,14 @@
 --   - native (/Script/) hook targets only: Blueprint targets fault the process
 --   - never StaticFindObject a UFunction path: same fault
 --   - never write a hook parameter (param:set faults mid-broadcast)
+--   - resolve engine objects immediately before use: a reference does not
+--     survive intervening engine work
+--   - reflection decides whether a function exists, but only named shapes with
+--     known signatures are ever called: a discovered name called blind faults
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "2.9.1"
+local VERSION = "3.1.2"
 
 local CAPS = require("generated/capabilities")
 
@@ -156,6 +160,124 @@ end
 
 local function player_name(state)
     return (state and to_text(member(state, "PlayerNamePrivate"))) or "Unknown"
+end
+
+-- ── engine reflection ───────────────────────────────────────────────────────
+-- This loader maps only a subset of the game's functions, and which subset
+-- differs between builds: a missing function errors at the call site, and a
+-- struct the loader does not map exposes nothing at all. Asking the class chain
+-- what it declares turns both into data — a handler calls only shapes that are
+-- there, and names what does exist when none of them fit.
+local MAX_CLASS_DEPTH = 12
+local class_functions = {}  -- class full name → { [function name] = true }
+local class_properties = {} -- class full name → { [property name] = true }
+
+local function class_of(object)
+    if object == nil then return nil end
+    local ok, class = pcall(function() return object:GetClass() end)
+    if ok and valid(class) then return class end
+    return nil
+end
+
+local function class_name(object)
+    local class = class_of(object)
+    if class == nil then return nil end
+    local ok, name = pcall(function() return class:GetFullName() end)
+    if ok and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- Walks the class chain collecting whatever the visitor reports. Functions and
+-- properties are two separate questions with the same answer shape, and a value
+-- the engine keeps in a field rather than behind a getter is invisible to the
+-- first one — which is the whole reason both exist here.
+local function walk_class(object, visit)
+    local names = {}
+    local struct = class_of(object)
+    for _ = 1, MAX_CLASS_DEPTH do
+        if not valid(struct) then break end
+        local current = struct
+        pcall(function()
+            visit(current, function(entry)
+                local ok, name = pcall(function() return entry:GetFName():ToString() end)
+                if ok and type(name) == "string" and name ~= "" then names[name] = true end
+            end)
+        end)
+        local ok, super = pcall(function() return current:GetSuperStruct() end)
+        if not ok or not valid(super) then break end
+        struct = super
+    end
+    return names
+end
+
+local function functions_of(object)
+    local key = class_name(object)
+    if key and class_functions[key] then return class_functions[key] end
+    local names = walk_class(object, function(struct, collect) struct:ForEachFunction(collect) end)
+    if key then class_functions[key] = names end
+    return names
+end
+
+local function properties_of(object)
+    local key = class_name(object)
+    if key and class_properties[key] then return class_properties[key] end
+    local names = walk_class(object, function(struct, collect) struct:ForEachProperty(collect) end)
+    if key then class_properties[key] = names end
+    return names
+end
+
+-- A name set as a sorted list, narrowed to those containing a fragment.
+local function matching(names, fragment, limit)
+    local out = {}
+    for name in pairs(names) do
+        if fragment == "" or name:lower():find(fragment, 1, true) then out[#out + 1] = name end
+    end
+    table.sort(out)
+    local total = #out
+    while limit and #out > limit do table.remove(out) end
+    return out, total
+end
+
+-- No functions at all means reflection did not answer for this object, not
+-- that the object has none: an unanswered question falls back to attempting
+-- the call, which is how this agent worked before the class chain was
+-- readable. A guarded attempt is the cost; a silently dead handler is not.
+local function declares(object, name)
+    if object == nil then return false end
+    local known = functions_of(object)
+    if next(known) == nil then return true end
+    return known[name] == true
+end
+
+-- What this build has in the neighbourhood of a name, so a failure can say so.
+-- Properties count: a field is as good an answer as a getter when the question
+-- is "where does this build keep the thing".
+local MAX_CANDIDATES = 10
+
+local function candidates(object, fragment, with_properties)
+    local names = functions_of(object)
+    if with_properties then
+        local merged = {}
+        for name in pairs(names) do merged[name] = true end
+        for name in pairs(properties_of(object)) do merged[name] = true end
+        names = merged
+    end
+    return (matching(names, fragment, MAX_CANDIDATES))
+end
+
+-- Calls the first shape whose function the holder declares. Each shape is
+-- { holder, "FunctionName", invoke }; the name is what gets checked and
+-- reported, the closure is the one signature that goes with it.
+local function call_shapes(shapes)
+    local tried = {}
+    for _, shape in ipairs(shapes) do
+        if declares(shape[1], shape[2]) then
+            local ok, err = pcall(shape[3])
+            if ok then return true, shape[2] end
+            tried[#tried + 1] = shape[2] .. " -> " .. tostring(err)
+        end
+    end
+    return false, nil, tried
 end
 
 -- PlayerUId as 32 hex digits — byte-identical to the REST API's playerId. The
@@ -383,8 +505,10 @@ local function validate(specs, raw)
                 value = tonumber(value)
                 if value == nil then return nil, "invalid_params: " .. spec.name .. " not a number" end
                 if spec.kind == "int" then value = math.floor(value) end
-                if spec.min and value < spec.min then return nil, "invalid_params: " .. spec.name .. " out of range" end
-                if spec.max and value > spec.max then return nil, "invalid_params: " .. spec.name .. " out of range" end
+                if (spec.min and value < spec.min) or (spec.max and value > spec.max) then
+                    return nil, string.format("invalid_params: %s out of range (%s to %s)",
+                        spec.name, tostring(spec.min or "any"), tostring(spec.max or "any"))
+                end
             elseif spec.kind == "bool" then
                 value = (value == true or value == "true" or value == "1")
             elseif spec.kind == "item_id" then
@@ -432,6 +556,591 @@ local function pawn_of(state)
     return controller, pawn
 end
 
+-- The NPC manager and the world both hang off a player controller, so a few
+-- actions need some player online even when they name none.
+local function any_player_controller()
+    local ok, states = pcall(FindAllOf, "PalPlayerState")
+    if not ok or type(states) ~= "table" then return nil end
+    for _, state in ipairs(states) do
+        if valid(state) then
+            local controller = pawn_of(state)
+            if valid(controller) then return controller end
+        end
+    end
+    return nil
+end
+
+-- ── placement ───────────────────────────────────────────────────────────────
+local function position_of(actor)
+    if not valid(actor) then return nil end
+    local ok, at = pcall(function() return actor:K2_GetActorLocation() end)
+    if not ok or type(member(at, "X")) ~= "number" then return nil end
+    return { X = at.X, Y = at.Y, Z = at.Z or 0 }
+end
+
+local function distance(a, b)
+    if a == nil or b == nil then return nil end
+    local dx, dy, dz = a.X - b.X, a.Y - b.Y, (a.Z or 0) - (b.Z or 0)
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+-- K2_TeleportTo moves an actor the engine already owns, but a possessed player
+-- character on a dedicated server is moved by the game's own placement call —
+-- the one the admin mods on this build use. Try that first, keep the engine
+-- call as the fallback.
+--
+-- Verified as it goes: a call the engine accepts without moving the actor is
+-- not a placement, so the next shape gets its turn. Placement that only lands
+-- on a later frame reads as unmoved here, hence the tolerance and the
+-- unverified answer rather than a failure.
+local PLACE_TOLERANCE = 2000
+
+local function place_actor(actor, at)
+    local util = pal_utility()
+    local shapes = {
+        { util, "TeleportAroundLoccation", function()
+            util:TeleportAroundLoccation(actor, { X = at.X, Y = at.Y, Z = at.Z },
+                { X = 0, Y = 0, Z = 0, W = 0 })
+        end },
+        { actor, "K2_TeleportTo", function()
+            actor:K2_TeleportTo({ X = at.X, Y = at.Y, Z = at.Z }, { Pitch = 0, Yaw = 0, Roll = 0 })
+        end },
+    }
+    local ran, tried = nil, {}
+    for _, shape in ipairs(shapes) do
+        if declares(shape[1], shape[2]) then
+            local ok, err = pcall(shape[3])
+            if not ok then
+                tried[#tried + 1] = shape[2] .. " -> " .. tostring(err)
+            else
+                ran = ran or shape[2]
+                local landed = position_of(actor)
+                if landed == nil or distance(landed, at) <= PLACE_TOLERANCE then
+                    return true, shape[2]
+                end
+                tried[#tried + 1] = shape[2] .. " -> the actor did not move"
+            end
+        end
+    end
+    if ran then return true, ran .. " (unverified)" end
+    return false, nil, tried
+end
+
+-- ── stats ───────────────────────────────────────────────────────────────────
+-- Numbers arrive raw or wrapped in a fixed-point struct depending on the
+-- field; unwrap both shapes.
+local function as_number(value)
+    if type(value) == "number" then return value end
+    local inner = member(value, "Value")
+    if type(inner) == "number" then return inner end
+    return nil
+end
+
+-- Getters live on the character, its parameter component, or the individual
+-- parameter depending on the stat and the build. Resolved fresh on every read:
+-- a component reference does not survive the engine work in between.
+local function stat_sources(character)
+    return { character, member(character, "CharacterParameterComponent"), pal_parameter(character) }
+end
+
+local function stat_of(sources, method)
+    for _, source in ipairs(sources) do
+        if source ~= nil then
+            local ok, value = pcall(function() return source[method](source) end)
+            if ok then
+                local number = as_number(value)
+                if number then return number end
+            end
+        end
+    end
+    return nil
+end
+
+local function stat_value(character, method)
+    return stat_of(stat_sources(character), method)
+end
+
+-- Combat/work stats live as fields on the pal's SaveParameter, not behind
+-- getters. Writing them is AdminCommands' proven recipe: assign, mirror,
+-- OnRep_SaveParameter to replicate.
+local SAVE_STATS = {
+    { "level", "Level" }, { "rank", "Rank" },
+    { "talentHp", "Talent_HP" }, { "talentMelee", "Talent_Melee" },
+    { "talentShot", "Talent_Shot" }, { "talentDefense", "Talent_Defense" },
+    { "rankAttack", "Rank_Attack" }, { "rankDefence", "Rank_Defence" },
+    { "rankCraftSpeed", "Rank_CraftSpeed" }, { "craftSpeed", "CraftSpeed" },
+}
+
+-- A player character carries the same save parameter as a pal, so these fields
+-- accept a write and read back changed — but nothing in the game reads them for
+-- a player. Refusing them is the only honest answer; a player's equivalents are
+-- status points, which are a different system entirely.
+local PAL_ONLY_STATS = {
+    rank = true, talentHp = true, talentMelee = true, talentShot = true,
+    talentDefense = true, rankAttack = true, rankDefence = true,
+    rankCraftSpeed = true, craftSpeed = true,
+}
+
+local function is_player(character)
+    return valid(member(character, "PlayerState"))
+end
+
+local STAT_GETTERS = {
+    { "hp", "GetHP" }, { "maxHp", "GetMaxHP" },
+    { "hunger", "GetFullStomach" }, { "maxHunger", "GetMaxFullStomach" },
+    { "shield", "GetShieldValue" }, { "maxShield", "GetShieldMaxHP" },
+    { "sanity", "GetSanityValue" },
+}
+
+local function read_stats(character)
+    local sources = stat_sources(character)
+    local parts = {}
+    for _, entry in ipairs(STAT_GETTERS) do
+        local value = stat_of(sources, entry[2])
+        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
+            (value and json_value(value) or "null")
+    end
+    local save = member(sources[3], "SaveParameter")
+    for _, entry in ipairs(SAVE_STATS) do
+        local value = save and as_number(member(save, entry[2]))
+        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
+            (value and json_value(value) or "null")
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- The live stats that can be written, in the order they have to be applied:
+-- a ceiling before the value that fills it, or the engine clamps the value to
+-- the old maximum.
+local WRITE_STATS = { "maxHp", "hp", "hunger", "maxShield", "shield" }
+
+-- Fixed-point fields take a struct, plain ones take the number, and which is
+-- which differs per field — so a declared setter is offered both.
+local function number_shapes(holder, name, value)
+    return {
+        { holder, name, function() holder[name](holder, { Value = math.floor(value) }) end },
+        { holder, name, function() holder[name](holder, value) end },
+    }
+end
+
+local function append(shapes, more)
+    for _, shape in ipairs(more) do shapes[#shapes + 1] = shape end
+    return shapes
+end
+
+-- The calls to try for one stat, best first. HP is fixed point and the setter
+-- this build is known to expose takes a rate, so callers work in the absolute
+-- values the getters report and the maximum converts between the two.
+local function stat_shapes(name, character, value)
+    local util = pal_utility()
+    local component = member(character, "CharacterParameterComponent")
+    if name == "maxHp" then
+        local shapes = append(number_shapes(component, "SetMaxHP", value),
+            number_shapes(component, "SetMaxHPValue", value))
+        shapes[#shapes + 1] = { util, "SetMaxHPToCharacter",
+            function() util:SetMaxHPToCharacter(character, value) end }
+        return shapes, "maxhp"
+    end
+    if name == "hp" then
+        local max = stat_value(character, "GetMaxHP")
+        local rate = max and max > 0 and math.min(1, math.max(0, value / max)) or nil
+        local shapes = {}
+        if rate then
+            shapes[#shapes + 1] = { util, "SetHPByRateToCharacter",
+                function() util:SetHPByRateToCharacter(character, rate) end }
+            shapes[#shapes + 1] = { component, "SetHPByRate",
+                function() component:SetHPByRate(rate) end }
+        end
+        return append(shapes, number_shapes(component, "SetHP", value)), "hp"
+    end
+    if name == "hunger" then
+        local parameter = pal_parameter(character)
+        local current = stat_value(character, "GetFullStomach") or 0
+        return {
+            { component, "SetFullStomach", function() component:SetFullStomach(value) end },
+            { character, "SetFullStomach", function() character:SetFullStomach(value) end },
+            { parameter, "SetFullStomach", function() parameter:SetFullStomach(value) end },
+            { util, "SetFullStomach", function() util:SetFullStomach(character, value) end },
+            { component, "AddFullStomach", function() component:AddFullStomach(value - current) end },
+        }, "stomach"
+    end
+    if name == "shield" then
+        local shapes = number_shapes(component, "SetShieldHP", value)
+        shapes[#shapes + 1] = { util, "SetShieldHP", function() util:SetShieldHP(character, value) end }
+        return shapes, "shield"
+    end
+    local shapes = number_shapes(component, "SetShieldMaxHP", value)
+    shapes[#shapes + 1] = { util, "SetShieldMaxHP", function() util:SetShieldMaxHP(character, value) end }
+    return shapes, "shield"
+end
+
+-- What to do instead, for a stat this build does not let anyone write. Max HP
+-- is not stored anywhere: the game computes it, so the way up is the numbers it
+-- computes from.
+local STAT_HINT = {
+    maxHp = "the game computes max HP from level, HP IV and rank rather than storing it — " ..
+            "raise talentHp/level/rank, or raise maxShield instead",
+}
+
+local STAT_GETTER_OF = {
+    hp = "GetHP", maxHp = "GetMaxHP", hunger = "GetFullStomach",
+    shield = "GetShieldValue", maxShield = "GetShieldMaxHP",
+}
+
+-- Some live stats are also save-parameter fields, and the field can be the only
+-- way in when the build exposes no setter for them: the same
+-- assign-mirror-replicate recipe the combat stats use.
+local SAVE_FIELD_OF = { hp = "HP", maxHp = "MaxHP", hunger = "FullStomach" }
+
+local function write_save_field(character, field, value)
+    local parameter = pal_parameter(character)
+    local save = parameter and member(parameter, "SaveParameter")
+    if save == nil or member(save, field) == nil then return false end
+    local mirror = member(parameter, "SaveParameterMirror")
+    -- Fixed-point fields hold their number behind Value; plain ones are the
+    -- number itself.
+    local fixed = type(member(save, field)) ~= "number" and member(member(save, field), "Value") ~= nil
+    local ok = pcall(function()
+        if fixed then
+            save[field].Value = math.floor(value)
+            if mirror and member(mirror, field) ~= nil then mirror[field].Value = math.floor(value) end
+        else
+            save[field] = value
+            if mirror and member(mirror, field) ~= nil then mirror[field] = value end
+        end
+    end)
+    if ok then pcall(function() parameter:OnRep_SaveParameter() end) end
+    return ok
+end
+
+-- Everything this build declares anywhere near the stat, so a failure says what
+-- does exist rather than only what does not.
+local function stat_candidates(character, fragment)
+    local seen, out = {}, {}
+    for _, source in ipairs(stat_sources(character)) do
+        for _, name in ipairs(candidates(source, fragment)) do
+            if not seen[name] then
+                seen[name] = true
+                out[#out + 1] = name
+            end
+        end
+    end
+    return out
+end
+
+-- One write, then a read back: a call the engine accepts without moving the
+-- value is reported as unverified rather than applied, and the save-parameter
+-- field gets its turn before anything is called a failure. Returns the outcome
+-- and a note when there is something to say — the engine capping the value, or
+-- the reason nothing took.
+local function apply_stat(character, name, value)
+    local getter = STAT_GETTER_OF[name]
+    local before = stat_value(character, getter)
+    local shapes, fragment = stat_shapes(name, character, value)
+    local ok, via, tried = call_shapes(shapes)
+
+    -- nil when the value did not move at all; otherwise the outcome, plus a
+    -- note when it moved but stopped short of what was asked for.
+    local function moved()
+        local after = stat_value(character, getter)
+        if after == nil or before == nil then return "unverified", nil end
+        if math.abs(after - value) <= math.max(1, math.abs(value) * 0.02) then return "applied", nil end
+        if after ~= before then
+            return "applied", string.format("reached %.6g of %.6g — the engine capped it", after, value)
+        end
+        return nil
+    end
+
+    if ok then
+        local outcome, note = moved()
+        if outcome then return outcome, note end
+    end
+    local field = SAVE_FIELD_OF[name]
+    if field and write_save_field(character, field, value) then
+        local outcome, note = moved()
+        if outcome then return outcome, note end
+    end
+    if ok then return "unverified", "the call took but nothing changed (" .. tostring(via) .. ")" end
+
+    local near = stat_candidates(character, fragment)
+    local reason = (tried and tried[1]) or "no setter declared"
+    if STAT_HINT[name] then reason = reason .. " — " .. STAT_HINT[name] end
+    if #near > 0 then reason = reason .. "; declared: " .. table.concat(near, " ") end
+    return "failed", reason
+end
+
+-- Applies whichever stats were supplied; a field left out is left alone.
+local function write_stats(character, p)
+    local applied, unverified, failed, notes = {}, {}, {}, {}
+    local function record(name, outcome, note)
+        if outcome == "applied" then
+            applied[#applied + 1] = name
+        elseif outcome == "unverified" then
+            unverified[#unverified + 1] = name
+        else
+            failed[#failed + 1] = name
+        end
+        if note and note ~= "" then notes[#notes + 1] = name .. ": " .. note end
+    end
+
+    -- A value above its ceiling would simply be clamped, so the ceiling goes up
+    -- with it unless the caller asked for a particular one.
+    local wanted = {}
+    for key, value in pairs(p) do wanted[key] = value end
+    if p.hp ~= nil and p.maxHp == nil then
+        local max = stat_value(character, "GetMaxHP")
+        if max and p.hp > max then wanted.maxHp = p.hp end
+    end
+    p = wanted
+
+    for _, name in ipairs(WRITE_STATS) do
+        if p[name] ~= nil then record(name, apply_stat(character, name, p[name])) end
+    end
+
+    -- Save-parameter fields are plain assignments, read back from the field
+    -- itself; replicate once at the end.
+    local parameter = pal_parameter(character)
+    local save = parameter and member(parameter, "SaveParameter")
+    local mirror = parameter and member(parameter, "SaveParameterMirror")
+    local touched = false
+    local player = is_player(character)
+    for _, entry in ipairs(SAVE_STATS) do
+        local value = p[entry[1]]
+        if value ~= nil then
+            if player and PAL_ONLY_STATS[entry[1]] then
+                record(entry[1], "failed",
+                    "a pal stat — a player has no IVs, star rank or souls; " ..
+                    "player.status_point is the equivalent")
+            elseif not save then
+                record(entry[1], "failed", "no save parameter on this character")
+            else
+                local ok = pcall(function()
+                    save[entry[2]] = value
+                    if mirror then mirror[entry[2]] = value end
+                end)
+                if not ok then
+                    record(entry[1], "failed", "the engine refused the write")
+                else
+                    touched = true
+                    record(entry[1], as_number(member(save, entry[2])) == value and "applied" or "unverified")
+                end
+            end
+        end
+    end
+    if touched then pcall(function() parameter:OnRep_SaveParameter() end) end
+
+    if #applied == 0 and #unverified == 0 then
+        return false, "not_supported: " .. tostring(notes[1])
+    end
+    -- A partial success still has to say what the engine did with the rest, or
+    -- the next attempt is another round of guessing.
+    return true, nil, {
+        { "applied", table.concat(applied, ",") },
+        { "unverified", table.concat(unverified, ",") },
+        { "failed", table.concat(failed, ",") },
+        { "detail", #notes > 0 and table.concat(notes, "; ") or nil },
+        { "stats", { raw = read_stats(character) } },
+    }
+end
+
+-- ── status points ───────────────────────────────────────────────────────────
+-- A player's max HP, stamina, attack and carry weight are not stored: the game
+-- computes them from the points spent on each, which is why writing a level or
+-- an IV onto a player changes nothing they can see. The spending lives on the
+-- player controller on this build (AddPlayerStatusPoint_ToServer), not on the
+-- state or the character, which is where the search starts.
+local STATUS_HOLDER_CALLS = {
+    "GetPlayerDataBase", "GetPlayerData", "GetPlayerRecordData", "GetPlayerInfo",
+    "GetIndividualHandle", "GetPlayerParameterComponent",
+}
+local STATUS_HOLDER_FIELDS = {
+    "PlayerDataBase", "PlayerData", "PlayerRecordData", "PlayerInfo",
+    "PlayerParameterComponent", "StatusPointComponent",
+}
+local STATUS_READERS = { "GetStatusPoint", "GetStatusPointNum", "GetStatusPointValue" }
+
+-- The two the player controller declares on this build are the ones the game's
+-- own level-up screen calls; the rest are kept for builds that name them
+-- differently. _ToServer is Palworld's client-to-server RPC naming, and the
+-- agent runs on the server, so calling one executes it directly.
+local STATUS_WRITERS = {
+    "AddPlayerStatusPoint_ToServer", "Debug_SetStatusPoint_ToServer",
+    "AddStatusPoint", "SetStatusPoint", "AddStatusPointNum",
+}
+
+-- Which name a point is spent under is the game's own FName, and this build
+-- exposes no reader to enumerate them — so both spellings the game is known to
+-- use are offered and the one that moves a stat is the right one.
+local STATUS_STAT_NAMES = {
+    "最大HP", "最大SP", "攻撃力", "所持重量", "捕獲率", "作業速度",
+    "MaxHP", "MaxSP", "AttackPower", "WeightLoad", "CaptureRate", "WorkSpeed",
+}
+
+-- Everything a player's points could hang off, resolved fresh: the state, the
+-- character, their controller, and whatever data object any of them hands out.
+-- The record objects are not handed out by every build, so the ones reachable
+-- by class name are included too — matched to this player where their id can be
+-- read, since writing to the wrong player's record would be worse than failing.
+local STATUS_CLASSES = { "PalPlayerDataBase", "PalPlayerData", "PalPlayerRecordData" }
+
+local function status_holders(state, character)
+    local holders, seen = {}, {}
+    local function add(object)
+        if valid(object) and not seen[tostring(object)] then
+            seen[tostring(object)] = true
+            holders[#holders + 1] = object
+        end
+    end
+    local controller = pawn_of(state)
+    add(state)
+    add(character)
+    add(controller)
+    for _, source in ipairs({ state, character, controller }) do
+        if valid(source) then
+            for _, call in ipairs(STATUS_HOLDER_CALLS) do
+                if declares(source, call) then
+                    local ok, got = pcall(function() return source[call](source) end)
+                    if ok then add(got) end
+                end
+            end
+            for _, field in ipairs(STATUS_HOLDER_FIELDS) do add(member(source, field)) end
+        end
+    end
+
+    local uid = player_userid(state)
+    for _, class in ipairs(STATUS_CLASSES) do
+        local ok, found = pcall(FindAllOf, class)
+        if ok and type(found) == "table" then
+            for _, record in ipairs(found) do
+                if valid(record) and guid_hex(member(record, "PlayerUId")) == uid then add(record) end
+            end
+        end
+    end
+    return holders
+end
+
+local function read_status_points(state, character)
+    for _, holder in ipairs(status_holders(state, character)) do
+        for _, reader in ipairs(STATUS_READERS) do
+            if declares(holder, reader) then
+                local found = {}
+                for _, name in ipairs(STATUS_STAT_NAMES) do
+                    local ok, value = pcall(function() return holder[reader](holder, FName(name)) end)
+                    local number = ok and as_number(value) or nil
+                    if number then found[#found + 1] = { name, number } end
+                end
+                if #found > 0 then return found, holder, reader end
+            end
+        end
+    end
+    return nil
+end
+
+-- With no reader, the proof a point landed is the stat it feeds: snapshot what
+-- the getters answer, spend, and see what moved.
+local function stat_snapshot(character)
+    local sources, out = stat_sources(character), {}
+    for _, entry in ipairs(STAT_GETTERS) do out[entry[1]] = stat_of(sources, entry[2]) end
+    return out
+end
+
+local function stats_moved(before, after)
+    local changed = {}
+    for _, entry in ipairs(STAT_GETTERS) do
+        local was, now = before[entry[1]], after[entry[1]]
+        if was ~= nil and now ~= nil and was ~= now then changed[#changed + 1] = entry[1] end
+    end
+    return changed
+end
+
+local function status_json(points)
+    local parts = {}
+    for _, entry in ipairs(points or {}) do
+        parts[#parts + 1] = json_string(entry[1], 32) .. ":" .. json_value(entry[2])
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- What the build has around status points, for when none of the shapes fit —
+-- fields included, since a build that keeps the allocation in a property rather
+-- than behind a getter would otherwise look empty. Each name is reported with
+-- the class it sits on, because "which object" is half the answer.
+local function status_candidates(state, character)
+    local seen, out = {}, {}
+    for _, holder in ipairs(status_holders(state, character)) do
+        local where = (class_name(holder) or "?"):match("([^%.]+)$") or "?"
+        for _, fragment in ipairs({ "statuspoint", "point" }) do
+            for _, name in ipairs(candidates(holder, fragment, true)) do
+                local labelled = where .. "." .. name
+                if not seen[labelled] then
+                    seen[labelled] = true
+                    out[#out + 1] = labelled
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- ── hate ────────────────────────────────────────────────────────────────────
+-- Retaliation runs on hate: damage adds hate toward the attacker and the AI
+-- goes for whoever it hates most. A pal spawned through the NPC manager never
+-- receives that first entry, so it stands there. The hate system object this
+-- build hands out is not callable — the loader does not map its type — so the
+-- hate has to be seeded through a function declared on a real object: the
+-- character, its controller, or its parameter component.
+local HATE_WITH_AMOUNT = { "PlusHateValue", "AddHateValue", "AddHate", "ChangeHateValue" }
+local HATE_WITH_TARGET = { "SetHateTarget", "SetTargetCharacter", "SetAttackTarget" }
+local HATE_DAMAGE = 1.0
+
+local function hate_holders(character)
+    local holders = { character }
+    for _, field in ipairs({ "Controller", "CharacterParameterComponent", "AIController" }) do
+        local held = member(character, field)
+        if valid(held) then holders[#holders + 1] = held end
+    end
+    return holders
+end
+
+local function hate_shapes(character, target_pawn, amount)
+    local shapes = {}
+    for _, holder in ipairs(hate_holders(character)) do
+        for _, name in ipairs(HATE_WITH_AMOUNT) do
+            shapes[#shapes + 1] = { holder, name, function() holder[name](holder, target_pawn, amount) end }
+        end
+        for _, name in ipairs(HATE_WITH_TARGET) do
+            shapes[#shapes + 1] = { holder, name, function() holder[name](holder, target_pawn) end }
+        end
+    end
+    return shapes
+end
+
+-- The engine's own damage entry point, with the player as instigator: the path
+-- a real hit takes, and the one shape here that does not depend on a
+-- Pal-specific hate function existing.
+local function damage_shape(character, target_controller, target_pawn)
+    local ok, statics = pcall(StaticFindObject, "/Script/Engine.Default__GameplayStatics")
+    if not ok or not valid(statics) then return nil end
+    return { statics, "ApplyDamage", function()
+        statics:ApplyDamage(character, HATE_DAMAGE, target_controller, target_pawn, nil)
+    end }
+end
+
+local function seed_hate(character, target_controller, target_pawn, amount)
+    local shapes = hate_shapes(character, target_pawn, amount)
+    local damage = damage_shape(character, target_controller, target_pawn)
+    if damage then shapes[#shapes + 1] = damage end
+    local ok, via, tried = call_shapes(shapes)
+    if ok then return true, via end
+    local near = {}
+    for _, holder in ipairs(hate_holders(character)) do
+        for _, name in ipairs(candidates(holder, "hate")) do near[#near + 1] = name end
+    end
+    local detail = (tried and tried[1]) or "no hate function declared"
+    if #near > 0 then detail = detail .. "; declared: " .. table.concat(near, " ") end
+    return false, detail
+end
+
 -- Each handler: (state, params) → ok, error?, data_fields?
 local IMPL = {}
 
@@ -452,29 +1161,66 @@ IMPL["player.give_item"] = function(state, p)
     return true, nil, { { "item", p.item }, { "count", p.count } }
 end
 
-IMPL["player.teleport"] = function(state, p)
+-- The move lands a frame or two after the call, and the placement call puts a
+-- player near the point rather than exactly on it, so the answer waits for the
+-- engine and accepts an arrival within a short walk of where it was aimed.
+local TELEPORT_SETTLE_MS = 400
+local TELEPORT_TOLERANCE = 5000
+
+IMPL["player.teleport"] = function(state, p, finish)
+    local userid = player_userid(state)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
-    local ok, moved = pcall(function()
-        return pawn:K2_TeleportTo({ X = p.x, Y = p.y, Z = p.z }, { Pitch = 0, Yaw = 0, Roll = 0 })
+
+    local target = { X = p.x, Y = p.y, Z = p.z }
+    local before = position_of(pawn)
+    local ok, via = place_actor(pawn, target)
+    if not ok then return false, "teleport_failed: no placement call on this build" end
+    if type(ExecuteWithDelay) ~= "function" then
+        return true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z }, { "via", via } }
+    end
+
+    ExecuteWithDelay(TELEPORT_SETTLE_MS, function()
+        guard("teleport check", function()
+            local landed = position_of(select(2, pawn_of(find_player_state(userid))))
+            if landed == nil then
+                -- The player left, or their pawn is gone: the call is all the
+                -- evidence there is.
+                finish(true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z }, { "via", via } })
+                return
+            end
+            local missed = distance(landed, target)
+            local closer = before == nil or missed < distance(before, target)
+            if missed > TELEPORT_TOLERANCE and not closer then
+                finish(false, string.format("teleport_failed: still %.0f units away", missed), {
+                    { "x", landed.X }, { "y", landed.Y }, { "z", landed.Z }, { "via", via },
+                })
+                return
+            end
+            finish(true, nil, {
+                { "x", landed.X }, { "y", landed.Y }, { "z", landed.Z }, { "via", via },
+            })
+        end)
     end)
-    if not ok then return false, "not_supported" end
-    if moved == false then return false, "teleport_blocked" end
-    return true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z } }
+    return "deferred"
 end
 
+-- Full is whatever this character reports as its maximum, so the same call
+-- works for a player and for a pal, and hunger is part of being healed.
 IMPL["player.heal"] = function(state)
-    local util = pal_utility()
     local _, pawn = pawn_of(state)
-    if not util or not pawn then return false, "player_offline" end
-    local world = FindFirstOf("World")
-    -- Signature unproven on this build: probe the two plausible shapes.
-    local ok = pcall(function() util:FullRecoveryHP(world, pawn) end)
-    if not ok then
-        ok = pcall(function() util:FullRecoveryHP(pawn) end)
+    if not pawn then return false, "player_offline" end
+    local wanted, any = {}, false
+    for _, entry in ipairs({ { "hp", "GetMaxHP" }, { "hunger", "GetMaxFullStomach" },
+                             { "shield", "GetShieldMaxHP" } }) do
+        local max = stat_value(pawn, entry[2])
+        if max and max > 0 then
+            wanted[entry[1]] = max
+            any = true
+        end
     end
-    if not ok then return false, "not_supported" end
-    return true, nil, {}
+    if not any then return false, "not_supported: this character reports no maxima" end
+    return write_stats(pawn, wanted)
 end
 
 local function item_count(state, item)
@@ -510,21 +1256,33 @@ IMPL["player.has_item"] = function(state, p)
     return true, nil, { { "item", p.item }, { "has", count >= p.count }, { "count", count } }
 end
 
+-- Where a spawn is asked for and where the NPC manager puts it are not the
+-- same thing: the manager belongs to a player and places its work near them.
+-- Coordinates are honoured by moving the pal once it exists.
+local SPAWN_PLACED_TOLERANCE = 500
+local SPAWN_SETTLE_MS = 300
+local HOSTILE_HATE = 10000
+
 IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
+    -- The manager comes off some player's controller; with coordinates the
+    -- caller need not name a player, so any online one will do.
+    if not valid(controller) then controller = any_player_controller() end
     if not util or not valid(controller) then return false, "player_offline" end
     if not valid(util:GetNPCManager(controller)) then
         return false, "spawn_failed: no NPC manager"
     end
 
-    local location
+    local location, placed
     if p.x and p.y and p.z then
-        location = { X = p.x, Y = p.y, Z = p.z }
+        location, placed = { X = p.x, Y = p.y, Z = p.z }, true
     else
-        if not pawn then return false, "player_offline" end
-        local ok, at = pcall(function() return pawn:K2_GetActorLocation() end)
-        if not ok or type(member(at, "X")) ~= "number" then
+        if not pawn then
+            return false, "invalid_params: give coordinates or a target player"
+        end
+        local at = position_of(pawn)
+        if at == nil then
             return false, "spawn_failed: could not read the player's location"
         end
         location = { X = at.X + 300, Y = at.Y, Z = at.Z + 100 }
@@ -593,35 +1351,6 @@ IMPL["pal.spawn"] = function(state, p, finish)
         return false, "spawn_failed (" .. tostring(last_error) .. ")"
     end
 
-    -- A pal spawned through the player's own NPC manager can come out marked as
-    -- that player's: OwnerPlayerUId set, which is exactly what would make the
-    -- game treat it as friendly and refuse to let it retaliate. Clear it when
-    -- hostility is asked for; pal.inspect reports whether it stuck.
-    if p.hostile then
-        local function disown(attempt_no)
-            if not valid(handle) then return end
-            local parameter = handle:TryGetIndividualParameter()
-            if not valid(parameter) then
-                if attempt_no < 5 and type(ExecuteWithDelay) == "function" then
-                    ExecuteWithDelay(250, function() disown(attempt_no + 1) end)
-                end
-                return
-            end
-            pcall(function()
-                local save = parameter.SaveParameter
-                save.OwnerPlayerUId.A = 0
-                save.OwnerPlayerUId.B = 0
-                save.OwnerPlayerUId.C = 0
-                save.OwnerPlayerUId.D = 0
-                save.IsOtomo = false
-                parameter:OnRep_SaveParameter()
-            end)
-        end
-        if type(ExecuteWithDelay) == "function" then
-            ExecuteWithDelay(600, function() guard("pal.spawn disown", disown, 1) end)
-        end
-    end
-
     -- Rarity and traits apply to the individual parameter once it exists.
     if p.rare or (p.traits and p.traits ~= "") then
         local function configure(attempt_no)
@@ -655,155 +1384,69 @@ IMPL["pal.spawn"] = function(state, p, finish)
         end
     end
 
-    -- The individual parameter (and with it the pal's id) exists a moment after
-    -- the spawn call; wait for it so the caller gets an id it can act on
-    -- straight away rather than correlating the npc.spawn event.
-    local function settle(attempt_no)
-        local pal_id = valid(handle) and pal_id_of(handle:TryGetIndividualParameter()) or ""
-        if pal_id == "" and attempt_no < 6 and type(ExecuteWithDelay) == "function" then
-            ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt_no + 1) end)
-            return
+    -- The pal's id and its actor both appear a moment after the spawn call, so
+    -- the answer waits for them: the caller gets an id it can act on straight
+    -- away, the coordinates are honoured, and hostility is applied to something
+    -- that exists rather than to a handle that does not yet.
+    local userid = state and player_userid(state) or ""
+
+    -- The base NPC controller has no combat behaviour, so hostility is the hate
+    -- seed against the target rather than a controller class this build does
+    -- not have.
+    local function report(actor, pal_id)
+        local aggro = "none"
+        if p.hostile then
+            local target_controller, target_pawn = pawn_of(find_player_state(userid))
+            if not valid(actor) then
+                aggro = "the spawned pal did not resolve"
+            elseif target_pawn then
+                local seeded, via = seed_hate(actor, target_controller, target_pawn, HOSTILE_HATE)
+                aggro = seeded and via or ("failed: " .. tostring(via))
+            else
+                aggro = "no target player online"
+            end
         end
+        local at = position_of(actor) or location
         finish(true, nil, {
             { "pal", pal_id },
             { "species", p.species },
             { "level", p.level },
-            { "hostile", controller_kind ~= "NPCAIControllerBaseClass" },
+            { "x", at.X }, { "y", at.Y }, { "z", at.Z },
+            { "hostile", p.hostile == true },
             { "controller", controller_kind },
+            { "aggro", aggro },
         })
     end
-    guard("pal.spawn settle", settle, 1)
-    return "deferred"
-end
 
--- ── stats ───────────────────────────────────────────────────────────────────
--- Numbers arrive raw or wrapped in a fixed-point struct depending on the
--- field; unwrap both shapes.
-local function as_number(value)
-    if type(value) == "number" then return value end
-    local inner = member(value, "Value")
-    if type(inner) == "number" then return inner end
-    return nil
-end
-
--- Getters live on the character, its parameter component, or the individual
--- parameter depending on the stat and the build — try each, take the first
--- that answers with a number.
-local function stat_of(sources, method)
-    for _, source in ipairs(sources) do
-        if source ~= nil then
-            local ok, value = pcall(function() return source[method](source) end)
-            if ok then
-                local number = as_number(value)
-                if number then return number end
-            end
+    local function settle(attempt_no)
+        local parameter = valid(handle) and handle:TryGetIndividualParameter() or nil
+        local actor = valid(handle) and handle:TryGetIndividualActor() or nil
+        local pal_id = valid(parameter) and pal_id_of(parameter) or ""
+        if (pal_id == "" or not valid(actor)) and attempt_no < 8
+            and type(ExecuteWithDelay) == "function" then
+            ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt_no + 1) end)
+            return
         end
-    end
-    return nil
-end
 
--- Combat/work stats live as fields on the pal's SaveParameter, not behind
--- getters. Writing them is AdminCommands' proven recipe: assign, mirror,
--- OnRep_SaveParameter to replicate.
-local SAVE_STATS = {
-    { "level", "Level" }, { "rank", "Rank" },
-    { "talentHp", "Talent_HP" }, { "talentMelee", "Talent_Melee" },
-    { "talentShot", "Talent_Shot" }, { "talentDefense", "Talent_Defense" },
-    { "rankAttack", "Rank_Attack" }, { "rankDefence", "Rank_Defence" },
-    { "rankCraftSpeed", "Rank_CraftSpeed" }, { "craftSpeed", "CraftSpeed" },
-}
-
-local STAT_GETTERS = {
-    { "hp", "GetHP" }, { "maxHp", "GetMaxHP" },
-    { "hunger", "GetFullStomach" }, { "maxHunger", "GetMaxFullStomach" },
-    { "shield", "GetShieldValue" }, { "maxShield", "GetShieldMaxHP" },
-    { "sanity", "GetSanityValue" },
-}
-
-local function read_stats(character)
-    local component = member(character, "CharacterParameterComponent")
-    local parameter = pal_parameter(character)
-    local sources = { character, component, parameter }
-    local parts = {}
-    for _, entry in ipairs(STAT_GETTERS) do
-        local value = stat_of(sources, entry[2])
-        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
-            (value and json_value(value) or "null")
-    end
-    local save = parameter and member(parameter, "SaveParameter")
-    for _, entry in ipairs(SAVE_STATS) do
-        local value = save and as_number(member(save, entry[2]))
-        parts[#parts + 1] = json_string(entry[1], 24) .. ":" ..
-            (value and json_value(value) or "null")
-    end
-    return "{" .. table.concat(parts, ",") .. "}"
-end
-
--- Applies whichever stats were supplied; a field left out is left alone.
-local function write_stats(character, p)
-    local util = pal_utility()
-    if not util then return false, "not_supported" end
-    local applied, failed = {}, {}
-    local function attempt(label, ...)
-        for _, shape in ipairs({ ... }) do
-            if pcall(shape) then
-                applied[#applied + 1] = label
+        -- The manager places its work near the player who owns it, so explicit
+        -- coordinates are honoured by moving the pal once it exists. The move
+        -- lands a frame later, hence the wait before reading the position back.
+        local at = position_of(actor)
+        if placed and valid(actor) and (at == nil or distance(at, location) > SPAWN_PLACED_TOLERANCE) then
+            place_actor(actor, location)
+            if type(ExecuteWithDelay) == "function" then
+                ExecuteWithDelay(SPAWN_SETTLE_MS, function()
+                    guard("pal.spawn report", function()
+                        report(valid(handle) and handle:TryGetIndividualActor() or nil, pal_id)
+                    end)
+                end)
                 return
             end
         end
-        failed[#failed + 1] = label
+        report(actor, pal_id)
     end
-    if p.hp ~= nil then
-        attempt("hp",
-            function() util:SetHPByRateToCharacter(character, p.hp) end,
-            function() util:SetHPByRateToCharacter(FindFirstOf("World"), character, p.hp) end)
-    end
-    if p.hunger ~= nil then
-        attempt("hunger",
-            function() util:SetFullStomach(character, p.hunger) end,
-            function() util:SetFullStomach(FindFirstOf("World"), character, p.hunger) end)
-    end
-    if p.maxShield ~= nil then
-        attempt("maxShield", function() util:SetShieldMaxHP(character, p.maxShield) end)
-    end
-    if p.shield ~= nil then
-        attempt("shield", function() util:SetShieldHP(character, p.shield) end)
-    end
-
-    -- Save-parameter fields are plain assignments; replicate once at the end.
-    local parameter = pal_parameter(character)
-    local save = parameter and member(parameter, "SaveParameter")
-    local mirror = parameter and member(parameter, "SaveParameterMirror")
-    local touched = false
-    if save then
-        for _, entry in ipairs(SAVE_STATS) do
-            local value = p[entry[1]]
-            if value ~= nil then
-                local ok = pcall(function()
-                    save[entry[2]] = value
-                    if mirror then mirror[entry[2]] = value end
-                end)
-                if ok then
-                    applied[#applied + 1] = entry[1]
-                    touched = true
-                else
-                    failed[#failed + 1] = entry[1]
-                end
-            end
-        end
-        if touched then pcall(function() parameter:OnRep_SaveParameter() end) end
-    else
-        for _, entry in ipairs(SAVE_STATS) do
-            if p[entry[1]] ~= nil then failed[#failed + 1] = entry[1] end
-        end
-    end
-
-    if #applied == 0 and #failed > 0 then return false, "not_supported" end
-    return true, nil, {
-        { "applied", table.concat(applied, ",") },
-        { "failed", table.concat(failed, ",") },
-        { "stats", { raw = read_stats(character) } },
-    }
+    guard("pal.spawn settle", settle, 1)
+    return "deferred"
 end
 
 IMPL["player.stats"] = function(state)
@@ -816,6 +1459,79 @@ IMPL["player.set_stats"] = function(state, p)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
     return write_stats(pawn, p)
+end
+
+IMPL["player.status_points"] = function(state)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local points, holder, reader = read_status_points(state, pawn)
+    -- No reader is not a failure: the names are still spendable, and which one
+    -- this build answers to is settled by spending on it.
+    local names = {}
+    for i, name in ipairs(STATUS_STAT_NAMES) do names[i] = json_string(name, 32) end
+    return true, nil, {
+        { "readable", points ~= nil },
+        { "via", reader or "none" },
+        { "holder", holder and class_name(holder) or "none" },
+        { "points", { raw = points and status_json(points) or "{}" } },
+        { "names", { raw = "[" .. table.concat(names, ",") .. "]" } },
+    }
+end
+
+-- Additive, because that is the shape the game's own level-up spends them in.
+-- The stat name is the game's own FName and is passed through verbatim; the
+-- parameter may be a name or an enum index depending on the build, so both go
+-- to the same declared function.
+IMPL["player.status_point"] = function(state, p)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local stat, count = tostring(p.stat), p.points or 1
+    local index = tonumber(stat)
+
+    local before = stat_snapshot(pawn)
+    local spent_before
+    for _, entry in ipairs(read_status_points(state, pawn) or {}) do
+        if entry[1] == stat then spent_before = entry[2] end
+    end
+
+    local shapes = {}
+    for _, holder in ipairs(status_holders(state, pawn)) do
+        for _, writer in ipairs(STATUS_WRITERS) do
+            shapes[#shapes + 1] = { holder, writer,
+                function() holder[writer](holder, FName(stat), count) end }
+            shapes[#shapes + 1] = { holder, writer,
+                function() holder[writer](holder, stat, count) end }
+            if index then
+                shapes[#shapes + 1] = { holder, writer,
+                    function() holder[writer](holder, index, count) end }
+            end
+        end
+    end
+    local ok, via, tried = call_shapes(shapes)
+    if not ok then
+        local near = status_candidates(state, pawn)
+        local reason = (tried and tried[1]) or "no status-point setter declared"
+        if #near > 0 then reason = reason .. "; declared: " .. table.concat(near, " ") end
+        return false, "not_supported: " .. reason
+    end
+
+    local changed = stats_moved(before, stat_snapshot(pawn))
+    local spent_after
+    for _, entry in ipairs(read_status_points(state, pawn) or {}) do
+        if entry[1] == stat then spent_after = entry[2] end
+    end
+    local verified = #changed > 0
+        or (spent_before ~= nil and spent_after ~= nil and spent_after ~= spent_before)
+    return true, nil, {
+        { "stat", stat },
+        { "points", count },
+        { "via", via },
+        { "verified", verified },
+        { "changed", table.concat(changed, ",") },
+        { "detail", not verified and
+            "the call took but no readable stat moved — this may be the wrong name for it" or nil },
+        { "stats", { raw = read_stats(pawn) } },
+    }
 end
 
 -- ── pals in the world ───────────────────────────────────────────────────────
@@ -869,21 +1585,11 @@ IMPL["pal.list"] = function(_, _)
     }
 end
 
--- A pal that will not fight back has nothing in its hate map. The engine's
--- hate system is what drives retaliation: damage normally adds hate toward the
--- attacker and the AI then goes for whoever it hates most. A spawned pal never
--- gets that first entry, so it stands there. Seeding it directly is the lever.
---
--- Signatures are unproven, so each shape is tried in turn and the errors are
--- reported rather than swallowed — the last two rounds of guesswork cost more
--- than saying which call failed and why.
+-- Whether a hate system exists on this pal at all. It answers nothing about
+-- who the pal hates: the object itself is not callable on this build, which is
+-- why pal.aggro goes through declared functions instead.
 local function hate_system(character)
-    local candidates = { character }
-    local controller = member(character, "Controller")
-    if valid(controller) then candidates[#candidates + 1] = controller end
-    local component = member(character, "CharacterParameterComponent")
-    if valid(component) then candidates[#candidates + 1] = component end
-    for _, source in ipairs(candidates) do
+    for _, source in ipairs(hate_holders(character)) do
         local ok, system = pcall(function() return source:GetHateSystem() end)
         if ok and system ~= nil then return system, source end
         local direct = member(source, "HateSystem")
@@ -899,22 +1605,18 @@ local function find_pal(pal_id)
     return nil
 end
 
--- Diagnostic: everything that could plausibly differ between a wild pal (which
--- fights back) and a spawned one (which does not). Pure property reads, so it
--- is safe to point at anything. Compare the two and the difference is the bug.
 -- The world's own spawners are the path the game itself uses, and they attach
 -- whatever AI a wild pal gets — including predators, which are hostile by
 -- design. Spawner actors are reachable by class name (the same discovery
 -- AlphaRespawnScheduler uses in production), so ask one near the player to
 -- fire rather than constructing an NPC by hand.
 local SPAWNER_CLASSES = { "BP_MonoNPCSpawner_C", "BP_PalSpawner_Standard_C" }
-local MAX_SPAWNERS_TRIED = 25
 
 IMPL["pal.force_spawn"] = function(state, p)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
-    local ok_at, at = pcall(function() return pawn:K2_GetActorLocation() end)
-    if not ok_at or type(member(at, "X")) ~= "number" then
+    local at = position_of(pawn)
+    if at == nil then
         return false, "spawn_failed: could not read the player's location"
     end
 
@@ -929,21 +1631,21 @@ IMPL["pal.force_spawn"] = function(state, p)
             for _, spawner in ipairs(spawners) do
                 if valid(spawner) then
                     found = found + 1
-                    local got, loc = pcall(function() return spawner:K2_GetActorLocation() end)
-                    if got and type(member(loc, "X")) == "number" then
+                    local loc = position_of(spawner)
+                    if loc then
                         local dx, dy = loc.X - at.X, loc.Y - at.Y
-                        local distance = math.sqrt(dx * dx + dy * dy)
-                        if distance <= radius then
+                        local away = math.sqrt(dx * dx + dy * dy)
+                        if away <= radius then
                             in_range = in_range + 1
                             local is_boss = member(spawner, "IsBossSpawner") == true
                             -- Prefer a boss spawner when asked (alphas are
                             -- hostile); otherwise simply take the nearest.
                             local better = best == nil
                                 or (want_boss and is_boss and not best_boss)
-                                or ((want_boss and is_boss == (best_boss == true)) and distance < best_distance)
-                                or (not want_boss and distance < best_distance)
+                                or ((want_boss and is_boss == (best_boss == true)) and away < best_distance)
+                                or (not want_boss and away < best_distance)
                             if better then
-                                best, best_distance, best_boss = spawner, distance, is_boss
+                                best, best_distance, best_boss = spawner, away, is_boss
                             end
                         end
                     end
@@ -985,6 +1687,9 @@ IMPL["pal.force_spawn"] = function(state, p)
     return false, "not_supported: " .. tostring(errors[1])
 end
 
+-- Diagnostic: everything that could plausibly differ between a wild pal (which
+-- fights back) and a spawned one (which does not). Pure property reads, so it
+-- is safe to point at anything. Compare the two and the difference is the bug.
 IMPL["pal.inspect"] = function(_, p)
     local pal = find_pal(p.pal)
     if not pal then return false, "pal_not_found" end
@@ -1042,29 +1747,16 @@ end
 IMPL["pal.aggro"] = function(state, p)
     local pal = find_pal(p.pal)
     if not pal then return false, "pal_not_found" end
-    local _, pawn = pawn_of(state)
+    local controller, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
 
-    local system = hate_system(pal.character)
-    if system == nil then return false, "not_supported: no hate system on this pal" end
-
     local amount = p.amount or 1000
-    local errors = {}
-    local shapes = {
-        { "PlusHateValue(target, amount)", function() system:PlusHateValue(pawn, amount) end },
-        { "PlusHateValue(target)", function() system:PlusHateValue(pawn) end },
-        { "ChangeHate(target, amount)", function() system:ChangeHate(pawn, amount) end },
-        { "PlusHateValue(self, target, amount)", function() system:PlusHateValue(pal.character, pawn, amount) end },
-    }
-    for _, shape in ipairs(shapes) do
-        local ok, err = pcall(shape[2])
-        if ok then
-            return true, nil, { { "pal", p.pal }, { "amount", amount }, { "via", shape[1] } }
-        end
-        errors[#errors + 1] = shape[1] .. " -> " .. tostring(err)
+    local ok, via = seed_hate(pal.character, controller, pawn, amount)
+    if not ok then
+        info("pal.aggro: no hate shape took — " .. tostring(via))
+        return false, "not_supported: " .. tostring(via)
     end
-    info("pal.aggro: every hate shape failed: " .. table.concat(errors, " | "))
-    return false, "not_supported: " .. tostring(errors[1])
+    return true, nil, { { "pal", p.pal }, { "amount", amount }, { "via", via } }
 end
 
 IMPL["pal.stats"] = function(_, p)
@@ -1085,6 +1777,92 @@ IMPL["pal.set_stats"] = function(_, p)
     return true, nil, data
 end
 
+-- ── probe ───────────────────────────────────────────────────────────────────
+-- What this build exposes, rather than what a signature list assumes. Every
+-- not_supported above ends in a question this answers, so the next attempt
+-- starts from the names the engine actually declares.
+local MAX_PROBE_NAMES = 250
+
+local function probe_subject(name, state, p)
+    -- Any live object by its class name, which is how an object nothing hands
+    -- out gets inspected at all.
+    local wanted = name:match("^class:(.+)$")
+    if wanted then
+        local ok, found = pcall(FindFirstOf, wanted)
+        if not ok or not valid(found) then
+            return nil, "not_supported: no live " .. wanted .. " in the world"
+        end
+        return found
+    end
+    if name == "controller" then
+        local controller = pawn_of(state)
+        if not valid(controller) then return nil, "player_offline" end
+        return controller
+    end
+    if name == "player" or name == "params" then
+        local _, pawn = pawn_of(state)
+        if not pawn then return nil, "player_offline" end
+        if name == "params" then return member(pawn, "CharacterParameterComponent") end
+        return pawn
+    end
+    -- The player's own record rather than their body: status points, guild,
+    -- inventory handles — the things that are not on the character.
+    if name == "state" then
+        if not valid(state) then return nil, "player_offline" end
+        return state
+    end
+    if name == "utility" then return pal_utility() end
+    if name == "manager" then
+        local util = pal_utility()
+        local controller = pawn_of(state)
+        if not valid(controller) then controller = any_player_controller() end
+        if not util or not valid(controller) then return nil, "player_offline" end
+        return util:GetNPCManager(controller)
+    end
+    if name == "spawner" then
+        for _, class in ipairs(SPAWNER_CLASSES) do
+            local ok, spawners = pcall(FindAllOf, class)
+            if ok and type(spawners) == "table" then
+                for _, spawner in ipairs(spawners) do
+                    if valid(spawner) then return spawner end
+                end
+            end
+        end
+        return nil, "not_supported: no spawner actors in the world"
+    end
+    local pal = find_pal(p.pal or "")
+    if not pal then return nil, "pal_not_found" end
+    if name == "palai" then return member(pal.character, "Controller") end
+    if name == "palparams" then return member(pal.character, "CharacterParameterComponent") end
+    return pal.character
+end
+
+local function json_list(names)
+    local quoted = {}
+    for i, name in ipairs(names) do quoted[i] = json_string(name, 96) end
+    return "[" .. table.concat(quoted, ",") .. "]"
+end
+
+IMPL["bridge.probe"] = function(state, p)
+    -- Class names are case sensitive, the shorthands are not.
+    local on = tostring(p.on or "player")
+    if not on:find(":", 1, true) then on = on:lower() end
+    local subject, err = probe_subject(on, state, p)
+    if subject == nil then return false, err or "not_supported: nothing to probe" end
+    if not valid(subject) then return false, "not_supported: " .. on .. " is not available here" end
+
+    local filter = tostring(p.filter or ""):lower()
+    local calls, call_count = matching(functions_of(subject), filter, MAX_PROBE_NAMES)
+    local fields, field_count = matching(properties_of(subject), filter, MAX_PROBE_NAMES)
+    return true, nil, {
+        { "on", on },
+        { "class", class_name(subject) or "unknown" },
+        { "count", call_count + field_count },
+        { "functions", { raw = json_list(calls) } },
+        { "properties", { raw = json_list(fields) } },
+    }
+end
+
 -- ── action dispatch ─────────────────────────────────────────────────────────
 local function run_action(request)
     local action_type = request.action or ""
@@ -1100,7 +1878,10 @@ local function run_action(request)
         return
     end
 
-    local needs_player = action_type:sub(1, 4) ~= "pal."
+    -- Whether a player has to be online for this action is the manifest's
+    -- answer, not a guess from the type name: some actions take a player when
+    -- one is given and work without one otherwise.
+    local needs_player = spec.target == "player" and not spec.target_optional
     local function execute()
         local state = nil
         if needs_player then

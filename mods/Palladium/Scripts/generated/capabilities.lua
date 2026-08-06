@@ -10,17 +10,20 @@ return {
     },
     actions = {
         ["player.message"] = {
+            target = "player",
             params = {
             { name = "text", kind = "string", required = true, max_len = 512 },
             },
         },
         ["player.give_item"] = {
+            target = "player",
             params = {
             { name = "item", kind = "item_id", required = true },
             { name = "count", kind = "int", min = 1, max = 9999, default = 1 },
             },
         },
         ["player.teleport"] = {
+            target = "player",
             params = {
             { name = "x", kind = "number", required = true },
             { name = "y", kind = "number", required = true },
@@ -28,22 +31,27 @@ return {
             },
         },
         ["player.heal"] = {
+            target = "player",
             params = {
 
             },
         },
         ["player.count_item"] = {
+            target = "player",
             params = {
             { name = "item", kind = "item_id", required = true },
             },
         },
         ["player.has_item"] = {
+            target = "player",
             params = {
             { name = "item", kind = "item_id", required = true },
             { name = "count", kind = "int", min = 1, max = 999999, default = 1 },
             },
         },
         ["pal.spawn"] = {
+            target = "player",
+            target_optional = true,
             params = {
             { name = "species", kind = "item_id", required = true },
             { name = "level", kind = "int", min = 1, max = 100, default = 10 },
@@ -56,6 +64,7 @@ return {
             },
         },
         ["player.position"] = {
+            target = "player",
             params = {
 
             },
@@ -66,13 +75,16 @@ return {
             },
         },
         ["player.stats"] = {
+            target = "player",
             params = {
 
             },
         },
         ["player.set_stats"] = {
+            target = "player",
             params = {
-            { name = "hp", kind = "number", min = 0, max = 1 },
+            { name = "hp", kind = "number", min = 0, max = 100000000 },
+            { name = "maxHp", kind = "number", min = 1, max = 100000000 },
             { name = "hunger", kind = "number", min = 0, max = 1000 },
             { name = "shield", kind = "number", min = 0, max = 100000 },
             { name = "maxShield", kind = "number", min = 1, max = 100000 },
@@ -87,6 +99,19 @@ return {
             { name = "rankCraftSpeed", kind = "int", min = 0, max = 10 },
             },
         },
+        ["player.status_points"] = {
+            target = "player",
+            params = {
+
+            },
+        },
+        ["player.status_point"] = {
+            target = "player",
+            params = {
+            { name = "stat", kind = "string", required = true, max_len = 32 },
+            { name = "points", kind = "int", min = 1, max = 1000, default = 1 },
+            },
+        },
         ["pal.stats"] = {
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
@@ -95,7 +120,8 @@ return {
         ["pal.set_stats"] = {
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
-            { name = "hp", kind = "number", min = 0, max = 1 },
+            { name = "hp", kind = "number", min = 0, max = 100000000 },
+            { name = "maxHp", kind = "number", min = 1, max = 100000000 },
             { name = "hunger", kind = "number", min = 0, max = 1000 },
             { name = "shield", kind = "number", min = 0, max = 100000 },
             { name = "maxShield", kind = "number", min = 1, max = 100000 },
@@ -111,6 +137,7 @@ return {
             },
         },
         ["pal.aggro"] = {
+            target = "player",
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             { name = "amount", kind = "int", min = 1, max = 100000, default = 1000 },
@@ -122,9 +149,19 @@ return {
             },
         },
         ["pal.force_spawn"] = {
+            target = "player",
             params = {
             { name = "kind", kind = "string", max_len = 16, default = "nearest" },
-            { name = "radius", kind = "number", min = 1000, max = 500000, default = 50000 },
+            { name = "radius", kind = "number", min = 0, max = 1000000, default = 50000 },
+            },
+        },
+        ["bridge.probe"] = {
+            target = "player",
+            target_optional = true,
+            params = {
+            { name = "on", kind = "string", max_len = 64, default = "player" },
+            { name = "pal", kind = "string", max_len = 64 },
+            { name = "filter", kind = "string", max_len = 32 },
             },
         },
     },

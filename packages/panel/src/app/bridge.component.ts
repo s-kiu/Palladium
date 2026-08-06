@@ -17,6 +17,10 @@ import {
   BridgeSchema,
 } from './api.service';
 
+// The tab a capability appears under is the manifest's `group`, so a new
+// capability lands in the right place without a change here.
+type Group = 'pals' | 'player' | 'world' | 'permissions' | 'agent';
+
 // One option shape feeds every picker: players, items, pal species, traits.
 interface PickOption {
   value: string;
@@ -41,65 +45,11 @@ interface PickOption {
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div class="card">
-      <details>
-        <summary class="getting-started-summary">
-          <b>Build on this server</b>
-          <span class="muted"> — events in, actions out, from any language. Click for the 3-step setup.</span>
-        </summary>
-        <ol class="getting-started">
-          <li>
-            Create an API token on the <b>admin</b> page (read for feeds, read+write for bots
-            that act), and send it as <code>Authorization: Bearer palup_…</code>.
-          </li>
-          <li>
-            Follow events by cursor — new events arrive with a growing <code>cursor</code>,
-            and a smaller one means the server rebooted:
-            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" \
-  "http://this-host:3000/api/bridge/events?since=0&amp;type=player.join,player.chat"</pre>
-          </li>
-          <li>
-            Act through one verb — every form on this page is exactly this call:
-            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" -X POST http://this-host:3000/api/bridge/call \
-  -H "content-type: application/json" \
-  -d '{{ '{' }}"type":"player.give_item","target":"&lt;player id&gt;","data":{{ '{' }}"item":"PalSphere","count":5{{ '}' }}{{ '}' }}'</pre>
-          </li>
-        </ol>
-        <p class="muted small-note">
-          <code>GET /api/bridge/schema</code> lists every capability with parameters and live
-          state. Full contract:
-          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
-          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
-          <a href="https://github.com/s-kiu/pal-up/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
-        </p>
-      </details>
-    </div>
-
-    <div class="card">
-      <div class="row spread">
-        <h2>Agent</h2>
-        <span class="tag">{{ agentLabel() }}</span>
-      </div>
-      <p class="muted">
-        Engine hooks the mod registered on this server run. A hook that fails costs its own
-        event type and nothing else — the rest keep working.
-      </p>
-      <table>
-        <thead>
-          <tr><th>Event</th><th>Source</th><th>Stability</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          @for (c of eventCaps(); track c.type) {
-            <tr>
-              <td class="mono">{{ c.type }}</td>
-              <td class="mono">{{ c.source?.hook ?? c.runtime }}</td>
-              <td><span class="tag" [class.warn-tag]="c.stability !== 'stable'">{{ c.stability }}</span></td>
-              <td><span class="tag" [class.warn-tag]="!c.live">{{ c.live ? 'live' : 'not registered' }}</span></td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
+    <nav class="subnav">
+      @for (t of TABS; track t.key) {
+        <button [class.active]="tab() === t.key" (click)="tab.set(t.key)">{{ t.label }}</button>
+      }
+    </nav>
 
     <div class="card">
       <div class="row spread">
@@ -129,6 +79,35 @@ interface PickOption {
       </div>
     </div>
 
+    @if (tab() === 'agent') {
+    <div class="card">
+      <div class="row spread">
+        <h2>Agent</h2>
+        <span class="tag">{{ agentLabel() }}</span>
+      </div>
+      <p class="muted">
+        Engine hooks the mod registered on this server run. A hook that fails costs its own
+        event type and nothing else — the rest keep working.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Event</th><th>Source</th><th>Stability</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          @for (c of eventCaps(); track c.type) {
+            <tr>
+              <td class="mono">{{ c.type }}</td>
+              <td class="mono">{{ c.source?.hook ?? c.runtime }}</td>
+              <td><span class="tag" [class.warn-tag]="c.stability !== 'stable'">{{ c.stability }}</span></td>
+              <td><span class="tag" [class.warn-tag]="!c.live">{{ c.live ? 'live' : 'not registered' }}</span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+
+    @if (tab() === 'player') {
     <div class="card">
       <div class="row spread">
         <h2>Players</h2>
@@ -158,7 +137,9 @@ interface PickOption {
         </tbody>
       </table>
     </div>
+    }
 
+    @if (tab() === 'pals') {
     <div class="card">
       <div class="row spread">
         <h2>Pals in the world</h2>
@@ -194,9 +175,10 @@ interface PickOption {
       @if (inspected(); as rows) {
         <p class="small-note">
           Inspect a wild pal and a spawned one — the row that differs is why one fights back.
+          “Hate system” only says the machinery is present, not that the pal hates anyone.
         </p>
         <table>
-          <thead><tr><th>Pal</th><th>Controller</th><th>Owner</th><th>Otomo</th><th>Spawn type</th><th>Hate</th></tr></thead>
+          <thead><tr><th>Pal</th><th>Controller</th><th>Owner</th><th>Otomo</th><th>Spawn type</th><th>Hate system</th></tr></thead>
           <tbody>
             @for (r of rows; track r.pal) {
               <tr>
@@ -205,24 +187,36 @@ interface PickOption {
                 <td class="mono">{{ r.owner }}</td>
                 <td>{{ r.isOtomo ? 'yes' : 'no' }}</td>
                 <td class="num">{{ r.spawnedType ?? '—' }}</td>
-                <td>{{ r.hateSystem ? 'yes' : 'no' }}</td>
+                <td>{{ r.hateSystem ? 'present' : 'none' }}</td>
               </tr>
             }
           </tbody>
         </table>
       }
     </div>
+    }
+
+    @if (tab() === 'permissions') {
+    <div class="card">
+      <h2>Permissions</h2>
+      <p class="muted">
+        The raw calls behind the permissions page: nodes, groups and per-player overrides.
+        Editing them as a list of forms is the exception — the
+        <b>permissions</b> tab above does the same work with the state in view.
+      </p>
+    </div>
+    }
 
     <div class="card">
       <div class="row spread">
-        <h2>Send to the game</h2>
+        <h2>{{ actionsTitle() }}</h2>
         <span class="tag">POST /api/bridge/call</span>
       </div>
       <p class="muted">
         One form per capability the schema declares — nothing here is hand-written per action.
         The same calls work from any language with an API token (admin page).
       </p>
-      @for (c of actionCaps(); track c.type) {
+      @for (c of visibleActions(); track c.type) {
         <div class="action-row">
           <div class="row wrap">
             <span class="mono action-name">{{ c.type }}</span>
@@ -237,7 +231,7 @@ interface PickOption {
                 <input
                   [(ngModel)]="targets[c.type]"
                   [name]="c.type + '.target'"
-                  placeholder="target player (required)"
+                  [placeholder]="c.targetOptional ? 'target player (optional)' : 'target player (required)'"
                 />
                 <button class="pickbtn" title="pick a player" (click)="openPlayerPicker(c.type)">☰</button>
               </span>
@@ -290,6 +284,40 @@ interface PickOption {
       }
     </div>
 
+    <div class="card">
+      <details>
+        <summary class="getting-started-summary">
+          <b>Build on this server</b>
+          <span class="muted"> — events in, actions out, from any language. Click for the 3-step setup.</span>
+        </summary>
+        <ol class="getting-started">
+          <li>
+            Create an API token on the <b>admin</b> page (read for feeds, read+write for bots
+            that act), and send it as <code>Authorization: Bearer palup_…</code>.
+          </li>
+          <li>
+            Follow events by cursor — new events arrive with a growing <code>cursor</code>,
+            and a smaller one means the server rebooted:
+            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" \
+  "http://this-host:3000/api/bridge/events?since=0&amp;type=player.join,player.chat"</pre>
+          </li>
+          <li>
+            Act through one verb — every form on this page is exactly this call:
+            <pre class="mono">curl -H "Authorization: Bearer $TOKEN" -X POST http://this-host:3000/api/bridge/call \
+  -H "content-type: application/json" \
+  -d '{{ '{' }}"type":"player.give_item","target":"&lt;player id&gt;","data":{{ '{' }}"item":"PalSphere","count":5{{ '}' }}{{ '}' }}'</pre>
+          </li>
+        </ol>
+        <p class="muted small-note">
+          <code>GET /api/bridge/schema</code> lists every capability with parameters and live
+          state. Full contract:
+          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
+          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
+          <a href="https://github.com/s-kiu/pal-up/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
+        </p>
+      </details>
+    </div>
+
     <dialog #statsDlg class="dlg picker-dlg">
       <div class="row spread">
         <h2>{{ statsTitle() }}</h2>
@@ -305,7 +333,7 @@ interface PickOption {
         <table>
           <thead><tr><th>Stat</th><th class="num">Current</th><th>Set to</th></tr></thead>
           <tbody>
-            @for (f of STAT_FIELDS; track f.key) {
+            @for (f of statFields(); track f.key) {
               <tr>
                 <td>{{ f.label }}</td>
                 <td class="num">{{ display(f.key) }}</td>
@@ -325,6 +353,40 @@ interface PickOption {
             }
           </tbody>
         </table>
+        @if (statsTarget()?.kind === 'player') {
+          <h2 class="drawer-heading">Status points</h2>
+          <p class="muted small-note">
+            What the game computes a player's max HP, stamina, attack and carry weight from —
+            the player equivalent of a pal's IVs. Points are spent, so these add. This build
+            exposes no way to read the allocation back, so both spellings the game uses are
+            listed: spend on one and the result names the stat that moved.
+          </p>
+          @if (statusPoints().length) {
+            <table>
+              <thead><tr><th>Stat</th><th class="num">Spent</th><th>Add</th></tr></thead>
+              <tbody>
+                @for (s of statusPoints(); track s.name) {
+                  <tr>
+                    <td class="mono">{{ s.name }}</td>
+                    <td class="num">{{ s.value ?? '—' }}</td>
+                    <td class="actions">
+                      <input
+                        class="short"
+                        type="number"
+                        [(ngModel)]="statusEdit[s.name]"
+                        [name]="'point-' + s.name"
+                        placeholder="+"
+                      />
+                      <button (click)="spendPoints(s.name)" [disabled]="statsSaving()">Spend</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          } @else {
+            <p class="small-note mono muted">{{ statusNote() }}</p>
+          }
+        }
         @if (statsResult()) {
           <p class="small-note mono" [class.err]="statsFailed()" [class.muted]="!statsFailed()">{{ statsResult() }}</p>
         }
@@ -416,6 +478,15 @@ export class BridgeComponent implements OnInit, OnDestroy {
   @ViewChild('pickerDlg') pickerDlg?: ElementRef<HTMLDialogElement>;
   @ViewChild('statsDlg') statsDlg?: ElementRef<HTMLDialogElement>;
 
+  readonly TABS: { key: Group; label: string }[] = [
+    { key: 'pals', label: 'Pals' },
+    { key: 'player', label: 'Player' },
+    { key: 'world', label: 'World' },
+    { key: 'permissions', label: 'Permissions' },
+    { key: 'agent', label: 'Agent' },
+  ];
+  tab = signal<Group>('pals');
+
   schema = signal<BridgeSchema | null>(null);
   events = signal<BridgeEvent[]>([]);
   players = signal<BridgePlayer[]>([]);
@@ -488,25 +559,33 @@ export class BridgeComponent implements OnInit, OnDestroy {
   // ── stats drawer ───────────────────────────────────────────────────────────
   // hp is the one stat the engine takes as a fraction; the drawer works in
   // absolute HP like the player sees it and converts on save.
+  // IVs, star rank and souls are pal stats: a player character carries the same
+  // save fields but the game never reads them, so the drawer does not offer
+  // them for a player — status points are what a player has instead.
   readonly STAT_FIELDS = [
-    { key: 'hp', label: 'HP', editable: true, hint: 'absolute' },
-    { key: 'maxHp', label: 'Max HP', editable: false, hint: '' },
-    { key: 'hunger', label: 'Hunger', editable: true, hint: 'absolute' },
-    { key: 'maxHunger', label: 'Max hunger', editable: false, hint: '' },
-    { key: 'shield', label: 'Shield', editable: true, hint: 'absolute' },
-    { key: 'maxShield', label: 'Max shield', editable: true, hint: 'absolute' },
-    { key: 'sanity', label: 'Sanity', editable: false, hint: '' },
-    { key: 'level', label: 'Level', editable: true, hint: '1-100' },
-    { key: 'rank', label: 'Star rank', editable: true, hint: '1-5' },
-    { key: 'talentMelee', label: 'Attack (melee IV)', editable: true, hint: '0-100' },
-    { key: 'talentShot', label: 'Attack (ranged IV)', editable: true, hint: '0-100' },
-    { key: 'talentDefense', label: 'Defense IV', editable: true, hint: '0-100' },
-    { key: 'talentHp', label: 'HP IV', editable: true, hint: '0-100' },
-    { key: 'rankAttack', label: 'Attack souls', editable: true, hint: '0-10' },
-    { key: 'rankDefence', label: 'Defense souls', editable: true, hint: '0-10' },
-    { key: 'rankCraftSpeed', label: 'Work speed souls', editable: true, hint: '0-10' },
-    { key: 'craftSpeed', label: 'Work speed', editable: false, hint: '' },
+    { key: 'hp', label: 'HP', editable: true, hint: 'absolute', only: '' },
+    { key: 'maxHp', label: 'Max HP', editable: true, hint: 'computed by the game', only: '' },
+    { key: 'hunger', label: 'Hunger', editable: true, hint: 'absolute', only: '' },
+    { key: 'maxHunger', label: 'Max hunger', editable: false, hint: '', only: '' },
+    { key: 'shield', label: 'Shield', editable: true, hint: 'absolute', only: '' },
+    { key: 'maxShield', label: 'Max shield', editable: true, hint: 'absolute', only: '' },
+    { key: 'sanity', label: 'Sanity', editable: false, hint: '', only: '' },
+    { key: 'level', label: 'Level', editable: true, hint: '1-100', only: '' },
+    { key: 'rank', label: 'Star rank', editable: true, hint: '1-5', only: 'pal' },
+    { key: 'talentMelee', label: 'Attack (melee IV)', editable: true, hint: '0-100', only: 'pal' },
+    { key: 'talentShot', label: 'Attack (ranged IV)', editable: true, hint: '0-100', only: 'pal' },
+    { key: 'talentDefense', label: 'Defense IV', editable: true, hint: '0-100', only: 'pal' },
+    { key: 'talentHp', label: 'HP IV', editable: true, hint: '0-100', only: 'pal' },
+    { key: 'rankAttack', label: 'Attack souls', editable: true, hint: '0-10', only: 'pal' },
+    { key: 'rankDefence', label: 'Defense souls', editable: true, hint: '0-10', only: 'pal' },
+    { key: 'rankCraftSpeed', label: 'Work speed souls', editable: true, hint: '0-10', only: 'pal' },
+    { key: 'craftSpeed', label: 'Work speed', editable: false, hint: '', only: 'pal' },
   ];
+
+  statFields = computed(() => {
+    const kind = this.statsTarget()?.kind;
+    return this.STAT_FIELDS.filter((f) => !f.only || f.only === kind);
+  });
 
   worldPals = signal<{ id: string; species: string; level: number; rare: boolean }[]>([]);
   palsLoading = signal(false);
@@ -518,6 +597,9 @@ export class BridgeComponent implements OnInit, OnDestroy {
   statsResult = signal('');
   statsFailed = signal(false);
   statsEdit: Record<string, string> = {};
+  statusPoints = signal<{ name: string; value: number | null }[]>([]);
+  statusNote = signal('');
+  statusEdit: Record<string, string> = {};
 
   statsTitle = computed(() => {
     const t = this.statsTarget();
@@ -588,35 +670,86 @@ export class BridgeComponent implements OnInit, OnDestroy {
         this.statsResult.set('failed — no answer from the game');
       },
     });
+    if (kind === 'player') this.refreshStatusPoints(id);
+  }
+
+  private refreshStatusPoints(id: string): void {
+    this.statusPoints.set([]);
+    this.statusNote.set('reading…');
+    this.statusEdit = {};
+    this.api.bridgeCall('player.status_points', id, {}).subscribe({
+      next: (r) => {
+        if (!r.ok) {
+          // The error carries what the build does declare, which is the whole
+          // diagnostic — show it rather than a generic failure.
+          this.statusNote.set(r.error ?? 'not available on this build');
+          return;
+        }
+        // With no reader on this build the spent counts are unknown, but the
+        // names are still spendable — so the rows come from those.
+        const points = (r.data['points'] as Record<string, number>) ?? {};
+        const names = (r.data['names'] as string[]) ?? Object.keys(points);
+        this.statusPoints.set(names.map((name) => ({ name, value: points[name] ?? null })));
+        if (!this.statusPoints().length) this.statusNote.set('no status points reported');
+      },
+      error: () => this.statusNote.set('no answer from the game'),
+    });
+  }
+
+  spendPoints(stat: string): void {
+    const target = this.statsTarget();
+    const points = Number(this.text(this.statusEdit[stat]));
+    if (!target || !Number.isFinite(points) || points < 1) return;
+    this.statsSaving.set(true);
+    this.api.bridgeCall('player.status_point', target.id, { stat, points }).subscribe({
+      next: (r) => {
+        this.statsSaving.set(false);
+        this.statsFailed.set(!r.ok);
+        this.statsResult.set(
+          r.ok
+            ? `${stat}: +${points} via ${r.data['via']}` +
+              (r.data['verified'] ? ` — ${r.data['changed'] || 'spent'} changed` : ' — nothing moved, try another name')
+            : `failed (${r.error ?? 'unknown'})`,
+        );
+        if (r.ok) {
+          this.statusEdit[stat] = '';
+          this.statsValues.set((r.data['stats'] as Record<string, number | null>) ?? this.statsValues());
+          this.refreshStatusPoints(target.id);
+        }
+      },
+      error: (err) => {
+        this.statsSaving.set(false);
+        this.statsFailed.set(true);
+        this.statsResult.set(`failed (${err?.error?.error ?? 'no answer'})`);
+      },
+    });
   }
 
   closeStats(): void {
     this.statsDlg?.nativeElement.close();
   }
 
+  // The agent reads every write back, so a save has three outcomes to report,
+  // not one: what moved, what the engine took without moving, what it refused.
+  private statsOutcome(data: Record<string, unknown>): string {
+    const parts = [`applied: ${data['applied'] || 'nothing'}`];
+    if (data['unverified']) parts.push(`no visible change: ${data['unverified']}`);
+    if (data['failed']) parts.push(`refused: ${data['failed']}`);
+    if (data['detail']) parts.push(String(data['detail']));
+    return parts.join(' · ');
+  }
+
   saveStats(): void {
     const target = this.statsTarget();
     if (!target) return;
-    const current = this.statsValues();
     const data: Record<string, unknown> = {};
-    for (const field of this.STAT_FIELDS) {
+    for (const field of this.statFields()) {
       if (!field.editable) continue;
-      const raw = (this.statsEdit[field.key] ?? '').trim();
+      const raw = this.text(this.statsEdit[field.key]);
       if (raw === '') continue;
       const value = Number(raw);
       if (!Number.isFinite(value)) continue;
-      if (field.key === 'hp') {
-        // The engine sets HP by rate; convert from the absolute value shown.
-        const max = current['maxHp'];
-        if (!max) {
-          this.statsFailed.set(true);
-          this.statsResult.set('failed (max HP unknown on this build — cannot convert)');
-          return;
-        }
-        data['hp'] = Math.min(1, Math.max(0, value / max));
-      } else {
-        data[field.key] = value;
-      }
+      data[field.key] = value;
     }
     if (!Object.keys(data).length) {
       this.statsFailed.set(true);
@@ -631,9 +764,7 @@ export class BridgeComponent implements OnInit, OnDestroy {
       next: (r) => {
         this.statsSaving.set(false);
         this.statsFailed.set(!r.ok);
-        this.statsResult.set(
-          r.ok ? `applied: ${r.data['applied'] || 'nothing'}` : `failed (${r.error ?? 'unknown'})`,
-        );
+        this.statsResult.set(r.ok ? this.statsOutcome(r.data) : `failed (${r.error ?? 'unknown'})`);
         if (r.ok) {
           this.statsValues.set((r.data['stats'] as Record<string, number | null>) ?? this.statsValues());
           this.statsEdit = {};
@@ -653,6 +784,23 @@ export class BridgeComponent implements OnInit, OnDestroy {
   actionCaps = computed(() =>
     (this.schema()?.capabilities ?? []).filter((c) => c.kind !== 'event'),
   );
+  visibleActions = computed(() => this.actionCaps().filter((c) => this.groupOf(c) === this.tab()));
+  actionsTitle = computed(() => {
+    const label = this.TABS.find((t) => t.key === this.tab())?.label ?? '';
+    return `${label} — send to the game`;
+  });
+
+  // The manifest decides the tab; the namespace is the fallback so a capability
+  // added without a group still appears somewhere rather than nowhere.
+  private groupOf(c: BridgeCapability): Group {
+    if (c.group) return c.group;
+    const namespace = c.type.split('.')[0];
+    if (namespace === 'pal') return 'pals';
+    if (namespace === 'player') return 'player';
+    if (namespace === 'permission' || namespace === 'group') return 'permissions';
+    if (namespace === 'bridge') return 'agent';
+    return 'world';
+  }
 
   agentLabel = computed(() => {
     const a = this.schema()?.agent;
@@ -689,7 +837,12 @@ export class BridgeComponent implements OnInit, OnDestroy {
             seenMax: p.seen?.max,
             unlisted: p.unlisted,
           })),
-          traits: c.traits.map((t) => ({ value: t.id, label: t.name, sub: t.effect, tier: t.tier })),
+          traits: c.traits.map((t) => ({
+            value: t.id,
+            label: t.name,
+            sub: t.effect || t.id,
+            tier: t.tier,
+          })),
         };
       },
       error: () => {},
@@ -952,9 +1105,16 @@ export class BridgeComponent implements OnInit, OnDestroy {
     });
   }
 
+  // A number input bound with ngModel puts a number in the model, a text input
+  // a string, and an emptied number input null — every read has to survive all
+  // three, or the form throws before it ever reaches the game.
+  private text(value: unknown): string {
+    return value === null || value === undefined ? '' : String(value).trim();
+  }
+
   run(c: BridgeCapability): void {
-    const target = (this.targets[c.type] ?? '').trim();
-    if (c.target === 'player' && !target) {
+    const target = this.text(this.targets[c.type]);
+    if (c.target === 'player' && !c.targetOptional && !target) {
       this.results[c.type] = 'failed (pick a target player first)';
       return;
     }
@@ -964,7 +1124,7 @@ export class BridgeComponent implements OnInit, OnDestroy {
       if (p.spec.type === 'bool') {
         if (this.boolInputs[key]) data[p.name] = true;
       } else {
-        const raw = (this.inputs[key] ?? '').trim();
+        const raw = this.text(this.inputs[key]);
         if (raw !== '') data[p.name] = raw;
       }
     }
