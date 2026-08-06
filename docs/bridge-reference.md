@@ -31,7 +31,7 @@ actually live on the running server.
 | `player.heal` | action | agent | experimental | 2.0.0 | _none_ | Restore an online player to full: HP back to maximum and a full stomach, shield included where the build exposes it. Reports which of the three actually moved, and why any of them did not. |
 | `player.count_item` | query | agent | experimental | 2.0.0 | `item` · item_id · required | How many of an item an online player carries. Money is the item id for gold. |
 | `player.has_item` | query | agent | experimental | 2.0.0 | `item` · item_id · required<br>`count` · int · default 1 · 1…999999 | Whether an online player carries at least `count` of an item. |
-| `player.set_tag` | action | agent | stable | 2.0.0 | `key` · string · required<br>`value` · string · required | Attach a key/value to a player, kept in the daemon's database across restarts. The persistence primitive for 'already got the kit', ranks, notes. |
+| `player.set_tag` | action | agent | stable | 2.0.0 | `key` · string · required<br>`value` · string · required | Attach a key/value to a player, kept by the agent across restarts. The persistence primitive for 'already got the kit', ranks, notes. |
 | `player.get_tag` | query | agent | stable | 2.0.0 | `key` · string · required | Read one of a player's tags. ok with value null when the tag is unset. |
 | `player.delete_tag` | action | agent | stable | 2.0.0 | `key` · string · required | Remove a tag from a player. |
 | `player.position` | query | agent | stable | 2.1.0 | _none_ | The online player's exact world position (Engine Actor location, includes z). |

@@ -441,7 +441,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.0.0",
     "stability": "stable",
     "scope": "write",
-    "summary": "Attach a key/value to a player, kept in the daemon's database across restarts. The persistence primitive for 'already got the kit', ranks, notes.",
+    "summary": "Attach a key/value to a player, kept by the agent across restarts. The persistence primitive for 'already got the kit', ranks, notes.",
     "params": {
       "key": {
         "type": "string",
