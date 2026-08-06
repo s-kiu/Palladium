@@ -89,21 +89,31 @@ keep port 3000 on your LAN or behind a VPN, never open it to the internet.
 
 ## 3. Install a mod
 
-Three folders in the project root, one per mod type
-(details: [mods.md](mods.md)):
+Three folders in the project root; what's *inside* a folder in `./mods` decides
+who loads it (details: [mods.md](mods.md)):
 
-| You have | Put it in | Ends up in |
-|---|---|---|
-| Lua mod (folder with `scripts/main.lua`) | `./mods/CoolMod/` | UE4SS `Mods/` |
-| Loose `.pak` mod | `./paks/` | `Pal/Content/Paks/~mods/` |
-| LogicMod / Blueprint `.pak` | `./logicmods/` | `Pal/Content/Paks/LogicMods/` |
+| You have | Put it in | Loaded by | Takes effect |
+|---|---|---|---|
+| Palladium mod (folder with a `mod.lua`) | `./mods/CoolMod/` | Palladium, inside the game | next server restart |
+| Lua mod (folder with `scripts/main.lua`) | `./mods/CoolMod/` | UE4SS directly | next server restart |
+| Script mod (folder with a `mod.json`) | `./mods/CoolMod/` | the panel, outside the game | within ten seconds |
+| Loose `.pak` mod | `./paks/` | the stock pak system | next server restart |
+| LogicMod / Blueprint `.pak` | `./logicmods/` | BPModLoaderMod | next server restart |
 
 ```bash
-unzip CoolMod.zip -d mods/          # → mods/CoolMod/scripts/main.lua
-docker compose restart palworld     # syncs mods + regenerates mods.txt
+unzip CoolMod.zip -d mods/          # → mods/CoolMod/mod.lua
+docker compose restart palworld     # syncs mods, regenerates mods.txt + mods.list
 ```
 
-Disable without deleting: `touch mods/CoolMod/.disabled` and restart.
+Two mods ship with the project, so you can see both shapes working before
+writing one: [GoldStreak](../mods/GoldStreak) (a Palladium mod — 50 gold on
+every fifth respawn) and [WelcomeKit](../mods/WelcomeKit) (a script mod — a
+starter kit for first-time players). Both are enabled out of the box.
+
+Disable without deleting: `touch mods/CoolMod/.disabled`. A script mod stops
+immediately; the other kinds need a restart. The panel's mods page has a button
+for it, and lists every mod with what it loaded, what permissions it declared,
+and — for script mods — its log.
 
 ## 4. Everyday operations
 

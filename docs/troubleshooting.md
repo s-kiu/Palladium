@@ -48,16 +48,31 @@ Checklist, in order:
    about skipped names.
 2. Is it actually a *server-side* mod? Client-visual mods must be installed
    on players' machines ([mods.md](mods.md)).
-3. Lua structure right? `mods/<Name>/Scripts/main.lua` — unzip mishaps are
-   the #1 cause, in both directions: an extra nesting level
-   (`mods/CoolMod/CoolMod/Scripts/…`), or a flat archive that dumped
-   `Scripts/` and `Info.json` loose into `mods/` — create the mod folder and
-   move them inside. A zip file itself in `mods/` is ignored.
+3. Structure right for its kind? A Lua mod is `mods/<Name>/Scripts/main.lua`;
+   a Palladium mod is `mods/<Name>/mod.lua`; a script mod is
+   `mods/<Name>/mod.json`. Unzip mishaps are the #1 cause, in both directions:
+   an extra nesting level (`mods/CoolMod/CoolMod/Scripts/…`), or a flat
+   archive that dumped its files loose into `mods/` — create the mod folder
+   and move them inside. A zip file itself in `mods/` is ignored.
 4. UE4SS actually active? Startup log must say `starting PalServer WITH
    UE4SS`. If it says the image was built without UE4SS, rebuild the image —
    the checksum pin in `packages/server-image/ue4ss/ue4ss.lock` must be
    present at build time, and `UE4SS_OMIT` must not be set.
 5. Check UE4SS's own log: `/palworld/server/UE4SS.log`.
+
+**A Palladium mod isn't loading.** It never appears in `mods.txt` — UE4SS
+doesn't load it, Palladium does — so check these instead:
+
+1. The panel's mods page lists every mod Palladium reported, with the reason
+   for any that failed: a `mod.lua` that returns nothing, will not parse, or
+   declares a permission node outside its own namespace.
+2. Is it in the list Palladium reads? `cat
+   /palworld/server/Mods/Palladium/mods.list` — pal-up regenerates it on every
+   boot from `./mods`, skipping folders with a `.disabled` marker.
+3. `UE4SS.log` carries Palladium's own lines, including which route it used to
+   find mods and what each one registered.
+4. A handler for an event that does not exist is reported there too, and on
+   the mods page — that one loads fine and simply never fires.
 
 **Log says `error while loading shared libraries` right after "starting PalServer".**
 A system library the UE4SS build links against is missing from the image (the

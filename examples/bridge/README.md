@@ -1,25 +1,50 @@
 # Bridge examples
 
-Three things that were not possible before the bridge existed, each a plain
-consumer of the HTTP API in [docs/bridge.md](../../docs/bridge.md). They share
-one small client, [`lib.mjs`](lib.mjs), which is about eighty lines of `fetch`.
+Programs that talk to the server from *outside* it — a bot, a relay, a
+dashboard — over the HTTP API in [docs/bridge.md](../../docs/bridge.md). They
+authenticate with an API token and run wherever you like.
 
-Node 18 or newer, no dependencies, nothing to install:
+If what you want is a mod *for the server*, you want
+[docs/mods.md](../../docs/mods.md) instead: a folder in `./mods`, no HTTP by
+hand and no token to manage. [`mods/GoldStreak`](../../mods/GoldStreak) is one.
+
+## Getting a token
+
+1. Sign in to the panel and open **Admin → API tokens**.
+2. Create one with **read + write** scope (read alone can follow events and run
+   queries; write is needed for anything that changes the game).
+3. Copy the value — it is shown once and stored only as a hash.
+
+A token can only reach `/api/bridge/*`, so a leaked one cannot mint tokens or
+restart the server. Revoke it from the same page.
+
+## Running one
+
+Node 22 or newer, no dependencies, nothing to install:
 
 ```bash
-PALUP_TOKEN=palup_... node examples/bridge/welcome-kit.mjs
+PALUP_TOKEN=palup_... node examples/bridge/death-feed.mjs
 ```
 
-Create the token on the panel's admin page (read+write for these). Set
-`PANEL_URL` if the panel is not on `http://localhost:3000`; `ADMIN_PASSWORD`
-still works as a fallback credential.
+Set `PANEL_URL` if the panel is not on `http://localhost:3000`. Both scripts
+share [`lib.mjs`](lib.mjs), about eighty lines of `fetch`.
 
 | Script | What it demonstrates |
 |---|---|
-| [`welcome-kit.mjs`](welcome-kit.mjs) | Reacting to `join` with actions: first-time players get a private welcome and a starter kit, returning players just get a greeting. The join event arrives with `firstEver` already computed server-side, and the kit-claimed flag is a player tag, so neither a crash nor a second copy of the script hands out two kits. |
 | [`death-feed.mjs`](death-feed.mjs) | The read-only half on its own: `death` events formatted into a feed with a running tally, optionally posted to Discord with `DISCORD_WEBHOOK`. Also shows handling a server restart mid-stream. |
-| [`chat-shop.mjs`](chat-shop.mjs) | Adding `!kit`, `!heal`, `!gold` and `!deaths` as in-game commands from outside. The panel's own router only knows `!ping`; these need no mod change, no daemon change and no restart — which is the argument for the bridge in one file. |
+| [`chat-shop.mjs`](chat-shop.mjs) | Adding `!kit`, `!heal`, `!gold` and `!deaths` as in-game commands from outside, each gated by a permission node the script registers on startup. The panel's own router only knows `!ping`; these need no mod change, no daemon change and no restart. |
 
-All three follow the same shape: check `GET /api/bridge/schema`, follow the
-event stream by cursor, and send everything through `POST /api/bridge/call`.
-Rewriting any of them in another language means one auth header and JSON.
+Both follow the same shape: check `GET /api/bridge/schema`, follow the event
+stream by cursor, and send everything through `POST /api/bridge/call`.
+Rewriting either in another language means one auth header and JSON.
+
+## Which door to use
+
+| You want | Write | Needs |
+|---|---|---|
+| Server behaviour — rewards, rules, commands | a Palladium mod ([GoldStreak](../../mods/GoldStreak)) | Palladium |
+| The same, but reaching the network | a script mod ([WelcomeKit](../../mods/WelcomeKit)) | pal-up |
+| A program that lives elsewhere — Discord bot, dashboard, CLI | one of these | pal-up + a token |
+
+The game process has no sockets, so anything that must call out lives on this
+side of the line.

@@ -51,8 +51,12 @@ Mitigations in this project:
 - **Trust-on-first-use is explicit**: `vendor.sh --pin` prints what you're
   trusting; the paranoid path is building the upstream source yourself and
   dropping the tarball into `ue4ss/vendor/` before pinning.
-- **Mods are code too**: Lua mods run inside your server with UE4SS's
-  privileges. Install mods from authors you trust, same as browser extensions.
+- **Mods are code too**, and how much they can do depends on which kind:
+  a Lua or Palladium mod runs *inside* the game process with UE4SS's
+  privileges, so a bad one can take the server down; a script mod runs as a
+  child process of the panel with an API token scoped to `/api/bridge/*`, so
+  the blast radius is the bridge rather than the host. Install mods from
+  authors you trust, same as browser extensions.
 - Opt out entirely: build with `UE4SS_OMIT=true` or set `MODS_ENABLED=false`.
 
 ## Backups

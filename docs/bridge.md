@@ -72,9 +72,10 @@ endpoint holds no per-client state, so cursors survive a panel restart. Rules:
   `cursor` stops advancing.
 - `type` filters without affecting the cursor. Unparseable lines are skipped.
 
-`player.join` events served over HTTP are enriched from the panel's database
-with `firstEver`, `firstSeen` and `joins` — the file alone cannot know them,
-because it starts empty every boot.
+`player.join` carries `firstEver`, `firstSeen` and `joins`. The agent computes
+them from its own registry, which outlives the event file — that file is
+emptied every boot and so can never answer "have they ever been here" on its
+own.
 
 ## Calling into the game
 
@@ -104,11 +105,14 @@ this.
 
 ## Storage
 
-The panel keeps a SQLite database on the data volume (`.state/bridge.db`):
-players ever seen, join/leave sessions, per-player tags, API tokens, and an
-audit log of every call. That is what powers `firstEver`, the tags
-capabilities, and `GET /api/bridge/players`. Nothing external ever touches the
-database directly — it is served only through the capabilities.
+Two stores, and which one owns what follows from where the reader is. The agent
+keeps the player registry behind `firstEver` and every mod's stored data in
+`.state/palladium.store`, and permissions in `palladium/permissions.config` —
+because a mod inside the game process cannot reach anything else, and because
+permissions are a thing operators edit. The panel keeps `.state/bridge.db` for
+what only it produces: join/leave sessions, API tokens, and an audit log of
+every call. Nothing external ever touches either directly; both are served
+through capabilities.
 
 Tags are the persistence primitive for scripts: `player.set_tag` /
 `player.get_tag` / `player.delete_tag` survive restarts, so "already got the
@@ -128,11 +132,14 @@ dotted strings with wildcards, resolved per player:
 Within one source, an exact node beats `chatshop.*` beats `*`, and deny beats
 allow on ties.
 
-**Mods own their nodes.** A mod calls `permission.register` on startup —
-idempotent, namespaced by its name, each node with a description and a default
-— and its nodes appear on the panel's permissions page the moment it has run
-once. `permission.check` is the one question everything asks; the panel's
-groups and overrides UI is just a client for the same capabilities.
+**Mods own their nodes.** A mod declares them in its manifest and they are
+registered for it — namespaced by the mod's name, each with a description and a
+default. A program that is not a mod does the same thing by calling
+`permission.register` itself, one node per call, which is idempotent and
+belongs on startup. An operator's change to a default in `permissions.config`
+outranks what a mod asks for. `permission.check` is the one question everything
+asks; the panel's groups and overrides UI is a client for the same
+capabilities, and so is the file.
 
 **Constraints make one node fine-grained.** An entry can carry per-parameter
 matchers — `{"species": {"in": ["SheepBall"]}}`, `{"x": {"min": 0, "max":
@@ -175,8 +182,7 @@ The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 - **The event file itself**: `/palworld/logs/bridge-events.jsonl` on the
   `palworld-data` volume, for sidecars that prefer tailing a file. Same
   envelope, minus the daemon's join enrichment. Two writers append to it — the
-  agent, and the panel for `player.leave` (marked `source: "rest"`) — always
-  whole lines.
+  agent, and it is the only writer — always whole lines.
 - **The action queue**: `.state/bridge-actions.jsonl`, tab-separated
   `key=value` requests consumed by the agent. This is the daemon's private
   channel; write to it only if you are replacing the daemon.
@@ -184,40 +190,45 @@ The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 ## Worked example: a mod with its own mob and its own permission
 
 The pieces above compose into the standard mod shape. A "summon the camp
-guardian" mod, end to end, without touching Palladium's code:
+guardian" mod, end to end, without touching Palladium's code — one folder in
+`./mods`, a manifest and an entry file:
 
-```js
-import { connect } from './lib.mjs';           // or any language: it is 3 HTTP calls
-const bridge = await connect();
-
-// 1. Own your permission. Registration is idempotent, defaults are yours;
-//    operators override per group or per player on the permissions page.
-await bridge.call('permission.register', null, {
-  mod: 'guardian',
-  nodes: [{ node: 'guardian.summon', description: 'summon the camp guardian', default: 'deny' }],
-});
-
-// 2. React to chat, check the permission, act.
-for await (const event of bridge.follow({ types: ['player.chat'] })) {
-  if (event.data.message !== '!guardian') continue;
-  const { subject } = event;
-  const perm = await bridge.call('permission.check', subject.id, { node: 'guardian.summon' });
-  if (!perm.data.allowed) continue;
-
-  // 3. The mob: any species id works, modded ones included — a species added
-  //    by a .pak mod is spawnable by its id, and appears in the pal picker
-  //    once one has been seen in the world.
-  await bridge.call('pal.spawn', subject.id, {
-    species: 'BOSS_Anubis', level: 50, rare: true, traits: 'Legend',
-  });
-  // The result carries the new pal's id — keep it if you want to buff or
-  // inspect the guardian later (pal.set_stats, pal.inspect).
+```json
+{
+  "name": "Guardian",
+  "entry": "main.mjs",
+  "permissions": [
+    { "node": "guardian.summon", "description": "summon the camp guardian", "default": "deny" }
+  ]
 }
 ```
 
-Grant `guardian.summon` to a group on the permissions page and the command
-starts working for its members; the constraint syntax can narrow it further
-("only Lamball", "only below level 20") without changing the mod.
+```js
+export const on = {
+  'player.chat': async ({ subject, data }, pal) => {
+    if (data.message !== '!guardian') return;
+    if (!(await pal.can(subject.id, 'guardian.summon'))) return;
+
+    // Any species id works, modded ones included — a species added by a .pak
+    // mod is spawnable by its id, and appears in the pal picker once one has
+    // been seen in the world.
+    const spawned = await pal.call('pal.spawn', subject.id, {
+      species: 'BOSS_Anubis', level: 50, rare: true, traits: 'Legend',
+    });
+    // The result carries the new pal's id — keep it if you want to buff or
+    // inspect the guardian later (pal.set_stats, pal.inspect).
+    console.log(`${subject.name} summoned ${spawned.data?.id}`);
+  },
+};
+```
+
+The node is registered from the manifest, so nothing here calls
+`permission.register`. Grant `guardian.summon` to a group on the permissions
+page and the command starts working for its members; the constraint syntax can
+narrow it further ("only Lamball", "only below level 20") without changing the
+mod. The full format is in [docs/mods.md](mods.md); a program that is a tool
+rather than a mod uses the same capabilities over plain HTTP, as in
+[`examples/bridge/`](../examples/bridge).
 
 ## Spawned pals do not fight
 
@@ -251,8 +262,8 @@ Hook targets must be native (`/Script/…`) functions: Blueprint (`/Game/…`)
 targets fault this UE4SS build rather than failing cleanly — registering one,
 or even looking a UFunction path up with `StaticFindObject`, takes the server
 down. The agent refuses them outright. Consequences: `player.leave` is derived
-from the REST player list (a few seconds' delay), and Pal-capture events are
-not available. Capabilities marked `experimental` in the reference use engine
+from the agent watching who is still in the world (a few seconds' delay rather
+than instant), and Pal-capture events are not available. Capabilities marked `experimental` in the reference use engine
 calls that are unproven against a live player, and may fail with
 `not_supported` rather than doing nothing quietly; the fastcrash guard (three
 rapid crashes → unmodded boot) is the safety net around them.

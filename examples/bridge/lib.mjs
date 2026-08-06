@@ -1,4 +1,4 @@
-// Minimal client for the pal-up bridge API. No dependencies — Node 18+ only.
+// Minimal client for the pal-up bridge API. No dependencies — Node 22+ only.
 //
 //   PANEL_URL       default http://localhost:3000
 //   PALUP_TOKEN     an API token from the panel's admin page (preferred)

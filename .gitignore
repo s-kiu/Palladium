@@ -1,6 +1,7 @@
 # deps / build output
 node_modules/
 dist/
+.angular/
 *.tsbuildinfo
 
 # local env & secrets
@@ -10,14 +11,22 @@ dist/
 # maintainer working notes — not part of the published repo
 /todo*.md
 
+# local experiments and mods that are not part of the published project
+/bridge-mods/
+
 # runtime data created by compose bind mounts (user content, not source)
 /mods/*
 /paks/*
 /logicmods/*
 /backups/*
 !/mods/.gitkeep
-# Palladium is this project's own mod, not user content — it ships here.
+# This project's own mods are source, not user content — they ship here.
 !/mods/Palladium/
+!/mods/GoldStreak/
+!/mods/WelcomeKit/
+# …but what a mod writes beside itself is runtime state, not source.
+/mods/*/*.config
+/mods/*/*.data
 !/paks/.gitkeep
 !/logicmods/.gitkeep
 !/backups/.gitkeep
