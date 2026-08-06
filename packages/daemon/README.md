@@ -11,7 +11,8 @@ the panel and by API tokens for everything else:
   status, metrics, players, kick/ban/unban, announce, save-now.
 - **The bridge** — reads the agent's event file by byte cursor and serves it at
   `/api/bridge/events`, writes actions to the queue the agent consumes, and
-  answers `/api/bridge/schema` with what is live right now.
+  answers `/api/bridge/schema` with what is live right now. Every capability is
+  the agent's; this daemon implements none of them and is purely the door.
 - **Mods** — lists all three kinds from the shared volume: Lua mods from
   `mods.txt`, Palladium mods from the registry snapshot the agent writes, and
   script mods from their `mod.json`. It *runs* the last kind, supervising each

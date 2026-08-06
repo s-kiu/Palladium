@@ -231,6 +231,12 @@ local function api_for(name, mod)
         pal.call("player.heal", userid, {}, done)
     end
 
+    -- Tell everyone online. The agent sends it to each player itself, so this
+    -- works with nothing outside the game.
+    function pal.announce(message, done)
+        pal.call("server.announce", nil, { message = message }, done)
+    end
+
     -- Resolved against the store: the player's own overrides, then their
     -- groups by weight, then the default group, then the node's registered
     -- default. A node nobody registered is denied.

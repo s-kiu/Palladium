@@ -82,10 +82,10 @@ drive it from.
 
 **Events**: `player.chat`, `player.join` (with `firstEver`), `player.leave`,
 `player.death` (with killer), `player.respawn`, `npc.spawn`.
-**Actions and queries**: message, give item, teleport, heal, read/set stats,
-tags, spawn and inspect pals, permissions, groups, saved locations, and a
-generic read/write door onto anything a mod stores — 53 in total, [each one
-generated from a single manifest](docs/bridge-reference.md).
+**Actions and queries**: message one player or announce to everyone, give item,
+teleport, heal, read/set stats, tags, spawn and inspect pals, permissions,
+groups, saved locations, and a generic read/write door onto anything a mod
+stores — 53 in total, [each one generated from a single manifest](docs/bridge-reference.md).
 
 ### Three ways to build, and how to choose
 

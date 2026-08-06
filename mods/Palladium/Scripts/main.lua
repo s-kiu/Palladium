@@ -1313,14 +1313,39 @@ end
 -- Each handler: (state, params) → ok, error?, data_fields?
 local IMPL = {}
 
-IMPL["player.message"] = function(state, p)
+-- One player's system chat. Announcing is the same call to everybody, which is
+-- why it lives here rather than going out through the game's REST API: a mod
+-- inside the game cannot reach that, and telling everyone something is not an
+-- ability a modding framework can be missing.
+local function send_system_chat(state, text)
     local util = pal_utility()
     local world = FindFirstOf("World")
     if not util or not valid(world) then return false, "not_supported" end
     local uid = member(state, "PlayerUId")
     if uid == nil then return false, "player_offline" end
-    util:SendSystemToPlayerChat(world, p.text, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
+    util:SendSystemToPlayerChat(world, text, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
+    return true
+end
+
+IMPL["player.message"] = function(state, p)
+    local ok, err = send_system_chat(state, p.text)
+    if not ok then return false, err, {} end
     return true, nil, {}
+end
+
+IMPL["server.announce"] = function(_state, p)
+    local ok, states = pcall(FindAllOf, "PalPlayerState")
+    if not ok or type(states) ~= "table" then return false, "not_supported: no player list", {} end
+    local sent, failed = 0, nil
+    for _, state in ipairs(states) do
+        if valid(state) then
+            local delivered, err = send_system_chat(state, p.message)
+            if delivered then sent = sent + 1 else failed = failed or err end
+        end
+    end
+    -- Nobody online is not a failure; there was simply nobody to tell.
+    if sent == 0 and failed then return false, failed, {} end
+    return true, nil, { { "players", sent } }
 end
 
 IMPL["player.give_item"] = function(state, p)

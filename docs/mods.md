@@ -88,6 +88,7 @@ call that loads the file is the call that reads the manifest.
 | `pal.give(userid, item, count, done)` | Sugar for `player.give_item` |
 | `pal.message(userid, text, done)` | Private system-chat line |
 | `pal.heal(userid, done)` | Sugar for `player.heal` |
+| `pal.announce(text, done)` | Tell everyone online, as system chat |
 | `pal.can(userid, node)` | May this player? |
 | `pal.tag(userid, key)` | A stored value, or nil. Survives restarts |
 | `pal.set_tag` / `pal.delete_tag` | Write and remove one. Namespaced per mod, so two mods can both keep a `count` |

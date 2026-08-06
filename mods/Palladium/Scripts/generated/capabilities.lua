@@ -85,6 +85,12 @@ return {
             { name = "key", kind = "string", required = true, max_len = 64 },
             },
         },
+        ["server.announce"] = {
+            target = "server",
+            params = {
+            { name = "message", kind = "string", required = true, max_len = 512 },
+            },
+        },
         ["permission.register"] = {
             params = {
             { name = "mod", kind = "string", required = true, max_len = 32 },

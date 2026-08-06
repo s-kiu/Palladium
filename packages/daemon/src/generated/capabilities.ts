@@ -518,13 +518,13 @@ export const CAPABILITIES: Capability[] = [
   {
     "type": "server.announce",
     "kind": "action",
-    "runtime": "game-rest",
+    "runtime": "agent",
     "group": "world",
     "target": "server",
     "since": "1.0.0",
     "stability": "stable",
     "scope": "write",
-    "summary": "Broadcast a message to everyone online, via the game's own REST API.",
+    "summary": "Tell everyone online something, as system chat. The agent sends it to each player itself, so a mod in the game can announce without anything outside it.",
     "params": {
       "message": {
         "type": "string",
@@ -532,7 +532,9 @@ export const CAPABILITIES: Capability[] = [
         "maxLen": 512
       }
     },
-    "returns": {},
+    "returns": {
+      "players": "int"
+    },
     "errors": [
       "server_offline",
       "invalid_params"

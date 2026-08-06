@@ -1475,15 +1475,6 @@ function resultEnvelope(
   };
 }
 
-// The one capability this daemon still answers itself, because it is the only
-// one that does not go through the game process: announcing uses the game's own
-// REST API. Everything else is the agent's.
-const REST_IMPL: Record<string, (p: Validated) => Promise<void>> = {
-  'server.announce': async (p) => {
-    await pal('POST', 'announce', { message: String(p.message) });
-  },
-};
-
 // Requests are tab-separated key=value lines rather than JSON: the agent has no
 // JSON parser, and a format with no structure has nothing to exploit. Values
 // are stripped of separators here, which is the only place they can be.
@@ -1564,28 +1555,16 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
         return resultEnvelope(type, false, denied, playerSubject(asPlayer), {});
       }
     }
-    let result: BridgeEvent;
-
-    if (cap.runtime === 'agent') {
-      if (!bridgeRun.agent) return reply.code(409).send({ error: 'bridge agent not loaded' });
-      const id = await enqueueAction(type, target, checked.params);
-      const answered = await awaitAction(id, ACTION_TIMEOUT_MS);
-      if (!answered) {
-        bridgeDb.audit(actor, type, target || null, false, 'timeout');
-        await panelLog(`bridge ${type} — no response from the game`);
-        return reply.code(504).send({ error: 'the game did not answer in time', id });
-      }
-      result = answered;
-    } else {
-      const impl = REST_IMPL[type];
-      if (!impl) return reply.code(500).send({ error: 'capability declared but not implemented' });
-      try {
-        await impl(checked.params);
-        result = resultEnvelope(type, true, undefined, undefined, checked.params);
-      } catch {
-        result = resultEnvelope(type, false, 'server_offline', undefined, {});
-      }
+    // Every capability is the agent's now, so there is nothing else to route to.
+    if (!bridgeRun.agent) return reply.code(409).send({ error: 'bridge agent not loaded' });
+    const id = await enqueueAction(type, target, checked.params);
+    const answered = await awaitAction(id, ACTION_TIMEOUT_MS);
+    if (!answered) {
+      bridgeDb.audit(actor, type, target || null, false, 'timeout');
+      await panelLog(`bridge ${type} — no response from the game`);
+      return reply.code(504).send({ error: 'the game did not answer in time', id });
     }
+    const result: BridgeEvent = answered;
 
     bridgeDb.audit(actor, type, target || null, result.ok === true, String(result.error ?? ''));
     await panelLog(

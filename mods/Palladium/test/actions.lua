@@ -595,5 +595,16 @@ send("id=p15\taction=player.set_tag\tuserid=" .. USERID .. "\tkey=demo.count\tva
 send("id=p16\taction=player.get_tag\tuserid=" .. USERID .. "\tkey=demo.count")
 check("tags are the agent's too", last_result():find('"value":"4"', 1, true) ~= nil, last_result())
 
+
+-- ── announcing ──────────────────────────────────────────────────────────────
+-- Telling everyone something is not an ability a modding framework can be
+-- missing, and the game's own broadcast is out of reach from in here — so it
+-- is system chat to each player online.
+
+send("id=a1\taction=server.announce\tmessage=the server is about to restart")
+check("announcing reaches the players who are online",
+    last_result():find('"players":1', 1, true) ~= nil, last_result())
+check("and reports ok", last_result():find('"ok":true', 1, true) ~= nil, last_result())
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

@@ -62,7 +62,7 @@ actually live on the running server.
 
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
-| `server.announce` | action | game-rest | stable | 1.0.0 | `message` · string · required | Broadcast a message to everyone online, via the game's own REST API. |
+| `server.announce` | action | agent | stable | 1.0.0 | `message` · string · required | Tell everyone online something, as system chat. The agent sends it to each player itself, so a mod in the game can announce without anything outside it. |
 
 ## permission.*
 
