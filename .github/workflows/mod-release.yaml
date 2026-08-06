@@ -16,6 +16,10 @@ on:
     paths:
       - 'mods/**'
       - '.github/workflows/mod-release.yaml'
+  # Run it by hand from the Actions tab: useful for re-cutting a release
+  # without a dummy commit, and the quickest way to tell whether Actions is
+  # switched on at all — no button means it is not.
+  workflow_dispatch:
 
 permissions:
   contents: write
