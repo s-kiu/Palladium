@@ -130,6 +130,21 @@ for (const c of caps) {
   byNamespace.get(ns).push(c);
 }
 
+// The chat word for a capability: the part after the dot when no other
+// capability ends the same way, the full name otherwise — the same rule the
+// agent applies at runtime.
+const shortCounts = new Map();
+for (const c of caps) {
+  if (c.kind === 'event') continue;
+  const short = c.type.includes('.') ? c.type.split('.').slice(1).join('.') : c.type;
+  shortCounts.set(short, (shortCounts.get(short) ?? 0) + 1);
+}
+function chatWord(c) {
+  if (c.kind === 'event') return '—';
+  const short = c.type.includes('.') ? c.type.split('.').slice(1).join('.') : c.type;
+  return `\`!${shortCounts.get(short) === 1 ? short : c.type}\``;
+}
+
 let md = `# Bridge capability reference
 
 <!-- ${HEADER} -->
@@ -139,13 +154,21 @@ Envelope version ${manifest.envelope}. Every message is
 Stability: **stable** shapes only ever gain fields; **experimental** may change
 or vanish. \`GET /api/bridge/schema\` reports this table merged with what is
 actually live on the running server.
+
+Every action and query is also a chat command under the word in the Chat
+column, gated by a permission node of the same name. Chat accepts \`key=value\`
+or positional arguments matched to the declared parameters in order, \`@me\`
+for the caller and \`@Name\` for an online player; \`!commands\` lists what the
+caller may use and \`?<command>\` explains one. The same call is
+\`POST /api/bridge/call\` over HTTP and \`pal.call(type, …)\` from a mod — one
+schema drives all three surfaces.
 `;
 
 for (const [ns, list] of byNamespace) {
-  md += `\n## ${ns}.*\n\n| Type | Kind | Runtime | Stability | Since | Fields | Summary |\n|---|---|---|---|---|---|---|\n`;
+  md += `\n## ${ns}.*\n\n| Type | Chat | Kind | Runtime | Stability | Since | Fields | Summary |\n|---|---|---|---|---|---|---|---|\n`;
   for (const c of list) {
     const fields = c.kind === 'event' ? fieldTable(c.data, false) : fieldTable(c.params, true);
-    md += `| \`${c.type}\` | ${c.kind} | ${c.runtime} | ${c.stability} | ${c.since} | ${fields} | ${c.summary} |\n`;
+    md += `| \`${c.type}\` | ${chatWord(c)} | ${c.kind} | ${c.runtime} | ${c.stability} | ${c.since} | ${fields} | ${c.summary} |\n`;
   }
 }
 

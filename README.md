@@ -5,7 +5,7 @@
 Two halves of one project:
 
 - **pal-up** — the server. Palworld's official mod system supports **Windows** dedicated servers only, so pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container: mod loading, folder routing, config generation, safe updates, backups and a web panel, driven by three drop-in folders and one `.env` file.
-- **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. It ships inside pal-up with a full GUI, and is [released standalone](https://github.com/s-kiu/pal-up/releases) for servers not running pal-up.
+- **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns, played hours, the wall clock) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. It ships inside pal-up with a full GUI, and is [released standalone](https://github.com/s-kiu/pal-up/releases) for servers not running pal-up.
 
 If you just want a Palworld server that runs mods, use pal-up. If you want to *build* something — a Discord relay, a shop bot, an event-driven mod — that is what Palladium is for, and the panel gives you a UI for all of it before you write a line of code.
 
@@ -26,8 +26,9 @@ If you just want a Palworld server that runs mods, use pal-up. If you want to *b
 - **Config from env** — `PalWorldSettings.ini` is generated from `.env` (40+ mapped settings, `OPT_<IniKey>` passthrough for everything else), and `config/persist/` pins any file the game keeps resetting.
 - **Admin without ceremony** — a `pal-up` CLI inside the container: player list, broadcast, kick/ban, save-now, update check, backup management, all against the server's local REST API.
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: connect addresses for your players, live server status, game version and one-click updates, online players with kick/ban/unban, loaded mods and LogicMods with enable/disable toggles, backups with one-click create and rollback, and an admin page bundling server controls (restart/stop/broadcast with player warnings), the live server log, read-only server state, and a grouped, searchable settings editor with diff-before-apply. Sessions persist via cookie until you sign out. The panel needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
-- **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform. A mod is one `mod.lua`: it declares its permissions, its settings, the data it keeps and the chat commands it answers, and gets all of it registered for it. Mods that need the network run in the panel instead, in JavaScript or TypeScript. The panel's **Palladium** page renders all 53 capabilities as forms — Pals, Player, World and Permissions tabs — with searchable pickers (2,400+ items, 750+ pal species, tier-coloured traits, saved locations, known players), a live event stream and a stats editor. Its **mods** page lists every mod of every kind with what it owns and what it stores, and its **permissions** page edits the same groups, roles and per-player overrides that live in `permissions.config`.
-- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"*. Every capability is also an in-game chat command gated by its own node, denied by default, so `!pal.spawn` is an admin surface until you grant it.
+- **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform. A mod is one `mod.lua`: it declares its permissions, its settings, the data it keeps and the chat commands it answers, and gets all of it registered for it. Mods that need the network run in the panel instead, in JavaScript or TypeScript. The panel's **Palladium** page renders all 58 capabilities as forms — Pals, Player, World and Permissions tabs — with searchable pickers (2,400+ items, 750+ pal species, tier-coloured traits, saved locations, known players), a live event stream and a stats editor. Its **mods** page lists every mod of every kind with what it owns and what it stores, and its **permissions** page edits the same groups, roles and per-player overrides that live in `permissions.config`.
+- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
+- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [HourlyReward](mods/HourlyReward) and [TimedRewards](mods/TimedRewards) mods pay it out.
 
 ## Quickstart
 
@@ -81,11 +82,15 @@ HTTP, runs the mods that need a network, and gives every capability a form to
 drive it from.
 
 **Events**: `player.chat`, `player.join` (with `firstEver`), `player.leave`,
-`player.death` (with killer), `player.respawn`, `npc.spawn`.
+`player.death` (with killer), `player.respawn`, `npc.spawn`, `player.hour`
+(a played hour completed), `clock.minute` and `clock.day` (real time, for
+mods that schedule).
 **Actions and queries**: message one player or announce to everyone, give item,
-teleport, heal, read/set stats, tags, spawn and inspect pals, permissions,
-groups, saved locations, and a generic read/write door onto anything a mod
-stores — 53 in total, [each one generated from a single manifest](docs/bridge-reference.md).
+teleport, heal, read/set stats, tags, playtime, place a pal or have the world
+spawn a real wild one — your species, your level, aggressive on request —
+permissions, groups, saved locations, and a generic read/write door onto
+anything a mod stores — 47 in total, [each one generated from a single
+manifest with its chat form](docs/bridge-reference.md).
 
 ### Three ways to build, and how to choose
 
@@ -243,6 +248,7 @@ one auth header and JSON.
 - Every capability, generated from one manifest: [docs/bridge-reference.md](docs/bridge-reference.md)
 - A worked Palladium mod: [GoldStreak](mods/GoldStreak)
 - Another: [WelcomeKit](mods/WelcomeKit) — a starter kit on a player's first ever join
+- Two more: [HourlyReward](mods/HourlyReward) and [TimedRewards](mods/TimedRewards) — playtime paid out, driven by the `player.hour` event, tuned from a `settings.config`
 - The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
 - External programs with a token: [examples/bridge/](examples/bridge)
 - The framework on its own, for servers not running pal-up: [mods/Palladium](mods/Palladium)
@@ -274,6 +280,8 @@ pal-up/
 ├── mods/                     # ← drop mod folders here
 │   ├── Palladium/            # the modding framework (ships here, released standalone)
 │   ├── GoldStreak/           # a Palladium mod: gold on every fifth respawn
+│   ├── HourlyReward/         # a Palladium mod: every played hour is worth something
+│   ├── TimedRewards/         # a Palladium mod: rewards at the hour marks you set
 │   └── WelcomeKit/           # a Palladium mod: starter kit for first-time players
 ├── examples/bridge/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
