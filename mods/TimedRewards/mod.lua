@@ -71,7 +71,7 @@ end
 
 return {
     name = "TimedRewards",
-    version = "1.0.0",
+    version = "1.0.1",
     description = "Reach an hour mark on this server, earn that mark's reward.",
 
     permissions = {

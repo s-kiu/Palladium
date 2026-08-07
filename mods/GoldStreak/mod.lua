@@ -10,7 +10,7 @@
 
 return {
     name = "GoldStreak",
-    version = "1.0.0",
+    version = "1.0.1",
     description = "Gold for sticking with it: a reward on every fifth respawn.",
 
     permissions = {
