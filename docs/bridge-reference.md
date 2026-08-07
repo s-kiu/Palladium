@@ -53,6 +53,7 @@ actually live on the running server.
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
 | `clock.minute` | event | agent | experimental | 4.5.0 | `date` · string<br>`weekday` · string<br>`hour` · int<br>`minute` · int | The wall-clock minute turned, in server-local time. The event mods schedule real-world things against — a weekday, hour and minute comparison replaces owning a timer. Published within two seconds of the minute boundary. |
+| `clock.day` | event | agent | experimental | 4.6.0 | `date` · string<br>`weekday` · string | The date turned, in server-local time — published at the first minute of the new day. A boot mid-day is not a turn. The event daily things schedule against without stamp arithmetic. |
 
 ## pal.*
 

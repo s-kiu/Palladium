@@ -220,10 +220,99 @@ local function sandbox()
     return setmetatable({}, { __index = _G })
 end
 
+-- ── settings overlay ────────────────────────────────────────────────────────
+-- A mod's settings table in mod.lua is the author's defaults; settings.config
+-- beside the mod's data is the operator's word, and it survives mod updates.
+-- Plain `key = value` lines; dotted keys reach into tables and numeric
+-- segments make list positions:
+--
+--   announce = true
+--   items.1.item = Money
+--   items.1.count = 250
+--
+-- Any top-level key the file mentions replaces that default wholesale — a
+-- half-merged list surprises everyone. true/false and numbers coerce,
+-- everything else stays text. Re-read on the host's cadence, so tuning a
+-- reward needs no restart; a mod that reads settings at use time sees the
+-- new value, one that cached a local at load keeps the old until boot.
+
+local function coerce(text)
+    if text == "true" then return true end
+    if text == "false" then return false end
+    local number = tonumber(text)
+    if number ~= nil then return number end
+    return text
+end
+
+local function parse_settings(content)
+    local overlay = {}
+    for raw_line in (tostring(content) .. "\n"):gmatch("(.-)\n") do
+        local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
+        if line ~= "" and line:sub(1, 1) ~= ";" and line:sub(1, 1) ~= "#" then
+            local key, value = line:match("^([%w_%.]+)%s*=%s*(.*)$")
+            if key then
+                local node = overlay
+                local segments = {}
+                for segment in key:gmatch("[^%.]+") do segments[#segments + 1] = segment end
+                for i = 1, #segments - 1 do
+                    local seg = tonumber(segments[i]) or segments[i]
+                    if type(node[seg]) ~= "table" then node[seg] = {} end
+                    node = node[seg]
+                end
+                node[tonumber(segments[#segments]) or segments[#segments]] = coerce(value)
+            end
+        end
+    end
+    return overlay
+end
+
+local function settings_path(name)
+    local home = host.home_for and host.home_for(name) or (host.mods_dir .. "/" .. name)
+    return home .. "/settings.config"
+end
+
+local settings_seen = {} -- mod name → file content behind the current overlay
+
+local function overlaid(name, defaults)
+    local file = io.open(settings_path(name), "r")
+    if not file then
+        settings_seen[name] = nil
+        return defaults or {}
+    end
+    local content = file:read("a")
+    file:close()
+    settings_seen[name] = content
+    local merged = {}
+    for key, value in pairs(defaults or {}) do merged[key] = value end
+    local overridden = 0
+    for key, value in pairs(parse_settings(content)) do
+        merged[key] = value
+        overridden = overridden + 1
+    end
+    if overridden > 0 then
+        log(name .. ": settings.config overrides " .. overridden .. " key(s)")
+    end
+    return merged
+end
+
+function framework.reload_settings()
+    for _, name in ipairs(framework.order) do
+        local entry = framework.mods[name]
+        if entry.ok and entry.pal then
+            local file = io.open(settings_path(name), "r")
+            local content = file and file:read("a") or nil
+            if file then file:close() end
+            if content ~= settings_seen[name] then
+                entry.pal.settings = overlaid(name, entry.mod.settings)
+            end
+        end
+    end
+end
+
 local function api_for(name, mod)
     local pal = {
         name = name,
-        settings = mod.settings or {},
+        settings = overlaid(name, mod.settings),
     }
 
     function pal.log(text)

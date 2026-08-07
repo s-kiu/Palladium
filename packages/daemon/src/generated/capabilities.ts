@@ -237,6 +237,24 @@ export const CAPABILITIES: Capability[] = [
     }
   },
   {
+    "type": "clock.day",
+    "kind": "event",
+    "runtime": "agent",
+    "subject": "server",
+    "since": "4.6.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "The date turned, in server-local time — published at the first minute of the new day. A boot mid-day is not a turn. The event daily things schedule against without stamp arithmetic.",
+    "data": {
+      "date": {
+        "type": "string"
+      },
+      "weekday": {
+        "type": "string"
+      }
+    }
+  },
+  {
     "type": "player.message",
     "kind": "action",
     "runtime": "agent",

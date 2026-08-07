@@ -742,5 +742,38 @@ for _, call in ipairs(calls) do
 end
 check("a second look at the same hour pays nothing", again == 0, again)
 
+-- ── settings.config: the operator's word over the author's defaults ─────────
+write(MODS .. "/HourlyReward/settings.config",
+    "; tune the reward without touching mod.lua\nitems.1.item = Money\nitems.1.count = 250\n")
+framework.reload_settings()
+play_minutes = 185 -- a third hour completed
+calls = {}
+framework.enqueue("player.hour", veteran, { hours = 3, minutes = play_minutes })
+framework.drain()
+local tuned = 0
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" and call.params.item == "Money" then
+        tuned = tuned + tonumber(call.params.count)
+    end
+end
+check("settings.config re-tunes the reward without a restart", tuned == 250, tuned)
+
+write(MODS .. "/HourlyReward/settings.config", "announce = true\n")
+framework.reload_settings()
+play_minutes = 245
+calls = {}
+framework.enqueue("player.hour", veteran, { hours = 4, minutes = play_minutes })
+framework.drain()
+local shouted, back_to_default = false, 0
+for _, call in ipairs(calls) do
+    if call.type == "server.announce" then shouted = true end
+    if call.type == "player.give_item" and call.params.item == "Money" then
+        back_to_default = back_to_default + tonumber(call.params.count)
+    end
+end
+check("an edited overlay applies and untouched keys return to defaults",
+    shouted and back_to_default == 100,
+    tostring(shouted) .. "/" .. tostring(back_to_default))
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

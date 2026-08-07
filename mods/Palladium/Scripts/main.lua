@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.5.0"
+local VERSION = "4.6.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -540,7 +540,7 @@ end
 -- tells them when the wall-clock minute turns (server-local time). "Every
 -- Friday at 18:00" is then a mod comparing fields, not running a scheduler.
 local WEEKDAYS = { "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday" }
-local clock_last
+local clock_last, clock_last_date
 
 local function publish_clock()
     local now = os.date("*t")
@@ -548,12 +548,22 @@ local function publish_clock()
         now.year, now.month, now.day, now.hour, now.min)
     if stamp == clock_last then return end
     clock_last = stamp
+    local date = string.format("%04d-%02d-%02d", now.year, now.month, now.day)
     publish("clock.minute", '{"kind":"server"}', {
-        { "date", string.format("%04d-%02d-%02d", now.year, now.month, now.day) },
+        { "date", date },
         { "weekday", WEEKDAYS[now.wday] },
         { "hour", now.hour },
         { "minute", now.min },
     }, { kind = "server" })
+    -- The day turning is its own event; a boot mid-day is not a turn, which
+    -- is what the baseline check is for.
+    if clock_last_date and date ~= clock_last_date then
+        publish("clock.day", '{"kind":"server"}', {
+            { "date", date },
+            { "weekday", WEEKDAYS[now.wday] },
+        }, { kind = "server" })
+    end
+    clock_last_date = date
 end
 
 -- ── hook handlers ───────────────────────────────────────────────────────────
@@ -2750,7 +2760,7 @@ end
 -- What a mod may hold a handler for: everything with a hook, plus the ones the
 -- agent produces without one.
 local PUBLISHED = { ["player.leave"] = true, ["bridge.ready"] = true, ["bridge.hook"] = true,
-                    ["player.hour"] = true, ["clock.minute"] = true }
+                    ["player.hour"] = true, ["clock.minute"] = true, ["clock.day"] = true }
 for _, event in ipairs(CAPS.events or {}) do PUBLISHED[event.type] = true end
 
 framework.init({
@@ -2782,6 +2792,7 @@ if type(LoopAsync) == "function" then
         -- An operator editing permissions.config by hand is meant to work, so
         -- the config files are re-read on the same cadence as the leave scan.
         if tick % LEAVE_SCAN_TICKS == 0 then guard("config reload", Collections.reload_changed) end
+        if tick % LEAVE_SCAN_TICKS == 0 then guard("settings reload", framework.reload_settings) end
         if tick % LEAVE_SCAN_TICKS == 0 then guard("clock", publish_clock) end
         if tick % PLAYTIME_TICKS == 0 then guard("playtime credit", credit_playtime) end
         if tick % LEAVE_SCAN_TICKS == 0 then

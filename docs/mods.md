@@ -76,8 +76,8 @@ call that loads the file is the call that reads the manifest.
 |---|---|
 | `name` | Must match the folder name |
 | `permissions` | Nodes the mod owns, each with a description and a default. They must start with the mod's own lowercased name |
-| `settings` | Free-form table, reachable as `pal.settings` |
-| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `npc.spawn` |
+| `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
+| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
 
 ### What `pal` offers
@@ -93,8 +93,29 @@ call that loads the file is the call that reads the manifest.
 | `pal.tag(userid, key)` | A stored value, or nil. Survives restarts |
 | `pal.set_tag` / `pal.delete_tag` | Write and remove one. Namespaced per mod, so two mods can both keep a `count` |
 | `pal.data(name)` | A handle on one of the mod's own declared collections |
-| `pal.settings` | The mod's own settings table |
+| `pal.settings` | The mod's own settings table, with the operator's overlay applied |
 | `pal.log(text)` | A line in the server log, prefixed with the mod's name |
+
+### The operator's settings.config
+
+The `settings` table in `mod.lua` is the author's defaults. The operator's
+word is `settings.config` beside the mod's data — it survives mod updates,
+and it is re-read within seconds of an edit, so tuning a reward needs no
+restart. Plain `key = value` lines; dotted keys reach into tables and numeric
+segments make list positions:
+
+```ini
+; mods/HourlyReward/settings.config
+announce = true
+items.1.item = Money
+items.1.count = 250
+```
+
+Any top-level key the file mentions replaces that default wholesale — a
+half-merged list surprises everyone. `true`/`false` and numbers coerce,
+everything else stays text. A mod that reads `pal.settings` at use time sees
+edits immediately; one that copied a value into a local at load keeps the old
+value until the next boot.
 
 Answers arrive through a callback rather than a return value, because actions
 run on the game thread and some of them defer past it. The callback is given
