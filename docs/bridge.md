@@ -230,32 +230,31 @@ mod. The full format is in [docs/mods.md](mods.md); a program that is a tool
 rather than a mod uses the same capabilities over plain HTTP, as in
 [`examples/bridge/`](../examples/bridge).
 
-## Spawned pals do not fight
+## Placed pals and wild pals
 
-A pal spawned through `pal.spawn` arrives through the NPC manager, which only
-accepts the base NPC AI controller — a controller with no combat behaviour.
+Two spawns, two natures. `pal.spawn` *places* a pal: exact coordinates, exact
+level, rarity, traits, and the result carries its id — but it is hand-made
+through the NPC manager, absent from the world save, and outside the world's
+own wiring. `pal.spawn_wild` asks one of the world's own spawners near the
+player to fire, with the species and level of your choosing (the spawner's
+lottery is rewritten for the shot and restored right after): the game itself
+wires the newcomer — controller, wild group, combat permission — and
+`aggressive: true` also sets its temperament to attack-on-sight. A wild spawn
+lands at the spawner, not at coordinates; that is the trade. `pal.force_spawn`
+is the deprecated name for the same call.
 
-`hostile: true` goes as far as the engine allows from there: once the pal
-exists, `PalUtility.SpawnControllerAndPossess` swaps in the wild monster
-controller (`BP_MonsterAIController_Wild`), `PlayDefaultAction` starts its
-action loop, and the target player is registered as an enemy
-(`AddTargetPlayer_ForEnemy`, battle start, battle mode). The result's
-`controller` field reports whether the possession took. The pal then reads as
-an enemy — red nameplate, aggro marker, it turns to track its target — but it
-still initiates no attack: combat permission lives somewhere the bridge cannot
-yet reach (the wild-group bookkeeping the game's own spawners do).
+Temperament is why a wild pal of a docile species still only watches you: what
+the AI does on *discovering* someone is the sensor's response preset, per
+situation. `pal.aggro` with `sight: true` flips every one of them to
+battle-anyway on any loaded pal; without it, `pal.aggro` seeds the hate that
+aims a pal at one player.
 
-`pal.aggro` applies the same enemy-registration to an already-loaded pal, with
-the hate functions and the engine's damage path as fallbacks. The result names
-the call that worked; a failure lists what this build declares instead, which
-is the same thing `bridge.probe` reports for any object.
-
-`pal.force_spawn` takes the other route entirely: it asks one of the world's
-own spawners near the player to fire, and a pal that arrives that way has the
-AI a wild one has.
-
-None of this changes the other limit: `pal.spawn` spawns are absent from the
-world save and disappear on restart.
+A placed pal's `hostile: true` goes as far as possession allows — the wild
+monster controller is swapped in, its action loop started, the target
+registered as an enemy, the temperament flipped — and the result's
+`controller` field reports how far that got. The wild route is the one the
+game itself stands behind; prefer it whenever the exact landing spot does not
+matter.
 
 ## What the engine allows
 

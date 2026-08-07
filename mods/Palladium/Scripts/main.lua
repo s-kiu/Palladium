@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.7.0"
+local VERSION = "4.8.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -2107,7 +2107,7 @@ end
 -- fire rather than constructing an NPC by hand.
 local SPAWNER_CLASSES = { "BP_MonoNPCSpawner_C", "BP_PalSpawner_Standard_C" }
 
-IMPL["pal.force_spawn"] = function(state, p)
+IMPL["pal.spawn_wild"] = function(state, p)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
     local at = position_of(pawn)
@@ -2240,7 +2240,7 @@ IMPL["pal.force_spawn"] = function(state, p)
             -- thread, where struct writes belong.
             if #saved > 0 and type(ExecuteWithDelay) == "function" then
                 ExecuteWithDelay(8000, function()
-                    guard("force_spawn lottery restore", function()
+                    guard("spawn_wild lottery restore", function()
                         if valid(best) then restore_lottery() end
                     end)
                 end)
@@ -2251,7 +2251,7 @@ IMPL["pal.force_spawn"] = function(state, p)
             if want_species and p.aggressive and type(ExecuteWithDelay) == "function" then
                 local best_at = position_of(best)
                 ExecuteWithDelay(3000, function()
-                    guard("force_spawn temperament", function()
+                    guard("spawn_wild temperament", function()
                         local wanted = tostring(p.species):lower()
                         local nearest, nearest_d
                         for _, pal in ipairs(world_pals()) do
@@ -2265,10 +2265,10 @@ IMPL["pal.force_spawn"] = function(state, p)
                         end
                         if nearest then
                             local turned, why = make_sight_aggressive(nearest)
-                            info("force_spawn temperament " ..
+                            info("spawn_wild temperament " ..
                                 (turned and "set: attack on sight" or ("failed: " .. tostring(why))))
                         else
-                            info("force_spawn temperament: no " .. tostring(p.species) .. " landed to set")
+                            info("spawn_wild temperament: no " .. tostring(p.species) .. " landed to set")
                         end
                     end)
                 end)
@@ -2289,6 +2289,8 @@ IMPL["pal.force_spawn"] = function(state, p)
     info("pal.force_spawn: no shape worked: " .. table.concat(errors, " | "))
     return false, "not_supported: " .. tostring(errors[1])
 end
+
+IMPL["pal.force_spawn"] = function(...) return IMPL["pal.spawn_wild"](...) end -- deprecated alias
 
 -- Diagnostic: everything that could plausibly differ between a wild pal (which
 -- fights back) and a spawned one (which does not). Pure property reads, so it

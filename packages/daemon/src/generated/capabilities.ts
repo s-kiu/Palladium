@@ -1489,6 +1489,54 @@ export const CAPABILITIES: Capability[] = [
     ]
   },
   {
+    "type": "pal.spawn_wild",
+    "kind": "action",
+    "runtime": "agent",
+    "group": "pals",
+    "target": "player",
+    "since": "4.8.0",
+    "stability": "experimental",
+    "scope": "write",
+    "summary": "Spawn a real wild pal: one of the world's own spawners near the player fires, so the game itself wires the newcomer — controller, wild group, combat permission. With a species, the spawner's lottery is rewritten for the shot and restored right after; aggressive=true also sets the newcomer's temperament to attack-on-sight. Without a species the spawner rolls its own table; kind=boss prefers an alpha spawner. Contrast pal.spawn, which places a hand-made pal at exact coordinates but outside the world's own wiring.",
+    "params": {
+      "species": {
+        "type": "item_id",
+        "picker": "pal"
+      },
+      "level": {
+        "type": "int",
+        "min": 1,
+        "max": 100,
+        "default": 15
+      },
+      "aggressive": {
+        "type": "bool",
+        "default": false
+      },
+      "kind": {
+        "type": "string",
+        "default": "nearest",
+        "maxLen": 16
+      },
+      "radius": {
+        "type": "number",
+        "min": 0,
+        "max": 1000000,
+        "default": 50000
+      }
+    },
+    "returns": {
+      "method": "string",
+      "boss": "bool",
+      "distance": "number",
+      "spawnersInRange": "int"
+    },
+    "errors": [
+      "player_offline",
+      "not_supported"
+    ]
+  },
+  {
     "type": "pal.force_spawn",
     "kind": "action",
     "runtime": "agent",
@@ -1497,7 +1545,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.9.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Ask one of the world's own spawners near the player to fire — the pal that arrives has the AI a wild one has, aggression included. With a species, the chosen spawner's lottery is rewritten for the shot and restored right after, so the wild pal is the one you asked for at the level you asked; without one, the spawner rolls its own table. kind=boss prefers an alpha spawner. aggressive=true (with a species) also sets the newcomer's temperament to attack-on-sight.",
+    "summary": "Deprecated alias of pal.spawn_wild — same behavior, kept so existing scripts keep working.",
     "params": {
       "species": {
         "type": "item_id",

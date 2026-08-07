@@ -341,6 +341,17 @@ return {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             },
         },
+        ["pal.spawn_wild"] = {
+            target = "player",
+            scope = "write",
+            params = {
+            { name = "species", kind = "item_id" },
+            { name = "level", kind = "int", min = 1, max = 100, default = 15 },
+            { name = "aggressive", kind = "bool", default = false },
+            { name = "kind", kind = "string", max_len = 16, default = "nearest" },
+            { name = "radius", kind = "number", min = 0, max = 1000000, default = 50000 },
+            },
+        },
         ["pal.force_spawn"] = {
             target = "player",
             scope = "write",
