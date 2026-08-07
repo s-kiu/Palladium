@@ -28,9 +28,10 @@ return {
             target = "player",
             scope = "write",
             params = {
-            { name = "x", kind = "number", required = true },
-            { name = "y", kind = "number", required = true },
-            { name = "z", kind = "number", required = true },
+            { name = "x", kind = "number" },
+            { name = "y", kind = "number" },
+            { name = "z", kind = "number" },
+            { name = "to", kind = "string", max_len = 64 },
             },
         },
         ["player.heal"] = {

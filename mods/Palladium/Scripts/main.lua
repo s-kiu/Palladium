@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.9.0"
+local VERSION = "4.9.1"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1480,12 +1480,28 @@ IMPL["player.teleport"] = function(state, p, finish)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
 
-    local target = { X = p.x, Y = p.y, Z = p.z }
+    -- A destination is coordinates, or another player: `to` names one and
+    -- their position is the target — `!teleport to=@Name` is "take me to
+    -- them", `!teleport @Name to=@me` is "bring them here".
+    local target
+    if p.to and p.to ~= "" then
+        local _, dest_pawn = pawn_of(find_player_state(p.to))
+        local at = dest_pawn and position_of(dest_pawn)
+        if not at then return false, "invalid_params: to names nobody online" end
+        target = { X = at.X + 150, Y = at.Y, Z = at.Z + 50 }
+        -- The lookups above invalidated the held pawn; take it fresh.
+        _, pawn = pawn_of(find_player_state(userid))
+        if not pawn then return false, "player_offline" end
+    elseif p.x ~= nil and p.y ~= nil and p.z ~= nil then
+        target = { X = p.x, Y = p.y, Z = p.z }
+    else
+        return false, "invalid_params: give x, y and z — or to=@Name"
+    end
     local before = position_of(pawn)
     local ok, via = place_actor(pawn, target)
     if not ok then return false, "teleport_failed: no placement call on this build" end
     if type(ExecuteWithDelay) ~= "function" then
-        return true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z }, { "via", via } }
+        return true, nil, { { "x", target.X }, { "y", target.Y }, { "z", target.Z }, { "via", via } }
     end
 
     ExecuteWithDelay(TELEPORT_SETTLE_MS, function()
@@ -1494,7 +1510,7 @@ IMPL["player.teleport"] = function(state, p, finish)
             if landed == nil then
                 -- The player left, or their pawn is gone: the call is all the
                 -- evidence there is.
-                finish(true, nil, { { "x", p.x }, { "y", p.y }, { "z", p.z }, { "via", via } })
+                finish(true, nil, { { "x", target.X }, { "y", target.Y }, { "z", target.Z }, { "via", via } })
                 return
             end
             local missed = distance(landed, target)
@@ -1694,7 +1710,10 @@ IMPL["pal.spawn"] = function(state, p, finish)
         handle = attempt(manager_field("NPCAIControllerBaseClass"), "NPCAIControllerBaseClass")
     end
     if not handle then
-        return false, "spawn_failed (" .. tostring(last_error) .. ")"
+        -- The spawner answers an unknown species with nothing, which makes a
+        -- typo look like an engine fault; say the likelier cause.
+        return false, "spawn_failed (" .. tostring(last_error) ..
+            ") — species ids are the game's internal names (SheepBall, Lamball); a typo fails exactly like this"
     end
 
     -- Rarity and traits apply to the individual parameter once it exists.
@@ -2251,7 +2270,8 @@ IMPL["pal.spawn_wild"] = function(state, p)
             -- attack-on-sight temperament.
             if want_species and p.aggressive and type(ExecuteWithDelay) == "function" then
                 local best_at = position_of(best)
-                ExecuteWithDelay(3000, function()
+                for _, delay in ipairs({ 1200, 4000 }) do
+                ExecuteWithDelay(delay, function()
                     guard("spawn_wild temperament", function()
                         local wanted = tostring(p.species):lower()
                         local nearest, nearest_d
@@ -2273,6 +2293,7 @@ IMPL["pal.spawn_wild"] = function(state, p)
                         end
                     end)
                 end)
+                end
             end
             return true, nil, {
                 { "method", shape[1] },
@@ -2799,6 +2820,15 @@ local function invoke(action_type, userid, raw, report)
     if not params then
         report(false, invalid, {}, nil)
         return
+    end
+
+    -- Handlers read their target from raw.userid. The action queue carries
+    -- it inside the line; a chat command or a mod carries it as the argument
+    -- — make the two indistinguishable.
+    if raw.userid == nil then
+        local carried = { userid = userid }
+        for key, value in pairs(raw) do carried[key] = value end
+        raw = carried
     end
 
     -- Whether a player has to be online for this action is the manifest's

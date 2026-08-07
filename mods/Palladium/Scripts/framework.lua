@@ -674,10 +674,28 @@ local function builtin(event, word, rest)
     end
 
     audit("chat", who, action, target, params)
-    host.call(action, target, params, function(ok, err)
-        host.call("player.message", who, {
-            text = ok and (word .. " ok") or (word .. " failed: " .. tostring(err)),
-        }, function() end)
+    host.call(action, target, params, function(ok, err, data)
+        -- "!position ok" alone answers nothing: the result's plain fields
+        -- ride along, capped so a long one cannot flood the chat line.
+        local text
+        if ok then
+            local bits = {}
+            for _, pair in ipairs(data or {}) do
+                local value = pair[2]
+                if type(value) ~= "table" and value ~= nil and value ~= "" then
+                    bits[#bits + 1] = pair[1] .. "=" .. tostring(value)
+                end
+            end
+            text = word .. " ok"
+            if #bits > 0 then
+                local summary = table.concat(bits, " ")
+                if #summary > 300 then summary = summary:sub(1, 297) .. "..." end
+                text = text .. ": " .. summary
+            end
+        else
+            text = word .. " failed: " .. tostring(err)
+        end
+        host.call("player.message", who, { text = text }, function() end)
     end)
     return true
 end
@@ -779,7 +797,7 @@ local function help(event, word)
         say(who, line)
     end
     if (spec.target or "") == "player" then
-        say(who, "Targets you unless you pass target=<id>. Values by position or key=value; @me works.")
+        say(who, "Targets you unless you aim it: @Name for an online player, or target=<id>. Values by position or key=value; @me works.")
     end
 end
 

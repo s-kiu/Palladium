@@ -318,20 +318,20 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.0.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Teleport an online player to world coordinates. Uses the engine's own placement call, then reads the position back — an ok carries where the player actually landed, and a teleport that did not move anyone fails rather than reporting success.",
+    "summary": "Move an online player. The destination is x/y/z coordinates, or another player: `to` names one and their position is the target — in chat, `!teleport to=@Name` is 'take me to them' and `!teleport @Name to=@me` is 'bring them here'. The result reports where they actually landed; a move that went nowhere is a failure, not a success.",
     "params": {
       "x": {
-        "type": "number",
-        "required": true,
-        "picker": "location"
+        "type": "number"
       },
       "y": {
-        "type": "number",
-        "required": true
+        "type": "number"
       },
       "z": {
-        "type": "number",
-        "required": true
+        "type": "number"
+      },
+      "to": {
+        "type": "string",
+        "maxLen": 64
       }
     },
     "returns": {
