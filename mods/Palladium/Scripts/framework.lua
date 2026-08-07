@@ -589,7 +589,7 @@ end
 local function parse_args(action, rest, who)
     local spec = host.capabilities[action]
     local declared = type(spec) == "table" and spec.params or {}
-    local params, target = {}, who
+    local params, target, targeted = {}, who, false
     local s, i = tostring(rest or ""), 1
     local tokens = {}
     while i <= #s do
@@ -620,11 +620,11 @@ local function parse_args(action, rest, who)
                 if trouble then return nil, nil, trouble end
                 named = id or named
             end
-            if key == "target" then target = named else params[key] = named end
+            if key == "target" then target, targeted = named, true else params[key] = named end
         elseif not token.bracketed and value:sub(1, 1) == "@" and #value > 1 then
             local id, trouble = resolve_at(value, who)
             if trouble then return nil, nil, trouble end
-            target = id
+            target, targeted = id, true
         else
             local slot
             if token.bracketed then
@@ -641,7 +641,7 @@ local function parse_args(action, rest, who)
             if slot then params[slot.name] = value end
         end
     end
-    return params, target
+    return params, target, nil, targeted
 end
 
 local function builtin(event, word, rest)
@@ -649,10 +649,19 @@ local function builtin(event, word, rest)
     if not action then return false end
 
     local who = event.subject and event.subject.id or ""
-    local params, target, trouble = parse_args(action, rest, who)
+    local params, target, trouble, targeted = parse_args(action, rest, who)
     if trouble then
         host.call("player.message", who, { text = word .. ": " .. trouble }, function() end)
         return true
+    end
+
+    -- Chat sugar with one beneficiary today: "!teleport @Name" reads as
+    -- "take me to them", so a named player with no other destination becomes
+    -- the to= and the caller is the one who moves.
+    if action == "player.teleport" and targeted
+        and params.x == nil and params.to == nil then
+        params.to = target
+        target = who
     end
 
     -- Checked with the parameters, so "may spawn, but only Lamball" is

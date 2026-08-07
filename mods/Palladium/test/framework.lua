@@ -604,6 +604,17 @@ end
 check("and a name nobody online carries is refused, not guessed",
     ghosted ~= nil, ghosted and ghosted.params.text)
 
+perms:grant("WALKER", "player.teleport", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "WALKER", name = "Wa" },
+    { message = "!player.teleport @Cy" })
+framework.drain()
+local goto_call
+for _, call in ipairs(calls) do if call.type == "player.teleport" then goto_call = call end end
+check("a bare player destination reads as take-me-to-them",
+    goto_call ~= nil and goto_call.userid == "WALKER" and goto_call.params.to == "ID3",
+    goto_call and (tostring(goto_call.userid) .. "/" .. tostring(goto_call.params.to)))
+
 -- ── the audit file ──────────────────────────────────────────────────────────
 local audit_file = io.open(ROOT .. "/logs/bridge-audit.log", "r")
 local audit_text = audit_file and audit_file:read("a") or ""
