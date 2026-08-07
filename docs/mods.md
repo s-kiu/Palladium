@@ -101,7 +101,11 @@ call that loads the file is the call that reads the manifest.
 The `settings` table in `mod.lua` is the author's defaults. The operator's
 word is `settings.config` beside the mod's data — it survives mod updates,
 and it is re-read within seconds of an edit, so tuning a reward needs no
-restart. Plain `key = value` lines; dotted keys reach into tables and numeric
+restart. A mod may ship a commented `settings.example.config` next to its
+code; on the first load that finds no live `settings.config`, the example
+becomes it — a fresh install gets a real file to open, already explaining
+itself, and updates only ever refresh the example, never the operator's
+copy. Plain `key = value` lines; dotted keys reach into tables and numeric
 segments make list positions:
 
 ```ini

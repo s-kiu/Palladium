@@ -37,6 +37,12 @@ local function write(path, body)
     file:close()
 end
 
+local function exists_file(path)
+    local file = io.open(path, "r")
+    if file then file:close() end
+    return file ~= nil
+end
+
 local function mkmod(name, body)
     os.execute("mkdir -p '" .. MODS .. "/" .. name .. "'")
     write(MODS .. "/" .. name .. "/mod.lua", body)
@@ -776,6 +782,32 @@ for _, call in ipairs(calls) do
 end
 check("an emptied overlay hands the author's ladder back",
     tenth ~= nil and tonumber(tenth.params.count) == 1500, tenth and tenth.params.count)
+
+-- ── a shipped settings example becomes the live file, once ─────────────────
+os.execute("mkdir -p '" .. MODS .. "/Seeded'")
+write(MODS .. "/Seeded/mod.lua", [[
+return { name = "Seeded", settings = { greeting = "default" },
+    on = { ["player.join"] = function() end } }
+]])
+write(MODS .. "/Seeded/settings.example.config", "; shipped example\ngreeting = tuned\n")
+write(MODS .. "/Palladium/mods.list", "Seeded\n")
+framework.init({
+    event_types = { ["player.join"] = true },
+    call = function(_, _, _, report) report(true, nil, {}) end,
+})
+framework.load()
+check("a shipped example becomes settings.config on first load",
+    exists_file(MODS .. "/Seeded/settings.config"))
+check("and the mod reads the seeded values",
+    framework.mods.Seeded.pal.settings.greeting == "tuned",
+    framework.mods.Seeded.pal.settings.greeting)
+
+write(MODS .. "/Seeded/settings.config", "greeting = operator\n")
+write(MODS .. "/Seeded/settings.example.config", "greeting = newexample\n")
+framework.load()
+check("an existing settings.config is never overwritten by the example",
+    framework.mods.Seeded.pal.settings.greeting == "operator",
+    framework.mods.Seeded.pal.settings.greeting)
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

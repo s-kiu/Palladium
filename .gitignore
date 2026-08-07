@@ -28,6 +28,9 @@ dist/
 # …but what a mod writes beside itself is runtime state, not source.
 /mods/*/*.config
 /mods/*/*.data
+# A shipped, commented settings example is source: the framework copies it
+# to settings.config on the first load that finds none.
+!/mods/*/settings.example.config
 # The commented tour of the permission system is documentation, not state.
 !/mods/Palladium/example.permissions.config
 !/paks/.gitkeep

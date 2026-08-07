@@ -271,6 +271,25 @@ local function settings_path(name)
     return home .. "/settings.config"
 end
 
+-- A mod may ship a commented settings.example.config next to its code. On
+-- the first load with no live settings.config, the example becomes it —
+-- so a fresh install has a real file to open, already explaining itself.
+-- Never re-copied: the moment an operator has a settings.config, updates
+-- to the example are reference material, not overwrites.
+local function seed_settings(name)
+    local live = settings_path(name)
+    if exists(live) then return end
+    local example = io.open(host.mods_dir .. "/" .. name .. "/settings.example.config", "r")
+    if not example then return end
+    local content = example:read("a")
+    example:close()
+    local out = io.open(live, "w")
+    if not out then return end
+    out:write(content)
+    out:close()
+    log(name .. ": settings.config created from the shipped example")
+end
+
 local settings_seen = {} -- mod name → file content behind the current overlay
 
 local function overlaid(name, defaults)
@@ -438,6 +457,7 @@ function framework.load()
                     if not entry.error then
                         entry.ok = true
                         entry.mod = result
+                        seed_settings(name)
                         entry.pal = api_for(name, result)
                         entry.warnings = unfireable(result)
                     end
