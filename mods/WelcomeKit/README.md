@@ -15,7 +15,10 @@ Needs Palladium. Nothing else.
 
 ## Settings
 
-Edit them in `mod.lua`:
+Edit them in `settings.config` beside the mod — it appears on the first
+load, copied from the shipped `settings.example.config`, and edits apply
+within seconds on a running server, no restart. Mod updates never touch it.
+
 
 | Setting | Default | Meaning |
 |---|---|---|
