@@ -775,5 +775,63 @@ check("an edited overlay applies and untouched keys return to defaults",
     shouted and back_to_default == 100,
     tostring(shouted) .. "/" .. tostring(back_to_default))
 
+-- ── TimedRewards, driven for real ───────────────────────────────────────────
+-- Hour marks from settings: every unpaid mark at or below the hours played
+-- pays once, and the ladder is the operator's to redefine.
+
+os.execute("mkdir -p '" .. MODS .. "/TimedRewards'")
+os.execute("cp '" .. SCRIPTS .. "/../../TimedRewards/mod.lua' '" .. MODS .. "/TimedRewards/mod.lua'")
+write(MODS .. "/Palladium/mods.list", "TimedRewards\n")
+
+play_minutes = 330 -- five and a half hours: the 1 and 5 marks, not the 10
+framework.init({
+    event_types = { ["player.join"] = true, ["player.hour"] = true, ["player.chat"] = true },
+    call = function(action_type, userid, params, report)
+        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
+        if action_type == "player.playtime" then
+            return report(true, nil,
+                { { "minutes", play_minutes }, { "session", 5 }, { "online", true } })
+        end
+        report(true, nil, {})
+    end,
+})
+framework.load()
+
+local climber = { kind = "player", id = "CLIMB", name = "Cli" }
+calls = {}
+framework.enqueue("player.hour", climber, { hours = 5, minutes = play_minutes })
+framework.drain()
+local spheres, gold = 0, 0
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" then
+        if call.params.item == "PalSphere" then spheres = spheres + tonumber(call.params.count) end
+        if call.params.item == "Money" then gold = gold + tonumber(call.params.count) end
+    end
+end
+check("every mark at or below the hours played pays once",
+    spheres == 5 and gold == 500, tostring(spheres) .. "/" .. tostring(gold))
+
+calls = {}
+framework.enqueue("player.hour", climber, { hours = 5, minutes = play_minutes })
+framework.drain()
+local repay = 0
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" then repay = repay + 1 end
+end
+check("a mark never pays twice", repay == 0, repay)
+
+write(MODS .. "/TimedRewards/settings.config",
+    "rewards.1.hours = 2\nrewards.1.item = Pan\nrewards.1.count = 3\n")
+framework.reload_settings()
+calls = {}
+framework.enqueue("player.hour", climber, { hours = 6, minutes = 370 })
+framework.drain()
+local bread
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" and call.params.item == "Pan" then bread = call end
+end
+check("a redefined ladder pays its new marks retroactively",
+    bread ~= nil and tonumber(bread.params.count) == 3, bread and bread.params.count)
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)
