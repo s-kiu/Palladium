@@ -56,6 +56,29 @@ local function log(text)
     host.info("framework: " .. text)
 end
 
+-- ── audit ───────────────────────────────────────────────────────────────────
+-- Every write that reaches the engine from inside the game — a chat command
+-- or a mod's own call — appends one line here. The panel's database already
+-- audits the HTTP door; this file is the same trail for the two surfaces
+-- that never pass through it. player.message is exempt: it changes nothing
+-- and every greeting would drown the log.
+local function audit(source, who, action, target, params)
+    local spec = host.capabilities and host.capabilities[action]
+    if type(spec) ~= "table" or spec.scope ~= "write" then return end
+    if action == "player.message" then return end
+    local parts = {}
+    for key, value in pairs(params or {}) do
+        parts[#parts + 1] = key .. "=" .. tostring(value)
+    end
+    table.sort(parts)
+    local file = io.open((host.root or "/palworld") .. "/logs/bridge-audit.log", "a")
+    if not file then return end
+    file:write(string.format("%s\t%s\t%s\t%s\t%s\n",
+        os.date("!%Y-%m-%dT%H:%M:%SZ"), source .. ":" .. (who or "-"), action,
+        target or "-", table.concat(parts, " ")))
+    file:close()
+end
+
 -- ── discovery ───────────────────────────────────────────────────────────────
 -- Plain Lua has no readdir, so this tries the three routes that exist in this
 -- loader, cheapest first, and says which one answered. A list file is the only
@@ -211,6 +234,7 @@ local function api_for(name, mod)
     -- receives (ok, err, data) — actions reach the engine on the game thread,
     -- so an answer is not available on return.
     function pal.call(action_type, userid, params, done)
+        audit("mod:" .. name, nil, action_type, userid, params)
         host.call(action_type, userid or "", params or {}, function(ok, err, data)
             if not done then return end
             -- Results come back as the pairs the envelope is built from; a mod
@@ -430,23 +454,129 @@ end
 -- the same call the HTTP door makes, gated by the same node — and those nodes
 -- default to deny, so out of the box this is an admin surface and nothing
 -- more. Parameters are key=value because that is what the action queue itself
--- carries; nothing here has to guess at positions.
+-- carries; positional arguments are also accepted, matched to the declared
+-- parameters by kind so `!pal.spawn IceDrake 25 [WorldTree_ATK]` reads
+-- naturally. `@me` anywhere means the caller's own player id.
+
+-- The short word after the group dot, kept only when no other capability
+-- claims it: `!heal` is `!player.heal` because nothing else ends in heal,
+-- while `!stats` stays ambiguous and requires the full name.
+local aliases
+local function alias_map()
+    if aliases then return aliases end
+    aliases = {}
+    local counts = {}
+    for action in pairs(host.capabilities or {}) do
+        local short = action:match("%.(.+)$")
+        if short then counts[short] = (counts[short] or 0) + 1 end
+    end
+    for action in pairs(host.capabilities or {}) do
+        local short = action:match("%.(.+)$")
+        if short and counts[short] == 1 then aliases[short] = action end
+    end
+    return aliases
+end
+
+local function resolve_action(word)
+    if host.capabilities and host.capabilities[word] then return word end
+    return alias_map()[word]
+end
+
+-- Tokens are whitespace-split; [brackets] hold one value whole. key=value
+-- assigns by name. A bare token fills the first unset declared parameter
+-- whose kind it can be: numbers seek int/number, true/false seek bool,
+-- bracketed and other words seek string/item_id. `@me` becomes the caller;
+-- any other `@Name` becomes the online player of that name, and names
+-- nobody online — the third return — instead of guessing.
+local function resolve_at(value, who)
+    if value == "@me" then return who end
+    local name = value:match("^@(.+)$")
+    if not name then return nil end
+    local id = host.player_by_name and host.player_by_name(name)
+    if id then return id end
+    return nil, "no player named " .. name .. " is online"
+end
+
+local function parse_args(action, rest, who)
+    local spec = host.capabilities[action]
+    local declared = type(spec) == "table" and spec.params or {}
+    local params, target = {}, who
+    local s, i = tostring(rest or ""), 1
+    local tokens = {}
+    while i <= #s do
+        local a, b, bracketed = s:find("^%s*%[([^%]]*)%]", i)
+        if a then
+            tokens[#tokens + 1] = { value = bracketed, bracketed = true }
+            i = b + 1
+        else
+            local a2, b2, word = s:find("^%s*(%S+)", i)
+            if not a2 then break end
+            tokens[#tokens + 1] = { value = word }
+            i = b2 + 1
+        end
+    end
+    local function next_unset(want)
+        for _, p in ipairs(declared) do
+            if params[p.name] == nil and want(p) then return p end
+        end
+    end
+    local any = function() return true end
+    for _, token in ipairs(tokens) do
+        local value = token.value
+        local key, named
+        if not token.bracketed then key, named = value:match("^([%w_]+)=(.*)$") end
+        if key then
+            if named:sub(1, 1) == "@" then
+                local id, trouble = resolve_at(named, who)
+                if trouble then return nil, nil, trouble end
+                named = id or named
+            end
+            if key == "target" then target = named else params[key] = named end
+        elseif not token.bracketed and value:sub(1, 1) == "@" and #value > 1 then
+            local id, trouble = resolve_at(value, who)
+            if trouble then return nil, nil, trouble end
+            target = id
+        else
+            local slot
+            if token.bracketed then
+                slot = next_unset(function(p) return p.kind == "string" end) or next_unset(any)
+            elseif value == "true" or value == "false" then
+                slot = next_unset(function(p) return p.kind == "bool" end) or next_unset(any)
+            elseif tonumber(value) then
+                slot = next_unset(function(p) return p.kind == "int" or p.kind == "number" end)
+                    or next_unset(any)
+            else
+                slot = next_unset(function(p) return p.kind == "item_id" or p.kind == "string" end)
+                    or next_unset(any)
+            end
+            if slot then params[slot.name] = value end
+        end
+    end
+    return params, target
+end
+
 local function builtin(event, word, rest)
-    local action = word:sub(2)
-    if not host.capabilities or not host.capabilities[action] then return false end
+    local action = resolve_action(word:sub(2))
+    if not action then return false end
 
     local who = event.subject and event.subject.id or ""
-    local params, target = {}, who
-    for chunk in tostring(rest or ""):gmatch("%S+") do
-        local key, value = chunk:match("^([%w_]+)=(.*)$")
-        if key == "target" then target = value
-        elseif key then params[key] = value end
+    local params, target, trouble = parse_args(action, rest, who)
+    if trouble then
+        host.call("player.message", who, { text = word .. ": " .. trouble }, function() end)
+        return true
     end
 
     -- Checked with the parameters, so "may spawn, but only Lamball" is
-    -- enforced on the command and not merely written down.
-    local allowed, _source, _where, violation =
-        host.permissions and host.permissions:resolve(who, action, params)
+    -- enforced on the command and not merely written down. The target rides
+    -- along, spelled @me when it is the caller — the resolver derives the
+    -- target's standing from it, so "only yourself" and "only below your
+    -- rank" grants hold here exactly as they do on every other surface.
+    local gated = { target = (target == who) and "@me" or target }
+    for key, value in pairs(params) do gated[key] = value end
+    local allowed, _source, _where, violation
+    if host.permissions then
+        allowed, _source, _where, violation = host.permissions:resolve(who, action, gated)
+    end
     if not allowed then
         host.call("player.message", who, {
             text = violation and (word .. ": " .. violation) or ("You may not use " .. word .. "."),
@@ -454,12 +584,114 @@ local function builtin(event, word, rest)
         return true
     end
 
+    audit("chat", who, action, target, params)
     host.call(action, target, params, function(ok, err)
         host.call("player.message", who, {
             text = ok and (word .. " ok") or (word .. " failed: " .. tostring(err)),
         }, function() end)
     end)
     return true
+end
+
+local function say(who, text)
+    host.call("player.message", who, { text = text }, function() end)
+end
+
+-- The shortest word that reaches a capability: its alias when one exists,
+-- the full name otherwise.
+local function word_for(action)
+    for short, full in pairs(alias_map()) do
+        if full == action then return short end
+    end
+    return action
+end
+
+-- `!commands`: every chat word the caller may actually use — mod commands
+-- through their nodes, capabilities through the same permission resolve the
+-- call itself would face. Chunked to respect the chat message limit.
+local function list_commands(event)
+    local who = event.subject and event.subject.id or ""
+    local words = {}
+    for _, name in ipairs(framework.order) do
+        local entry = framework.mods[name]
+        if entry.ok then
+            for word, command in pairs(entry.mod.commands or {}) do
+                if not command.node or entry.pal.can(who, command.node) then
+                    words[#words + 1] = word
+                end
+            end
+        end
+    end
+    local actions = {}
+    for action in pairs(host.capabilities or {}) do
+        -- Self-use is the case tested, so a grant narrowed to `target = @me`
+        -- or to a target rank still lists — the caller may use that word on
+        -- themselves.
+        if host.permissions and host.permissions:resolve(who, action, { target = "@me" }) then
+            actions[#actions + 1] = "!" .. word_for(action)
+        end
+    end
+    table.sort(words)
+    table.sort(actions)
+    for _, extra in ipairs(actions) do words[#words + 1] = extra end
+    if #words == 0 then
+        say(who, "Nothing is enabled for you.")
+        return
+    end
+    local line = "You can use:"
+    for _, word in ipairs(words) do
+        if #line + #word + 1 > 400 then
+            say(who, line)
+            line = word
+        else
+            line = line .. " " .. word
+        end
+    end
+    say(who, line)
+    say(who, "?<command> shows parameters. @me is your own player id.")
+end
+
+-- `?<command>`: the declared parameters, spoken. Required ones in <angle>,
+-- optional in [square], kinds and ranges on a second line.
+local function help(event, word)
+    local who = event.subject and event.subject.id or ""
+    local name = word:sub(2):gsub("^!", "")
+    if name == "" then
+        say(who, "?<command> explains a command; !commands lists what you may use.")
+        return
+    end
+    for _, mod_name in ipairs(framework.order) do
+        local entry = framework.mods[mod_name]
+        local command = entry.ok and entry.mod.commands and entry.mod.commands["!" .. name]
+        if command then
+            say(who, command.help or ("!" .. name .. " — a command from " .. mod_name .. "."))
+            return
+        end
+    end
+    local action = resolve_action(name)
+    if not action then
+        say(who, "No such command. !commands lists what you may use.")
+        return
+    end
+    local spec = host.capabilities[action]
+    spec = type(spec) == "table" and spec or {}
+    local shape, detail = {}, {}
+    for _, p in ipairs(spec.params or {}) do
+        shape[#shape + 1] = p.required and ("<" .. p.name .. ">") or ("[" .. p.name .. "]")
+        local bit = p.name .. ": " .. (p.kind or "string")
+        if p.min or p.max then bit = bit .. " " .. tostring(p.min or "?") .. ".." .. tostring(p.max or "?") end
+        if p.default ~= nil then bit = bit .. " (default " .. tostring(p.default) .. ")" end
+        detail[#detail + 1] = bit
+    end
+    say(who, "!" .. word_for(action) .. " " .. table.concat(shape, " "))
+    if #detail > 0 then
+        local line = table.concat(detail, "; ")
+        if #line > 480 then line = line:sub(1, 477) .. "..." end
+        say(who, line)
+    end
+    if (spec.target or "") == "player" then
+        say(who, "Targets you unless you pass target=<id>. Values by position or key=value; @me works.")
+    end
 end
 
 function framework.chat(event)
@@ -491,9 +723,21 @@ function framework.chat(event)
 
     -- A mod's own command wins over the built-in of the same name, so a mod
     -- can offer a friendlier `!spawn` without losing `!pal.spawn`.
+    local who = event.subject and event.subject.id or ""
+    local now = os.time()
+    if word == "!commands" or word == "!help" then
+        if now - (last_command[who] or 0) < COMMAND_COOLDOWN_S then return true end
+        last_command[who] = now
+        list_commands(event)
+        return true
+    end
+    if word:sub(1, 1) == "?" and #word > 1 then
+        if now - (last_command[who] or 0) < COMMAND_COOLDOWN_S then return true end
+        last_command[who] = now
+        help(event, word)
+        return true
+    end
     if word:sub(1, 1) == "!" then
-        local who = event.subject and event.subject.id or ""
-        local now = os.time()
         if now - (last_command[who] or 0) < COMMAND_COOLDOWN_S then return true end
         local handled = builtin(event, word, rest)
         if handled then last_command[who] = now end
@@ -582,6 +826,7 @@ end
 
 function framework.init(options)
     for key, value in pairs(options or {}) do host[key] = value end
+    aliases = nil -- capabilities may have changed; the alias map follows them
     return framework
 end
 

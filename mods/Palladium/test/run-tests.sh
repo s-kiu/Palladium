@@ -40,7 +40,7 @@ run() {
     echo "── framework ───────────────────────────────────────────────"
     local fw_root
     fw_root="$(mktemp -d)"
-    mkdir -p "$fw_root/.state"
+    mkdir -p "$fw_root/.state" "$fw_root/logs"
     PALLADIUM_TEST_ROOT="$fw_root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/framework.lua
     local status=$?
     rm -rf "$fw_root"

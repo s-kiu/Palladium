@@ -390,6 +390,228 @@ framework.enqueue("player.chat", { kind = "player", id = "OTHERONE", name = "Nix
 framework.drain()
 check("a word that is not a capability is left alone", #calls == 0, #calls)
 
+-- ── chat ergonomics: aliases, positions, @me, help ──────────────────────────
+-- Declared parameters, as the generated capabilities table carries them.
+framework.init({ capabilities = {
+    ["player.give_item"] = { target = "player", params = {
+        { name = "item", kind = "item_id", required = true },
+        { name = "count", kind = "int", min = 1, max = 9999, default = 1 },
+    } },
+    ["pal.spawn"] = { target = "player", params = {
+        { name = "species", kind = "item_id", required = true },
+        { name = "level", kind = "int", min = 1, max = 100, default = 10 },
+        { name = "rare", kind = "bool", default = false },
+        { name = "traits", kind = "string", max_len = 200 },
+    } },
+    ["player.position"] = { target = "player", params = {} },
+} })
+
+perms:grant("ALIASED", "player.give_item", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "ALIASED", name = "Al" },
+    { message = "!give_item PalSphere 3" })
+framework.drain()
+local aliased
+for _, call in ipairs(calls) do if call.type == "player.give_item" then aliased = call end end
+check("the short alias reaches the capability, arguments by position",
+    aliased ~= nil and aliased.params.item == "PalSphere" and aliased.params.count == "3",
+    aliased and (tostring(aliased.params.item) .. "/" .. tostring(aliased.params.count)))
+
+perms:grant("POSITIONAL", "pal.spawn", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "POSITIONAL", name = "Po" },
+    { message = "!pal.spawn @me IceDrake 25 [WorldTree_ATK]" })
+framework.drain()
+local spawned
+for _, call in ipairs(calls) do if call.type == "pal.spawn" then spawned = call end end
+check("@me targets the caller and positions fill species, level and traits",
+    spawned ~= nil and spawned.userid == "POSITIONAL" and spawned.params.species == "IceDrake"
+        and spawned.params.level == "25" and spawned.params.traits == "WorldTree_ATK",
+    spawned and (tostring(spawned.params.species) .. "/" .. tostring(spawned.params.level)
+        .. "/" .. tostring(spawned.params.traits)))
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "CURIOUS", name = "Cu" },
+    { message = "?spawn" })
+framework.drain()
+local usage
+for _, call in ipairs(calls) do
+    if call.type == "player.message" and call.params.text:find("<species>", 1, true) then usage = call end
+end
+check("?spawn answers with the declared shape",
+    usage ~= nil and usage.userid == "CURIOUS" and usage.params.text:find("%[level%]") ~= nil,
+    usage and usage.params.text)
+
+perms:grant("LISTED", "pal.spawn", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "LISTED", name = "Li" },
+    { message = "!commands" })
+framework.drain()
+local listing
+for _, call in ipairs(calls) do
+    if call.type == "player.message" and call.params.text:find("!spawn", 1, true) then listing = call end
+end
+check("!commands names what the caller may use, by its shortest word",
+    listing ~= nil, listing and listing.params.text)
+local leaked
+for _, call in ipairs(calls) do
+    if call.type == "player.message" and call.params.text:find("give_item", 1, true) then leaked = call end
+end
+check("and not what they may not", leaked == nil, leaked and leaked.params.text)
+
+-- ── self-only grants: target = @me ──────────────────────────────────────────
+perms:group_create("members", "MEM", 5)
+perms:group_set_entry("members", "player.position", "allow", "where target = @me")
+perms:assign("SELFISH", "members")
+perms:assign("SNOOPER", "members")
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "SELFISH", name = "Se" },
+    { message = "!player.position" })
+framework.drain()
+local own
+for _, call in ipairs(calls) do if call.type == "player.position" then own = call end end
+check("a grant narrowed to target = @me serves the caller",
+    own ~= nil and own.userid == "SELFISH", own and own.userid)
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "SNOOPER", name = "Sn" },
+    { message = "!player.position target=SOMEBODYELSE" })
+framework.drain()
+local refused, snooped
+for _, call in ipairs(calls) do
+    if call.type == "player.position" then snooped = call end
+    if call.type == "player.message" and call.params.text:find("target", 1, true) then refused = call end
+end
+check("and refuses the same word aimed at somebody else",
+    snooped == nil and refused ~= nil, refused and refused.params.text)
+
+-- ── rank constraints: target_group and target_weight ────────────────────────
+-- Moderators may act downward, never sideways or up — and always on
+-- themselves, because self weighs -1.
+framework.init({ capabilities = {
+    ["player.teleport"] = { target = "player", params = {
+        { name = "x", kind = "number", required = true },
+        { name = "y", kind = "number", required = true },
+        { name = "z", kind = "number", required = true },
+    } },
+} })
+perms:group_create("mods", "MOD", 12)
+perms:group_create("bosses", "BOSS", 15)
+perms:group_set_entry("mods", "player.teleport", "allow", "where target_weight < 12")
+perms:assign("MODONE", "mods")
+perms:assign("MODTWO", "mods")
+perms:assign("BIGBOSS", "bosses")
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "MODONE", name = "M1" },
+    { message = "!player.teleport 1 2 3 target=SNOOPER" })
+framework.drain()
+local moved
+for _, call in ipairs(calls) do if call.type == "player.teleport" then moved = call end end
+check("a rank-limited grant reaches a lower-ranked target",
+    moved ~= nil and moved.userid == "SNOOPER", moved and moved.userid)
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "MODTWO", name = "M2" },
+    { message = "!player.teleport 1 2 3 target=BIGBOSS" })
+framework.drain()
+local upward, stopped
+for _, call in ipairs(calls) do
+    if call.type == "player.teleport" then upward = call end
+    if call.type == "player.message" and call.params.text:find("target_weight", 1, true) then stopped = call end
+end
+check("and stops at a higher-ranked one, saying why",
+    upward == nil and stopped ~= nil, stopped and stopped.params.text)
+
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "MODONE", name = "M1" },
+    { message = "!player.teleport 1 2 3" })
+framework.drain()
+-- MODONE's cooldown from the first teleport may still hold in a fast run;
+-- self-targeting is proven through the resolver directly instead.
+local self_ok = perms:resolve("MODONE", "player.teleport",
+    { target = "@me", target_group = "@me", target_weight = -1, x = "1", y = "2", z = "3" })
+check("while self-targeting passes every rank constraint", self_ok == true, self_ok)
+
+-- ── the resolver derives standing itself, whatever the surface ──────────────
+local surface_ok = perms:resolve("MODONE", "player.teleport", { target = "SNOOPER" })
+local _, _, _, surface_no = perms:resolve("MODTWO", "player.teleport", { target = "BIGBOSS" })
+check("a bare target is enough — standing is derived in the resolver",
+    surface_ok == true and surface_no ~= nil and surface_no:find("target_weight", 1, true) ~= nil,
+    tostring(surface_ok) .. "/" .. tostring(surface_no))
+
+perms:group_set_entry("mods", "group.assign", "allow", "where group_weight < 12")
+local assign_down = perms:resolve("MODONE", "group.assign", { group = "members" })
+local assign_up = perms:resolve("MODONE", "group.assign", { group = "bosses" })
+check("group_weight keeps a grant of group.assign below the granter",
+    assign_down == true and assign_up == false,
+    tostring(assign_down) .. "/" .. tostring(assign_up))
+
+-- ── or-alternatives ─────────────────────────────────────────────────────────
+perms:grant("EITHER", "player.teleport", "allow", "where target = @me or target_weight < 5")
+local or_self = perms:resolve("EITHER", "player.teleport", { target = "@me" })
+local or_down = perms:resolve("EITHER", "player.teleport", { target = "GROUPLESS" })
+local or_up = perms:resolve("EITHER", "player.teleport", { target = "BIGBOSS" })
+check("an or-constraint passes when either alternative holds",
+    or_self == true and or_down == true and or_up == false,
+    tostring(or_self) .. "/" .. tostring(or_down) .. "/" .. tostring(or_up))
+
+-- ── time-based grants ───────────────────────────────────────────────────────
+perms:grant("FOREVERISH", "player.teleport", "allow", nil, "2099-01-01")
+perms:grant("LAPSED", "player.teleport", "allow", nil, "2020-01-01")
+local timed_ok = perms:resolve("FOREVERISH", "player.teleport", { target = "@me" })
+local timed_no, timed_src = perms:resolve("LAPSED", "player.teleport", { target = "@me" })
+check("a dated grant holds before its stamp and is gone after",
+    timed_ok == true and timed_no == false and timed_src ~= "user",
+    tostring(timed_ok) .. "/" .. tostring(timed_no) .. "/" .. tostring(timed_src))
+local bad_ok, bad_err = perms:grant("SOMEONE", "player.teleport", "allow", nil, "not-a-date")
+check("and an unreadable stamp is refused at grant time",
+    bad_ok == false and bad_err == "invalid_until", tostring(bad_ok) .. "/" .. tostring(bad_err))
+
+-- ── @name targeting ─────────────────────────────────────────────────────────
+framework.init({
+    player_by_name = function(name) return name:lower() == "cy" and "ID3" or nil end,
+    capabilities = {
+        ["player.teleport"] = { target = "player", scope = "write", params = {
+            { name = "x", kind = "number", required = true },
+            { name = "y", kind = "number", required = true },
+            { name = "z", kind = "number", required = true },
+        } },
+    },
+})
+perms:grant("NAMER", "player.teleport", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "NAMER", name = "Na" },
+    { message = "!player.teleport 1 2 3 target=@Cy" })
+framework.drain()
+local named
+for _, call in ipairs(calls) do if call.type == "player.teleport" then named = call end end
+check("@Name resolves to the online player of that name",
+    named ~= nil and named.userid == "ID3", named and named.userid)
+
+perms:grant("GHOSTCALLER", "player.teleport", "allow")
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "GHOSTCALLER", name = "Gh" },
+    { message = "!player.teleport 1 2 3 @Ghost" })
+framework.drain()
+local ghosted
+for _, call in ipairs(calls) do
+    if call.type == "player.message" and call.params.text:find("no player named Ghost", 1, true) then
+        ghosted = call
+    end
+end
+check("and a name nobody online carries is refused, not guessed",
+    ghosted ~= nil, ghosted and ghosted.params.text)
+
+-- ── the audit file ──────────────────────────────────────────────────────────
+local audit_file = io.open(ROOT .. "/logs/bridge-audit.log", "r")
+local audit_text = audit_file and audit_file:read("a") or ""
+if audit_file then audit_file:close() end
+check("a chat write landed in the audit file",
+    audit_text:find("chat:NAMER\tplayer.teleport\tID3", 1, true) ~= nil,
+    audit_text:sub(-200))
+
 -- ── WelcomeKit, driven for real ─────────────────────────────────────────────
 -- The other mod that ships: one kit ever, and only once the items arrived.
 
@@ -472,6 +694,53 @@ for _, call in ipairs(calls) do
     if call.type == "player.give_item" then gave = gave + 1 end
 end
 check("a returning player gets a greeting and no kit", gave == 0, gave)
+
+-- ── HourlyReward, driven for real ───────────────────────────────────────────
+-- The reference mod for the clock events: pays the gap between hours played
+-- and hours rewarded the moment player.hour says an hour completed, and
+-- never pays the same hour twice.
+
+os.execute("mkdir -p '" .. MODS .. "/HourlyReward'")
+os.execute("cp '" .. SCRIPTS .. "/../../HourlyReward/mod.lua' '" .. MODS .. "/HourlyReward/mod.lua'")
+write(MODS .. "/Palladium/mods.list", "HourlyReward\n")
+
+local play_minutes = 125 -- two full hours and change
+framework.init({
+    event_types = { ["player.join"] = true, ["player.hour"] = true, ["player.chat"] = true },
+    call = function(action_type, userid, params, report)
+        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
+        if action_type == "player.playtime" then
+            return report(true, nil,
+                { { "minutes", play_minutes }, { "session", 5 }, { "online", true } })
+        end
+        report(true, nil, {})
+    end,
+})
+framework.load()
+
+local veteran = { kind = "player", id = "VET", name = "Vex" }
+calls = {}
+framework.enqueue("player.hour", veteran, { hours = 2, minutes = play_minutes })
+framework.drain()
+
+local paid_gold, thanked = 0, nil
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" and call.params.item == "Money" then
+        paid_gold = paid_gold + tonumber(call.params.count)
+    end
+    if call.type == "player.message" then thanked = call.params.text end
+end
+check("an hour completing pays every hour owed", paid_gold == 200, paid_gold)
+check("and says which hour it was", thanked ~= nil and thanked:find("Hour 2", 1, true) ~= nil, thanked)
+
+calls = {}
+framework.enqueue("player.hour", veteran, { hours = 2, minutes = play_minutes })
+framework.drain()
+local again = 0
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" then again = again + 1 end
+end
+check("a second look at the same hour pays nothing", again == 0, again)
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

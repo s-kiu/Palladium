@@ -184,6 +184,49 @@ groups = vip
   `pal.can(who, node, params)`, the `!pal.spawn` command and an `as:` call over
   HTTP all get the same answer. A constrained grant checked *without* the
   parameters answers no — it cannot be relied on, so it is not widened.
+- **A chat command also carries who it is aimed at**, so a grant can be
+  narrowed by target. `target` is the target's id, spelled `@me` when it is
+  the caller; `target_group` and `target_weight` are the target's
+  highest-weight group and that group's weight:
+
+  ```ini
+  allow = player.heal where target = @me
+  allow = player.teleport where target_group != admins
+  allow = player.heal where target_group in member,vip
+  allow = player.teleport where target_weight < 12
+  ```
+
+  The last shape is the hierarchy: a moderator at weight 12 may move anyone
+  below 12, never a peer or an admin. Acting on yourself always passes a rank
+  constraint — `@me` weighs `-1`, beneath every group — so nobody's own
+  commands go dark because of their own rank. Standing is derived inside the
+  resolver, so the same entry gives the same answer in chat, from a mod's
+  `pal.can`, and from a `permission.check` over HTTP. When a call names a
+  *group* (`group.assign`, `group.set_entry`), `group_weight` is that group's
+  weight — `allow = group.assign where group_weight < 12` lets a moderator
+  promote members without being able to mint another moderator or an admin.
+- **Alternatives join with `or`**, and `and` binds tighter:
+  `allow = player.teleport where target = @me or target_weight < 5` reads as
+  "yourself, or anyone below weight 5".
+- **A grant can carry an end date**: `until 2026-09-01` (midnight starting
+  that day, server-local) or `until 2026-09-01T14:30`, written after any
+  constraint. An expired entry simply is not there anymore:
+
+  ```ini
+  allow = player.heal where target = @me until 2026-09-01
+  ```
+
+  `permission.grant` and `group.set_entry` take the stamp as their `until`
+  parameter.
+- **`@Name` targets the online player of that name** (case-insensitive):
+  `!teleport @Löyly` and `target=@Löyly` both resolve to their id, and a name
+  nobody online carries refuses the command rather than guessing. `@me` stays
+  yourself.
+- **Writes are audited.** Every write-scope capability run from chat or by a
+  mod appends one line to `logs/bridge-audit.log` — when, who (or which mod),
+  the action, its target and parameters. The HTTP door's audit lives in the
+  panel's database; between the two, every state change has a trail.
+  `player.message` is exempt, or every greeting would drown the file.
 
 ## Storing anything else
 
@@ -228,10 +271,21 @@ makes, gated by the same permission node — and those nodes are registered
 `pal.spawn` to a moderators group and its members get the command; nobody else
 sees anything change.
 
-- Parameters are `key=value`, the same shape the action queue carries, so
-  nothing has to guess at positions.
-- `target=<32-hex id>` acts on somebody else; without it the caller is the
+- Every capability answers to its short name when no other capability ends the
+  same way: `!heal` is `!player.heal`, `!teleport` is `!player.teleport`.
+  `!stats` stays ambiguous, so the full `!player.stats` or `!pal.stats` it is.
+- Parameters are `key=value`, the same shape the action queue carries — or
+  positional, matched to the declared parameters by kind:
+  `!pal.spawn IceDrake 25 [WorldTree_ATK]` reads species, level and traits in
+  order, numbers seeking number-shaped parameters and `[bracketed]` values
+  seeking string-shaped ones.
+- `@me` anywhere means the caller's own player id.
+  `target=<32-hex id>` acts on somebody else; without it the caller is the
   target.
+- `!commands` lists every word the caller may actually use — mod commands and
+  capabilities alike, filtered by the caller's own permissions.
+- `?<command>` explains one: declared parameters, kinds, ranges and defaults.
+  A mod command answers with its `help` text when the mod declares one.
 - A mod's own command wins over the built-in of the same name, so a mod can
   offer a friendlier `!spawn` without taking `!pal.spawn` away.
 - One command per player per two seconds, refusals included.
