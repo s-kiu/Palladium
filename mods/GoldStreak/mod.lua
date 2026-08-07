@@ -17,6 +17,8 @@ return {
         { node = "goldstreak.reward", description = "earn gold on a respawn streak", default = "allow" },
     },
 
+    -- The author's defaults; a settings.config beside the mod overrides
+    -- them, live, without touching this file.
     settings = { every = 5, item = "Money", count = 50 },
 
     on = {

@@ -20,6 +20,8 @@ return {
         { node = "welcomekit.kit", description = "receive the starter kit on first join", default = "allow" },
     },
 
+    -- The author's defaults; a settings.config beside the mod overrides
+    -- them, live, without touching this file.
     settings = {
         -- Item ids are the game's internal names, not the names shown in game:
         -- bread is `Pan`, medical supplies are `Medicines`, gold is `Money`.
