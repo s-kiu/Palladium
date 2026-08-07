@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.8.0"
+local VERSION = "4.9.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -75,6 +75,7 @@ end
 Collections.init({ root = PAL_ROOT, info = info, home_for = home_for })
 Collections.home("bridge", home_for(MOD))
 local perms = Permissions.new(Collections)
+perms:seed_tiers()
 
 -- Who has been here, so `firstEver` survives a reboot. A collection like any
 -- other, kept beside Palladium itself.
@@ -2579,8 +2580,9 @@ IMPL["permission.player"] = function(_state, p, _finish, raw)
     for _, group in ipairs(perms:groups_of(uid)) do groups[#groups + 1] = json_string(group.name, 64) end
     local entries = {}
     for _, entry in ipairs(perms:user_entries(uid)) do
-        entries[#entries + 1] = string.format('{"node":%s,"effect":%s}',
-            json_string(entry.node, 128), json_string(entry.effect, 8))
+        entries[#entries + 1] = string.format('{"node":%s,"effect":%s,"where":%s,"until":%s}',
+            json_string(entry.node, 128), json_string(entry.effect, 8),
+            json_string(entry.where or "", 200), json_string(entry.until_stamp or "", 20))
     end
     return true, nil, {
         { "groups", { raw = "[" .. table.concat(groups, ",") .. "]" } },
@@ -2632,8 +2634,9 @@ IMPL["group.list"] = function()
         local record = perms:groups()[name]
         local entries = {}
         for _, entry in ipairs(perms:entries_of(name)) do
-            entries[#entries + 1] = string.format('{"node":%s,"effect":%s}',
-                json_string(entry.node, 128), json_string(entry.effect, 8))
+            entries[#entries + 1] = string.format('{"node":%s,"effect":%s,"where":%s,"until":%s}',
+                json_string(entry.node, 128), json_string(entry.effect, 8),
+                json_string(entry.where or "", 200), json_string(entry.until_stamp or "", 20))
         end
         parts[#parts + 1] = string.format(
             '{"name":%s,"tag":%s,"weight":%d,"isDefault":%s,"entries":[%s]}',

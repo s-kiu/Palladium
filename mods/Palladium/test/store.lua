@@ -380,5 +380,26 @@ local ok_c, _, where_c = reloaded:resolve("UID", "pal.spawn")
 check("and comes back intact after a reload",
     ok_c == true and where_c == '{"species":{"in":["SheepBall"]}}', where_c)
 
+-- ── the seeded tiers ────────────────────────────────────────────────────────
+-- A server with no groups at all boots into the five documented tiers; any
+-- existing group means an operator already shaped it, and seeding stays away.
+local virgin = perms()
+virgin:seed_tiers()
+local tier_count = 0
+for _ in pairs(virgin:groups()) do tier_count = tier_count + 1 end
+check("a groupless server is seeded with the five tiers", tier_count == 5, tier_count)
+check("the group everybody lands in is guest", virgin:default_group() == "guest", virgin:default_group())
+virgin:register("bridge", { { node = "player.position", default = "deny" } })
+virgin:assign("MEMB", "member")
+check("a seeded member reads their own position",
+    virgin:resolve("MEMB", "player.position", { target = "@me" }) == true)
+check("and nobody else's",
+    virgin:resolve("MEMB", "player.position", { target = "SOMEBODY" }) == false)
+virgin:group_delete("vip")
+virgin:seed_tiers()
+local shaped = 0
+for _ in pairs(virgin:groups()) do shaped = shaped + 1 end
+check("a shaped server is left alone by a second seeding", shaped == 4, shaped)
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

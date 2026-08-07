@@ -203,6 +203,73 @@ function permissions.new(collections)
     return self
 end
 
+-- Called at boot, not in the constructor, so tests that build their own
+-- worlds start from nothing. A server with no groups at all gets the five
+-- tiers the docs describe
+-- rather than a bare deny-everything: guest (the default everybody is in),
+-- member (self-service reads), vip (adds self-heal and pal reads),
+-- moderator (the same unconstrained plus the moderation kit, rank-limited
+-- where it acts on players), admins (everything). Runs once — any existing
+-- group, including a plain "default", means an operator has already shaped
+-- this server and nothing is touched.
+local MEMBER_ALLOWS = {
+    "player.position where target = @me",
+    "player.stats where target = @me",
+    "player.status_points where target = @me",
+    "player.count_item where target = @me",
+    "player.has_item where target = @me",
+    "permission.check where target = @me",
+    "player.playtime where target = @me",
+    "pal.list",
+    "location.list",
+}
+
+local VIP_EXTRA = {
+    "player.heal where target = @me",
+    "pal.inspect",
+    "pal.stats",
+}
+
+local MODERATOR_ALLOWS = {
+    "player.position", "player.stats", "player.status_points",
+    "player.count_item", "player.has_item", "permission.check",
+    "player.playtime", "pal.list", "location.list",
+    "player.heal", "pal.inspect", "pal.stats",
+    "player.teleport where target_weight < 12",
+    "player.message", "server.announce",
+    "location.save", "location.delete", "player.get_tag",
+    "data.collections", "data.list", "data.get",
+    "permission.nodes", "permission.player", "group.list",
+}
+
+function permissions:seed_tiers()
+    local count, lone = 0, nil
+    for name in pairs(self.groups_c:all()) do
+        count = count + 1
+        lone = name
+    end
+    if count > 1 then return end
+    if count == 1 then
+        -- The constructor's bare "default" is the virgin state too; a tag or
+        -- any entry on it means an operator has been here.
+        local record = self.groups_c:get(lone)
+        local untouched = lone == "default"
+            and (record.tag == nil or record.tag == "")
+            and #self.groups_c:list(lone, "allow") == 0
+            and #self.groups_c:list(lone, "deny") == 0
+        if not untouched then return end
+        self.groups_c:delete(lone)
+    end
+    local vip = {}
+    for _, entry in ipairs(MEMBER_ALLOWS) do vip[#vip + 1] = entry end
+    for _, entry in ipairs(VIP_EXTRA) do vip[#vip + 1] = entry end
+    self.groups_c:set("guest", { weight = "0", is_default = "true" })
+    self.groups_c:set("member", { weight = "5", tag = "MEMBER", is_default = "false", allow = MEMBER_ALLOWS })
+    self.groups_c:set("vip", { weight = "8", tag = "VIP", is_default = "false", allow = vip })
+    self.groups_c:set("moderator", { weight = "12", tag = "MOD", is_default = "false", allow = MODERATOR_ALLOWS })
+    self.groups_c:set("admins", { weight = "15", tag = "ADMINS", is_default = "false", allow = { "*" } })
+end
+
 function permissions:ensure_default_group()
     for _, record in pairs(self.groups_c:all()) do
         if record.is_default == "true" then return end
@@ -387,7 +454,7 @@ local function entries_from(handle, id)
             -- An unparseable stamp keeps the entry dead rather than eternal.
             if stamp and not expires then node = nil end
             if node and (not expires or expires > now) then
-                out[#out + 1] = { node = node, effect = effect, where = where }
+                out[#out + 1] = { node = node, effect = effect, where = where, until_stamp = stamp }
             end
         end
     end

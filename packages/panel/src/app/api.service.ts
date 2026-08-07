@@ -138,7 +138,7 @@ export interface PermGroup {
   tag: string;
   weight: number;
   isDefault: boolean;
-  entries: { node: string; effect: string; constraints: unknown }[];
+  entries: { node: string; effect: string; where?: string; until?: string }[];
   members: number;
 }
 

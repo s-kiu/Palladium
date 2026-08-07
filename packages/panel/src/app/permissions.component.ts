@@ -94,15 +94,19 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
             <button (click)="updateGroup(g.name)">Save tag/weight</button>
           </div>
           <p class="muted small-note">
-            Entries — node, allow/deny, optional constraints as JSON
-            (<code>{{ '{' }}"species":{{ '{' }}"in":["SheepBall"]{{ '}' }}{{ '}' }}</code>,
-            <code>{{ '{' }}"x":{{ '{' }}"min":0,"max":1000{{ '}' }}{{ '}' }}</code>).
+            Entries — node, allow/deny, an optional constraint in where-syntax
+            (<code>where species in SheepBall,Lamball</code>,
+            <code>where target = &#64;me</code>,
+            <code>where target_weight &lt; 12</code>, joined with
+            <code>and</code>/<code>or</code>) and an optional expiry
+            (<code>2026-09-01</code> or <code>2026-09-01T14:30</code>).
           </p>
           @for (e of g.entries; track e.node) {
             <div class="row wrap entry-row">
               <span class="mono">{{ e.node }}</span>
               <span class="tag" [class.warn-tag]="e.effect === 'deny'">{{ e.effect }}</span>
-              @if (e.constraints) { <span class="mono small-tags">{{ json(e.constraints) }}</span> }
+              @if (e.where) { <span class="mono small-tags">{{ e.where }}</span> }
+              @if (e.until) { <span class="tag">until {{ e.until }}</span> }
               <span class="spacer"></span>
               <button class="danger" (click)="removeEntry(g.name, e.node)">Remove</button>
             </div>
@@ -115,7 +119,8 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
               <option value="allow">allow</option>
               <option value="deny">deny</option>
             </select>
-            <input [(ngModel)]="entryConstraints" name="pg-entry-constraints" placeholder='constraints JSON (optional)' />
+            <input [(ngModel)]="entryWhere" name="pg-entry-where" placeholder='where … (optional, e.g. where target = @me)' />
+            <input [(ngModel)]="entryUntil" name="pg-entry-until" class="short" placeholder='until (optional)' />
             <button class="primary" (click)="setEntry(g.name)" [disabled]="!entryNode">Set entry</button>
           </div>
         </div>
@@ -159,7 +164,8 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
           <div class="row wrap entry-row">
             <span class="mono">{{ e.node }}</span>
             <span class="tag" [class.warn-tag]="e.effect === 'deny'">{{ e.effect }}</span>
-            @if (e.constraints) { <span class="mono small-tags">{{ json(e.constraints) }}</span> }
+            @if (e.where) { <span class="mono small-tags">{{ e.where }}</span> }
+            @if (e.until) { <span class="tag">until {{ e.until }}</span> }
             <span class="spacer"></span>
             <button class="danger" (click)="revokeOverride(e.node)">Revoke</button>
           </div>
@@ -172,7 +178,8 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
             <option value="allow">allow</option>
             <option value="deny">deny</option>
           </select>
-          <input [(ngModel)]="overrideConstraints" name="pp-constraints" placeholder="constraints JSON (optional)" />
+          <input [(ngModel)]="overrideWhere" name="pp-where" placeholder="where … (optional)" />
+          <input [(ngModel)]="overrideUntil" name="pp-until" class="short" placeholder="until (optional)" />
           <button class="primary" (click)="grantOverride()" [disabled]="!overrideNode">Grant</button>
         </div>
       }
@@ -232,7 +239,7 @@ export class PermissionsComponent implements OnInit {
   players = signal<BridgePlayer[]>([]);
   selectedGroup = signal('');
   playerGroups = signal<string[]>([]);
-  playerEntries = signal<{ node: string; effect: string; constraints: unknown }[]>([]);
+  playerEntries = signal<{ node: string; effect: string; where?: string; until?: string }[]>([]);
   playerRole = signal<string | null>(null);
   chatRoles = signal(false);
   feedback = signal('');
@@ -245,12 +252,14 @@ export class PermissionsComponent implements OnInit {
   editWeight: number | null = null;
   entryNode = '';
   entryEffect = 'allow';
-  entryConstraints = '';
+  entryWhere = '';
+  entryUntil = '';
   selectedPlayer = '';
   assignGroup = '';
   overrideNode = '';
   overrideEffect = 'allow';
-  overrideConstraints = '';
+  overrideWhere = '';
+  overrideUntil = '';
 
   currentGroup = computed(() => this.groups().find((g) => g.name === this.selectedGroup()) ?? null);
 
@@ -258,10 +267,6 @@ export class PermissionsComponent implements OnInit {
     this.refresh();
     this.api.bridgePlayers().subscribe({ next: (r) => this.players.set(r.players), error: () => {} });
     this.api.bridgeOptions().subscribe({ next: (o) => this.chatRoles.set(o.chatRoles), error: () => {} });
-  }
-
-  json(v: unknown): string {
-    return JSON.stringify(v);
   }
 
   refresh(): void {
@@ -282,16 +287,11 @@ export class PermissionsComponent implements OnInit {
     this.refresh();
   }
 
-  private parseConstraints(raw: string): { ok: boolean; value: unknown } {
+  // The agent expects the constraint with its keyword; typing it is optional.
+  private normalizeWhere(raw: string): string | undefined {
     const text = raw.trim();
-    if (!text) return { ok: true, value: undefined };
-    try {
-      return { ok: true, value: JSON.parse(text) };
-    } catch {
-      this.failed.set(true);
-      this.feedback.set('failed (constraints are not valid JSON)');
-      return { ok: false, value: undefined };
-    }
+    if (!text) return undefined;
+    return text.startsWith('where ') ? text : `where ${text}`;
   }
 
   createGroup(): void {
@@ -319,14 +319,15 @@ export class PermissionsComponent implements OnInit {
   }
 
   setEntry(group: string): void {
-    const c = this.parseConstraints(this.entryConstraints);
-    if (!c.ok) return;
+    const where = this.normalizeWhere(this.entryWhere);
+    const until = this.entryUntil.trim();
     this.api.bridgeCall('group.set_entry', null, {
       group,
       node: this.entryNode,
       effect: this.entryEffect,
-      ...(c.value !== undefined ? { constraints: c.value } : {}),
-    }).subscribe({ next: (r) => { this.entryNode = ''; this.entryConstraints = ''; this.done(r); }, error: (e) => this.done(e?.error ?? {}) });
+      ...(where ? { where } : {}),
+      ...(until ? { until } : {}),
+    }).subscribe({ next: (r) => { this.entryNode = ''; this.entryWhere = ''; this.entryUntil = ''; this.done(r); }, error: (e) => this.done(e?.error ?? {}) });
   }
 
   removeEntry(group: string, node: string): void {
@@ -339,7 +340,7 @@ export class PermissionsComponent implements OnInit {
     this.api.bridgeCall('permission.player', userid, {}).subscribe({
       next: (r) => {
         this.playerGroups.set((r.data['groups'] as string[]) ?? []);
-        this.playerEntries.set((r.data['entries'] as { node: string; effect: string; constraints: unknown }[]) ?? []);
+        this.playerEntries.set((r.data['entries'] as { node: string; effect: string; where?: string; until?: string }[]) ?? []);
         this.playerRole.set((r.data['role'] as string | null) ?? null);
       },
       error: () => {},
@@ -357,13 +358,14 @@ export class PermissionsComponent implements OnInit {
   }
 
   grantOverride(): void {
-    const c = this.parseConstraints(this.overrideConstraints);
-    if (!c.ok) return;
+    const where = this.normalizeWhere(this.overrideWhere);
+    const until = this.overrideUntil.trim();
     this.api.bridgeCall('permission.grant', this.selectedPlayer, {
       node: this.overrideNode,
       effect: this.overrideEffect,
-      ...(c.value !== undefined ? { constraints: c.value } : {}),
-    }).subscribe({ next: (r) => { this.overrideNode = ''; this.overrideConstraints = ''; this.done(r); }, error: (e) => this.done(e?.error ?? {}) });
+      ...(where ? { where } : {}),
+      ...(until ? { until } : {}),
+    }).subscribe({ next: (r) => { this.overrideNode = ''; this.overrideWhere = ''; this.overrideUntil = ''; this.done(r); }, error: (e) => this.done(e?.error ?? {}) });
   }
 
   revokeOverride(node: string): void {
