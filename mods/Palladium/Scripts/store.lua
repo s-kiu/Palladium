@@ -61,6 +61,13 @@ local function shell_quote(path)
 end
 
 function store.ensure_dir(path)
+    -- A directory that already exists needs no shell: os.execute forks, and
+    -- a fork while the engine is mid-load can take the process down.
+    local probe = io.open(path .. "/.", "r")
+    if probe then
+        probe:close()
+        return true
+    end
     if type(os.execute) ~= "function" then return false end
     return os.execute("mkdir -p " .. shell_quote(path) .. " 2>/dev/null") ~= nil
 end
