@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.9.2"
+local VERSION = "4.9.3"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1587,11 +1587,21 @@ local SPAWN_PLACED_TOLERANCE = 500
 local SPAWN_SETTLE_MS = 300
 local HOSTILE_HATE = 10000
 
+-- The engine's CharacterID is exact: "Sheepball" spawns nothing and the
+-- English name "Lamball" is not an id at all. The generated table carries
+-- both spellings of every known pal; anything it does not know passes
+-- through untouched, which is what a modded species needs.
+local function species_id(text)
+    local canonical = CAPS.species and CAPS.species[tostring(text or ""):lower()]
+    return canonical or text
+end
+
 -- Defined with the other pal helpers below; pal.spawn's settle needs them,
 -- and forward declaration beats moving the whole block above the handler.
 local world_pals, find_pal, make_sight_aggressive
 
 IMPL["pal.spawn"] = function(state, p, finish)
+    p.species = species_id(p.species)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
     -- The manager comes off some player's controller; with coordinates the
@@ -1713,7 +1723,7 @@ IMPL["pal.spawn"] = function(state, p, finish)
         -- The spawner answers an unknown species with nothing, which makes a
         -- typo look like an engine fault; say the likelier cause.
         return false, "spawn_failed (" .. tostring(last_error) ..
-            ") — species ids are the game's internal names (SheepBall, Lamball); a typo fails exactly like this"
+            ") — a species this build does not know spawns nothing, and known pals answer to their English names too; the likeliest cause is a spelling the game has never heard"
     end
 
     -- Rarity and traits apply to the individual parameter once it exists.
@@ -2128,6 +2138,7 @@ end
 local SPAWNER_CLASSES = { "BP_MonoNPCSpawner_C", "BP_PalSpawner_Standard_C" }
 
 IMPL["pal.spawn_wild"] = function(state, p)
+    if p.species and p.species ~= "" then p.species = species_id(p.species) end
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
     local at = position_of(pawn)

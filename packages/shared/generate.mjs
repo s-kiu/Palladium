@@ -50,6 +50,24 @@ const luaActions = caps
     return `        [${luaStr(c.type)}] = {\n${head.join('')}            params = {\n${params.join('\n')}\n            },\n        },`;
   });
 
+// The engine's CharacterID is exact — "Sheepball" spawns nothing, and the
+// English name "Lamball" is not an id at all. Both spellings of every known
+// pal map to the id the engine wants, lowercased for the lookup.
+const palsData = JSON.parse(readFileSync(join(ROOT, 'packages/shared/game-data/pals.json'), 'utf8'));
+const speciesMap = new Map();
+for (const pal of palsData) {
+  if (pal.variant === 'normal' || !speciesMap.has(pal.id.toLowerCase())) {
+    speciesMap.set(pal.id.toLowerCase(), pal.id);
+  }
+  const name = (pal.name ?? '').toLowerCase();
+  if (name && (pal.variant === 'normal' || !speciesMap.has(name))) {
+    speciesMap.set(name, pal.id);
+  }
+}
+const luaSpecies = [...speciesMap.entries()]
+  .sort(([a], [b]) => (a < b ? -1 : 1))
+  .map(([key, id]) => `        [${luaStr(key)}] = ${luaStr(id)},`);
+
 const lua = `-- ${HEADER}
 return {
     envelope = ${manifest.envelope},
@@ -58,6 +76,9 @@ ${luaEvents.join('\n')}
     },
     actions = {
 ${luaActions.join('\n')}
+    },
+    species = {
+${luaSpecies.join('\n')}
     },
 }
 `;
