@@ -695,86 +695,6 @@ for _, call in ipairs(calls) do
 end
 check("a returning player gets a greeting and no kit", gave == 0, gave)
 
--- ── HourlyReward, driven for real ───────────────────────────────────────────
--- The reference mod for the clock events: pays the gap between hours played
--- and hours rewarded the moment player.hour says an hour completed, and
--- never pays the same hour twice.
-
-os.execute("mkdir -p '" .. MODS .. "/HourlyReward'")
-os.execute("cp '" .. SCRIPTS .. "/../../HourlyReward/mod.lua' '" .. MODS .. "/HourlyReward/mod.lua'")
-write(MODS .. "/Palladium/mods.list", "HourlyReward\n")
-
-local play_minutes = 125 -- two full hours and change
-framework.init({
-    event_types = { ["player.join"] = true, ["player.hour"] = true, ["player.chat"] = true },
-    call = function(action_type, userid, params, report)
-        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
-        if action_type == "player.playtime" then
-            return report(true, nil,
-                { { "minutes", play_minutes }, { "session", 5 }, { "online", true } })
-        end
-        report(true, nil, {})
-    end,
-})
-framework.load()
-
-local veteran = { kind = "player", id = "VET", name = "Vex" }
-calls = {}
-framework.enqueue("player.hour", veteran, { hours = 2, minutes = play_minutes })
-framework.drain()
-
-local paid_gold, thanked = 0, nil
-for _, call in ipairs(calls) do
-    if call.type == "player.give_item" and call.params.item == "Money" then
-        paid_gold = paid_gold + tonumber(call.params.count)
-    end
-    if call.type == "player.message" then thanked = call.params.text end
-end
-check("an hour completing pays every hour owed", paid_gold == 200, paid_gold)
-check("and says which hour it was", thanked ~= nil and thanked:find("Hour 2", 1, true) ~= nil, thanked)
-
-calls = {}
-framework.enqueue("player.hour", veteran, { hours = 2, minutes = play_minutes })
-framework.drain()
-local again = 0
-for _, call in ipairs(calls) do
-    if call.type == "player.give_item" then again = again + 1 end
-end
-check("a second look at the same hour pays nothing", again == 0, again)
-
--- ── settings.config: the operator's word over the author's defaults ─────────
-write(MODS .. "/HourlyReward/settings.config",
-    "; tune the reward without touching mod.lua\nitems.1.item = Money\nitems.1.count = 250\n")
-framework.reload_settings()
-play_minutes = 185 -- a third hour completed
-calls = {}
-framework.enqueue("player.hour", veteran, { hours = 3, minutes = play_minutes })
-framework.drain()
-local tuned = 0
-for _, call in ipairs(calls) do
-    if call.type == "player.give_item" and call.params.item == "Money" then
-        tuned = tuned + tonumber(call.params.count)
-    end
-end
-check("settings.config re-tunes the reward without a restart", tuned == 250, tuned)
-
-write(MODS .. "/HourlyReward/settings.config", "announce = true\n")
-framework.reload_settings()
-play_minutes = 245
-calls = {}
-framework.enqueue("player.hour", veteran, { hours = 4, minutes = play_minutes })
-framework.drain()
-local shouted, back_to_default = false, 0
-for _, call in ipairs(calls) do
-    if call.type == "server.announce" then shouted = true end
-    if call.type == "player.give_item" and call.params.item == "Money" then
-        back_to_default = back_to_default + tonumber(call.params.count)
-    end
-end
-check("an edited overlay applies and untouched keys return to defaults",
-    shouted and back_to_default == 100,
-    tostring(shouted) .. "/" .. tostring(back_to_default))
-
 -- ── TimedRewards, driven for real ───────────────────────────────────────────
 -- Hour marks from settings: every unpaid mark at or below the hours played
 -- pays once, and the ladder is the operator's to redefine.
@@ -783,7 +703,7 @@ os.execute("mkdir -p '" .. MODS .. "/TimedRewards'")
 os.execute("cp '" .. SCRIPTS .. "/../../TimedRewards/mod.lua' '" .. MODS .. "/TimedRewards/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "TimedRewards\n")
 
-play_minutes = 330 -- five and a half hours: the 1 and 5 marks, not the 10
+local play_minutes = 330 -- five and a half hours: the 1 and 5 marks, not the 10
 framework.init({
     event_types = { ["player.join"] = true, ["player.hour"] = true, ["player.chat"] = true },
     call = function(action_type, userid, params, report)
@@ -832,6 +752,19 @@ for _, call in ipairs(calls) do
 end
 check("a redefined ladder pays its new marks retroactively",
     bread ~= nil and tonumber(bread.params.count) == 3, bread and bread.params.count)
+
+write(MODS .. "/TimedRewards/settings.config", "; nothing overridden\n")
+framework.reload_settings()
+play_minutes = 610
+calls = {}
+framework.enqueue("player.hour", climber, { hours = 10, minutes = play_minutes })
+framework.drain()
+local tenth
+for _, call in ipairs(calls) do
+    if call.type == "player.give_item" and call.params.item == "Money" then tenth = call end
+end
+check("an emptied overlay hands the author's ladder back",
+    tenth ~= nil and tonumber(tenth.params.count) == 1500, tenth and tenth.params.count)
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

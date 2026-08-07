@@ -105,10 +105,10 @@ restart. Plain `key = value` lines; dotted keys reach into tables and numeric
 segments make list positions:
 
 ```ini
-; mods/HourlyReward/settings.config
-announce = true
-items.1.item = Money
-items.1.count = 250
+; mods/TimedRewards/settings.config
+rewards.1.hours = 1
+rewards.1.item = Money
+rewards.1.count = 250
 ```
 
 Any top-level key the file mentions replaces that default wholesale — a
