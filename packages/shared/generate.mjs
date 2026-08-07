@@ -45,6 +45,8 @@ const luaActions = caps
     const head = [];
     if (c.target) head.push(`            target = ${luaStr(c.target)},\n`);
     if (c.targetOptional) head.push('            target_optional = true,\n');
+    // The agent audits writes, so which calls change the game travels too.
+    if (c.scope) head.push(`            scope = ${luaStr(c.scope)},\n`);
     return `        [${luaStr(c.type)}] = {\n${head.join('')}            params = {\n${params.join('\n')}\n            },\n        },`;
   });
 

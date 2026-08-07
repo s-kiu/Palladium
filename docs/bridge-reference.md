@@ -25,6 +25,7 @@ actually live on the running server.
 | `player.respawn` | event | agent | experimental | 2.0.0 | _none_ | A player's character re-initialised right after a death — a respawn, not a join. Heuristic: only emitted when the same player died since their last event. |
 | `player.death` | event | agent | stable | 1.1.0 | `killer` · subject · optional | A player died. Pals dying are not reported. killer is a full subject when another player did it; attribution is best-effort. |
 | `player.leave` | event | agent | stable | 1.1.0 | `source` · string | A player disconnected. No hookable disconnect exists on this loader, so the agent notices by watching who is still in the world and reports it within a few seconds rather than instantly. |
+| `player.hour` | event | agent | experimental | 4.5.0 | `hours` · int<br>`minutes` · int | A player's counted playtime just completed another full hour. Fired by the same minute-ticker that credits playtime, so it lands within a minute of the boundary and only while they are online. Carries the new hour total and the exact minute count. |
 | `player.message` | action | agent | stable | 1.1.0 | `text` · string · required | Send a private system-chat message to one online player. |
 | `player.give_item` | action | agent | stable | 1.1.0 | `item` · item_id · required<br>`count` · int · default 1 · 1…9999 | Put items into an online player's inventory. Item ids are the game's internal names (bread is Pan); an unknown id is accepted by the game and silently does nothing. |
 | `player.teleport` | action | agent | experimental | 2.0.0 | `x` · number · required<br>`y` · number · required<br>`z` · number · required | Teleport an online player to world coordinates. Uses the engine's own placement call, then reads the position back — an ok carries where the player actually landed, and a teleport that did not move anyone fails rather than reporting success. |
@@ -39,12 +40,19 @@ actually live on the running server.
 | `player.set_stats` | action | agent | experimental | 2.5.0 | `hp` · number · 0…100000000<br>`maxHp` · number · 1…100000000<br>`hunger` · number · 0…1000<br>`shield` · number · 0…100000<br>`maxShield` · number · 1…100000<br>`level` · int · 1…100<br>`rank` · int · 1…5<br>`talentHp` · int · 0…100<br>`talentMelee` · int · 0…100<br>`talentShot` · int · 0…100<br>`talentDefense` · int · 0…100<br>`rankAttack` · int · 0…10<br>`rankDefence` · int · 0…10<br>`rankCraftSpeed` · int · 0…10 | Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused. |
 | `player.status_points` | query | agent | experimental | 3.1.0 | _none_ | An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. |
 | `player.status_point` | action | agent | experimental | 3.1.0 | `stat` · string · required<br>`points` · int · default 1 · 1…1000 | Spend status points on one of a player's stats, the way a level-up does. This is how a player's max HP goes up: it is computed from the points, not stored, so nothing else can raise it. Additive. stat is the game's own FName for the stat and is passed through verbatim — this build spends through the player controller and exposes no way to read the allocation back, so the result reports which readable stat moved instead. player.status_points lists the names to try. |
+| `player.playtime` | query | agent | experimental | 4.4.0 | _none_ | Minutes a player has actually spent on this server, credited one minute at a time while they are online — a crash costs at most the minute in progress. Also reports the current session's minutes and whether they are online right now. Answers for offline players too: the total is history, not presence. |
 
 ## npc.*
 
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
 | `npc.spawn` | event | agent | experimental | 2.0.0 | `species` · string<br>`level` · int<br>`rare` · bool | A pal/NPC finished parameter initialisation — fires on world spawns near players. Player characters are filtered out. Throttled to 20 events per second. |
+
+## clock.*
+
+| Type | Kind | Runtime | Stability | Since | Fields | Summary |
+|---|---|---|---|---|---|---|
+| `clock.minute` | event | agent | experimental | 4.5.0 | `date` · string<br>`weekday` · string<br>`hour` · int<br>`minute` · int | The wall-clock minute turned, in server-local time. The event mods schedule real-world things against — a weekday, hour and minute comparison replaces owning a timer. Published within two seconds of the minute boundary. |
 
 ## pal.*
 
@@ -69,8 +77,8 @@ actually live on the running server.
 | Type | Kind | Runtime | Stability | Since | Fields | Summary |
 |---|---|---|---|---|---|---|
 | `permission.register` | action | agent | stable | 2.1.0 | `mod` · string · required<br>`node` · string · required<br>`description` · string<br>`default` · string | A mod registers one permission node it owns, namespaced by its name, with a description and a default effect. Idempotent, and an operator's change to the default in permissions.config outranks it. |
-| `permission.check` | query | agent | stable | 2.1.0 | `node` · string · required | May this player do this? Resolves user overrides, then groups by weight, then the default group, then the node's default; deny beats allow. Any parameter beyond `node` is taken as the call being asked about and matched against the winning entry's constraint — 'may spawn, but only Lamball' is one node plus a constraint. |
-| `permission.grant` | action | agent | stable | 2.1.0 | `node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json | Set a per-player override: allow or deny a node for this player, optionally constrained ({"species":{"in":[…]}}, {"x":{"min":0,"max":1000}}). Player overrides beat every group. |
+| `permission.check` | query | agent | stable | 2.1.0 | `node` · string · required<br>`target` · string | May this player do this? Resolves user overrides, then groups by weight, then the default group, then the node's default; deny beats allow. Any parameter beyond `node` is taken as the call being asked about and matched against the winning entry's constraint — 'may spawn, but only Lamball' is one node plus a constraint. |
+| `permission.grant` | action | agent | stable | 2.1.0 | `node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json<br>`until` · string<br>`where` · string | Set a per-player override: allow or deny a node for this player, optionally constrained ({"species":{"in":[…]}}, {"x":{"min":0,"max":1000}}). Player overrides beat every group. |
 | `permission.revoke` | action | agent | stable | 2.1.0 | `node` · string · required | Remove a per-player override, so groups decide again. |
 | `permission.nodes` | query | agent | stable | 2.1.0 | _none_ | Every registered node, grouped by the mod that registered it, with defaults. |
 | `permission.player` | query | agent | stable | 2.1.0 | _none_ | A player's permission state: their groups, their overrides, and their role tag. |
@@ -82,7 +90,7 @@ actually live on the running server.
 | `group.create` | action | agent | stable | 2.1.0 | `name` · item_id · required<br>`tag` · string<br>`weight` · int · default 0 · 0…1000 | Create a permission group. tag is the [ROLE] shown in chat when enabled; weight orders groups when a player has several (highest wins). |
 | `group.update` | action | agent | stable | 2.1.0 | `name` · item_id · required<br>`tag` · string<br>`weight` · int · default 0 · 0…1000 | Change a group's tag or weight. |
 | `group.delete` | action | agent | stable | 2.1.0 | `name` · item_id · required | Delete a group (the default group cannot be deleted). |
-| `group.set_entry` | action | agent | stable | 2.1.0 | `group` · item_id · required<br>`node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json | Set one node entry on a group: allow or deny, optionally constrained. Wildcards work ('chatshop.*', '*'). |
+| `group.set_entry` | action | agent | stable | 2.1.0 | `group` · item_id · required<br>`node` · string · required<br>`effect` · string · default "allow"<br>`constraints` · json<br>`until` · string<br>`where` · string | Set one node entry on a group: allow or deny, optionally constrained. Wildcards work ('chatshop.*', '*'). |
 | `group.remove_entry` | action | agent | stable | 2.1.0 | `group` · item_id · required<br>`node` · string · required | Remove a node entry from a group. |
 | `group.assign` | action | agent | stable | 2.1.0 | `group` · item_id · required | Put a player into a group. |
 | `group.unassign` | action | agent | stable | 2.1.0 | `group` · item_id · required | Take a player out of a group. |

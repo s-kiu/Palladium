@@ -232,22 +232,23 @@ rather than a mod uses the same capabilities over plain HTTP, as in
 
 ## Spawned pals do not fight
 
-A pal spawned through `pal.spawn` gets the base NPC AI controller — the only
-one `SpawnNPCForServer` accepts on this build — and that controller has no
-combat behaviour. Such a pal neither attacks nor **retaliates**: hit it and it
-stands there.
+A pal spawned through `pal.spawn` arrives through the NPC manager, which only
+accepts the base NPC AI controller — a controller with no combat behaviour.
 
-`pal.aggro` is the way round it. Retaliation in this game is the hate system:
-damage normally adds hate toward the attacker and the AI goes for whoever it
-hates most. A spawned pal never receives that first entry, so `pal.aggro`
-seeds it — through whichever hate function the build declares on the pal, its
-controller or its parameter component, falling back to the engine's own damage
-path with the player as the instigator. The result names the call that worked;
-a failure lists the hate-related functions that do exist, which is the same
-thing `bridge.probe` reports for any object.
+`hostile: true` goes as far as the engine allows from there: once the pal
+exists, `PalUtility.SpawnControllerAndPossess` swaps in the wild monster
+controller (`BP_MonsterAIController_Wild`), `PlayDefaultAction` starts its
+action loop, and the target player is registered as an enemy
+(`AddTargetPlayer_ForEnemy`, battle start, battle mode). The result's
+`controller` field reports whether the possession took. The pal then reads as
+an enemy — red nameplate, aggro marker, it turns to track its target — but it
+still initiates no attack: combat permission lives somewhere the bridge cannot
+yet reach (the wild-group bookkeeping the game's own spawners do).
 
-`hostile: true` on a spawn is that same seeding applied to the target player as
-soon as the new pal exists, so one call both creates the mob and points it.
+`pal.aggro` applies the same enemy-registration to an already-loaded pal, with
+the hate functions and the engine's damage path as fallbacks. The result names
+the call that worked; a failure lists what this build declares instead, which
+is the same thing `bridge.probe` reports for any object.
 
 `pal.force_spawn` takes the other route entirely: it asks one of the world's
 own spawners near the player to fire, and a pal that arrives that way has the

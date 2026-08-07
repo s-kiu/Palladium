@@ -11,12 +11,14 @@ return {
     actions = {
         ["player.message"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "text", kind = "string", required = true, max_len = 512 },
             },
         },
         ["player.give_item"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "item", kind = "item_id", required = true },
             { name = "count", kind = "int", min = 1, max = 9999, default = 1 },
@@ -24,6 +26,7 @@ return {
         },
         ["player.teleport"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "x", kind = "number", required = true },
             { name = "y", kind = "number", required = true },
@@ -32,18 +35,21 @@ return {
         },
         ["player.heal"] = {
             target = "player",
+            scope = "write",
             params = {
 
             },
         },
         ["player.count_item"] = {
             target = "player",
+            scope = "read",
             params = {
             { name = "item", kind = "item_id", required = true },
             },
         },
         ["player.has_item"] = {
             target = "player",
+            scope = "read",
             params = {
             { name = "item", kind = "item_id", required = true },
             { name = "count", kind = "int", min = 1, max = 999999, default = 1 },
@@ -52,6 +58,7 @@ return {
         ["pal.spawn"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "species", kind = "item_id", required = true },
             { name = "level", kind = "int", min = 1, max = 100, default = 10 },
@@ -66,6 +73,7 @@ return {
         ["player.set_tag"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "key", kind = "string", required = true, max_len = 64 },
             { name = "value", kind = "string", required = true, max_len = 512 },
@@ -74,6 +82,7 @@ return {
         ["player.get_tag"] = {
             target = "player",
             target_optional = true,
+            scope = "read",
             params = {
             { name = "key", kind = "string", required = true, max_len = 64 },
             },
@@ -81,17 +90,20 @@ return {
         ["player.delete_tag"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "key", kind = "string", required = true, max_len = 64 },
             },
         },
         ["server.announce"] = {
             target = "server",
+            scope = "write",
             params = {
             { name = "message", kind = "string", required = true, max_len = 512 },
             },
         },
         ["permission.register"] = {
+            scope = "write",
             params = {
             { name = "mod", kind = "string", required = true, max_len = 32 },
             { name = "node", kind = "string", required = true, max_len = 128 },
@@ -102,27 +114,34 @@ return {
         ["permission.check"] = {
             target = "player",
             target_optional = true,
+            scope = "read",
             params = {
             { name = "node", kind = "string", required = true, max_len = 128 },
+            { name = "target", kind = "string", max_len = 64 },
             },
         },
         ["permission.grant"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "node", kind = "string", required = true, max_len = 128 },
             { name = "effect", kind = "string", max_len = 8, default = "allow" },
             { name = "constraints", kind = "json" },
+            { name = "until", kind = "string", max_len = 20 },
+            { name = "where", kind = "string", max_len = 200 },
             },
         },
         ["permission.revoke"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "node", kind = "string", required = true, max_len = 128 },
             },
         },
         ["permission.nodes"] = {
+            scope = "read",
             params = {
 
             },
@@ -130,11 +149,13 @@ return {
         ["permission.player"] = {
             target = "player",
             target_optional = true,
+            scope = "read",
             params = {
 
             },
         },
         ["group.create"] = {
+            scope = "write",
             params = {
             { name = "name", kind = "item_id", required = true },
             { name = "tag", kind = "string", max_len = 16 },
@@ -142,6 +163,7 @@ return {
             },
         },
         ["group.update"] = {
+            scope = "write",
             params = {
             { name = "name", kind = "item_id", required = true },
             { name = "tag", kind = "string", max_len = 16 },
@@ -149,19 +171,24 @@ return {
             },
         },
         ["group.delete"] = {
+            scope = "write",
             params = {
             { name = "name", kind = "item_id", required = true },
             },
         },
         ["group.set_entry"] = {
+            scope = "write",
             params = {
             { name = "group", kind = "item_id", required = true },
             { name = "node", kind = "string", required = true, max_len = 128 },
             { name = "effect", kind = "string", max_len = 8, default = "allow" },
             { name = "constraints", kind = "json" },
+            { name = "until", kind = "string", max_len = 20 },
+            { name = "where", kind = "string", max_len = 200 },
             },
         },
         ["group.remove_entry"] = {
+            scope = "write",
             params = {
             { name = "group", kind = "item_id", required = true },
             { name = "node", kind = "string", required = true, max_len = 128 },
@@ -170,6 +197,7 @@ return {
         ["group.assign"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "group", kind = "item_id", required = true },
             },
@@ -177,22 +205,26 @@ return {
         ["group.unassign"] = {
             target = "player",
             target_optional = true,
+            scope = "write",
             params = {
             { name = "group", kind = "item_id", required = true },
             },
         },
         ["group.list"] = {
+            scope = "read",
             params = {
 
             },
         },
         ["player.position"] = {
             target = "player",
+            scope = "read",
             params = {
 
             },
         },
         ["location.save"] = {
+            scope = "write",
             params = {
             { name = "name", kind = "string", required = true, max_len = 64 },
             { name = "x", kind = "number", required = true },
@@ -201,28 +233,33 @@ return {
             },
         },
         ["location.list"] = {
+            scope = "read",
             params = {
 
             },
         },
         ["location.delete"] = {
+            scope = "write",
             params = {
             { name = "name", kind = "string", required = true, max_len = 64 },
             },
         },
         ["pal.list"] = {
+            scope = "read",
             params = {
 
             },
         },
         ["player.stats"] = {
             target = "player",
+            scope = "read",
             params = {
 
             },
         },
         ["player.set_stats"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "hp", kind = "number", min = 0, max = 100000000 },
             { name = "maxHp", kind = "number", min = 1, max = 100000000 },
@@ -242,23 +279,35 @@ return {
         },
         ["player.status_points"] = {
             target = "player",
+            scope = "read",
             params = {
 
             },
         },
         ["player.status_point"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "stat", kind = "string", required = true, max_len = 32 },
             { name = "points", kind = "int", min = 1, max = 1000, default = 1 },
             },
         },
+        ["player.playtime"] = {
+            target = "player",
+            target_optional = true,
+            scope = "read",
+            params = {
+
+            },
+        },
         ["pal.stats"] = {
+            scope = "read",
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             },
         },
         ["pal.set_stats"] = {
+            scope = "write",
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             { name = "hp", kind = "number", min = 0, max = 100000000 },
@@ -279,18 +328,21 @@ return {
         },
         ["pal.aggro"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             { name = "amount", kind = "int", min = 1, max = 100000, default = 1000 },
             },
         },
         ["pal.inspect"] = {
+            scope = "read",
             params = {
             { name = "pal", kind = "string", required = true, max_len = 64 },
             },
         },
         ["pal.force_spawn"] = {
             target = "player",
+            scope = "write",
             params = {
             { name = "kind", kind = "string", max_len = 16, default = "nearest" },
             { name = "radius", kind = "number", min = 0, max = 1000000, default = 50000 },
@@ -299,6 +351,7 @@ return {
         ["bridge.probe"] = {
             target = "player",
             target_optional = true,
+            scope = "read",
             params = {
             { name = "on", kind = "string", max_len = 64, default = "player" },
             { name = "pal", kind = "string", max_len = 64 },
@@ -306,28 +359,33 @@ return {
             },
         },
         ["data.collections"] = {
+            scope = "read",
             params = {
 
             },
         },
         ["data.list"] = {
+            scope = "read",
             params = {
             { name = "collection", kind = "string", required = true, max_len = 96 },
             },
         },
         ["data.get"] = {
+            scope = "read",
             params = {
             { name = "collection", kind = "string", required = true, max_len = 96 },
             { name = "record", kind = "string", required = true, max_len = 128 },
             },
         },
         ["data.set"] = {
+            scope = "write",
             params = {
             { name = "collection", kind = "string", required = true, max_len = 96 },
             { name = "record", kind = "string", required = true, max_len = 128 },
             },
         },
         ["data.delete"] = {
+            scope = "write",
             params = {
             { name = "collection", kind = "string", required = true, max_len = 96 },
             { name = "record", kind = "string", required = true, max_len = 128 },

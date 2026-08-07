@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.1.0"
+local VERSION = "4.5.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -98,6 +98,14 @@ local locations = Collections.declare("bridge", "locations", {
 local species_seen = Collections.declare("bridge", "species", {
     description = "pal species this world has actually spawned, with the levels they came at",
     fields = { min_level = "int", max_level = "int", count = "int", rare = "bool", last_at = "int" },
+})
+
+-- Playtime is counted, not derived: once a minute, every present player's
+-- record gains a minute. A crash costs at most the minute in progress, and
+-- no session arithmetic can drift.
+local playtime = Collections.declare("bridge", "playtime", {
+    description = "minutes each player has actually spent on this server",
+    fields = { name = "string", minutes = "int", last_seen = "int" },
 })
 
 -- → firstEver, firstSeen, joins
@@ -336,7 +344,7 @@ local function call_shapes(shapes)
     for _, shape in ipairs(shapes) do
         if declares(shape[1], shape[2]) then
             local ok, err = pcall(shape[3])
-            if ok then return true, shape[2] end
+            if ok then return true, shape[2], tried end
             tried[#tried + 1] = shape[2] .. " -> " .. tostring(err)
         end
     end
@@ -455,6 +463,18 @@ local LEAVE_SCAN_MS = 2000
 local LEAVE_MISSES = 2
 local present = {}  -- userid → name, as of the last scan
 local missing = {}  -- userid → consecutive scans not seen
+local session_start = {}  -- userid → epoch of the current session's first sighting
+
+-- @Name in chat resolves against the players the leave scan already tracks:
+-- engine-free at command time, at most one scan interval stale.
+local function player_by_name(wanted)
+    wanted = tostring(wanted or ""):lower()
+    if wanted == "" then return nil end
+    for userid, name in pairs(present) do
+        if tostring(name):lower() == wanted then return userid end
+    end
+    return nil
+end
 
 local function scan_for_leaves()
     local ok, states = pcall(FindAllOf, "PalPlayerState")
@@ -471,6 +491,7 @@ local function scan_for_leaves()
     for userid, name in pairs(seen) do
         present[userid] = name
         missing[userid] = nil
+        if session_start[userid] == nil then session_start[userid] = os.time() end
     end
 
     for userid, name in pairs(present) do
@@ -480,6 +501,7 @@ local function scan_for_leaves()
             if misses >= LEAVE_MISSES then
                 present[userid] = nil
                 missing[userid] = nil
+                session_start[userid] = nil
                 -- A rejoin has to read as a join, not get deduplicated away as
                 -- engine noise from the session that just ended.
                 online[userid] = nil
@@ -492,6 +514,46 @@ local function scan_for_leaves()
             end
         end
     end
+end
+
+-- Engine-free: `present` is plain data, so this can run off the game thread.
+local function credit_playtime()
+    local now = os.time()
+    for userid, name in pairs(present) do
+        local record = playtime:get(userid)
+        local before = record and tonumber(record.minutes) or 0
+        local minutes = before + 1
+        playtime:set(userid, { name = name, minutes = minutes, last_seen = now })
+        -- A completed hour of play is an event: a mod rewards playtime by
+        -- subscribing, without owning a counter — or a loop — of its own.
+        if math.floor(minutes / 60) > math.floor(before / 60) then
+            publish("player.hour",
+                '{"kind":"player","id":' .. json_string(userid, 64)
+                    .. ',"name":' .. json_string(name, 64) .. "}",
+                { { "hours", math.floor(minutes / 60) }, { "minutes", minutes } },
+                { kind = "player", id = userid, name = name })
+        end
+    end
+end
+
+-- Real time is worth an event too: mods cannot own a loop, so the agent
+-- tells them when the wall-clock minute turns (server-local time). "Every
+-- Friday at 18:00" is then a mod comparing fields, not running a scheduler.
+local WEEKDAYS = { "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday" }
+local clock_last
+
+local function publish_clock()
+    local now = os.date("*t")
+    local stamp = string.format("%04d-%02d-%02dT%02d:%02d",
+        now.year, now.month, now.day, now.hour, now.min)
+    if stamp == clock_last then return end
+    clock_last = stamp
+    publish("clock.minute", '{"kind":"server"}', {
+        { "date", string.format("%04d-%02d-%02d", now.year, now.month, now.day) },
+        { "weekday", WEEKDAYS[now.wday] },
+        { "hour", now.hour },
+        { "minute", now.min },
+    }, { kind = "server" })
 end
 
 -- ── hook handlers ───────────────────────────────────────────────────────────
@@ -1295,12 +1357,53 @@ local function damage_shape(character, target_controller, target_pawn)
     end }
 end
 
+-- The base NPC controller on this build declares no hate function at all, but
+-- it does declare enemy targeting: AddTargetPlayer_ForEnemy puts a player on
+-- the controller's target list and ForceBattleStartToTarget opens the fight.
+-- The pair is one shape — targeting alone leaves the pal standing — and the
+-- battle start may fail on its own without voiding the shape: the target
+-- entry is worth keeping whichever signature the battle start wants.
+local function enemy_target_shape(character, target_pawn)
+    for _, holder in ipairs(hate_holders(character)) do
+        if declares(holder, "AddTargetPlayer_ForEnemy") then
+            return { holder, "AddTargetPlayer_ForEnemy", function()
+                holder:AddTargetPlayer_ForEnemy(target_pawn)
+                local outcomes = {}
+                for _, starter in ipairs({ "ForceBattleStartToTarget", "ForceBattleStartForOutside" }) do
+                    if declares(holder, starter) then
+                        local took = pcall(function() holder[starter](holder, target_pawn) end)
+                        if not took then took = pcall(function() holder[starter](holder) end) end
+                        outcomes[#outcomes + 1] = starter .. (took and " took" or " failed")
+                    end
+                end
+                -- Battle mode lives on the character, not the controller; the
+                -- red enemy marker without a fight is the target list set
+                -- while this flag stayed down.
+                if declares(character, "ChangeBattleModeFlag") then
+                    local took = pcall(function() character:ChangeBattleModeFlag(FName("Palladium"), true) end)
+                    if not took then took = pcall(function() character:ChangeBattleModeFlag(true) end) end
+                    outcomes[#outcomes + 1] = "ChangeBattleModeFlag" .. (took and " took" or " failed")
+                end
+                info("enemy target set; " .. table.concat(outcomes, ", "))
+            end }
+        end
+    end
+    return nil
+end
+
 local function seed_hate(character, target_controller, target_pawn, amount)
     local shapes = hate_shapes(character, target_pawn, amount)
+    local enemy = enemy_target_shape(character, target_pawn)
+    if enemy then table.insert(shapes, 1, enemy) end
     local damage = damage_shape(character, target_controller, target_pawn)
     if damage then shapes[#shapes + 1] = damage end
     local ok, via, tried = call_shapes(shapes)
-    if ok then return true, via end
+    if ok then
+        if tried and #tried > 0 then
+            info("seed_hate: " .. via .. " took after: " .. table.concat(tried, "; "))
+        end
+        return true, via
+    end
     local near = {}
     for _, holder in ipairs(hate_holders(character)) do
         for _, name in ipairs(candidates(holder, "hate")) do near[#near + 1] = name end
@@ -1457,6 +1560,10 @@ local SPAWN_PLACED_TOLERANCE = 500
 local SPAWN_SETTLE_MS = 300
 local HOSTILE_HATE = 10000
 
+-- Defined with the other pal helpers below; pal.spawn's settle needs them,
+-- and forward declaration beats moving the whole block above the handler.
+local world_pals, find_pal
+
 IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
     local controller, pawn = pawn_of(state)
@@ -1488,13 +1595,13 @@ IMPL["pal.spawn"] = function(state, p, finish)
     -- spawner's own message is the only thing that separates "rejected the
     -- controller" from "rejected the species".
     local last_error
-    local function attempt(field, label)
+    local function attempt(class_of, label)
         local manager = util:GetNPCManager(controller)
         if not valid(manager) then
             last_error = label .. ": NPC manager unavailable"
             return nil
         end
-        local class = member(manager, field)
+        local class = class_of(manager)
         if not valid(class) then
             last_error = label .. ": class not available on this build"
             return nil
@@ -1521,16 +1628,50 @@ IMPL["pal.spawn"] = function(state, p, finish)
         return spawned
     end
 
+    local function manager_field(field)
+        return function(manager) return member(manager, field) end
+    end
+
+    -- The controller a wild pal actually runs. The manager's own class fields
+    -- are the human-NPC set, whose behaviour tree has no attack actions: on
+    -- the base controller, enemy targeting, battle start and battle mode all
+    -- take and the pal still stands there (verified live). Only reachable by
+    -- path — wild pals in the world keep the class loaded.
+    local WILD_CONTROLLER = "/Game/Pal/Blueprint/Controller/Monster/" ..
+        "BP_MonsterAIController_Wild.BP_MonsterAIController_Wild_C"
+    -- StaticFindObject only answers for the exact path and only while loaded;
+    -- a live wild controller's own class is the fallback that cannot go stale.
+    local function wild_controller()
+        local ok, class = pcall(StaticFindObject, WILD_CONTROLLER)
+        if ok and valid(class) then return class end
+        local found, instance = pcall(FindFirstOf, "BP_MonsterAIController_Wild_C")
+        if found and valid(instance) then
+            local got, live = pcall(function() return instance:GetClass() end)
+            if got and valid(live) then
+                info("wild controller class resolved from a live instance")
+                return live
+            end
+        end
+        info("wild controller class unresolved: StaticFindObject and live instance both failed")
+        return nil
+    end
+
     -- A combat controller if this build has one; the base class otherwise. The
     -- spawn must never be lost to the attempt, so the base is always tried.
     local controller_kind, handle
     if p.hostile then
-        for _, field in ipairs({ "MonsterAIControllerClass", "EnemyAIControllerClass" }) do
-            handle = attempt(field, field)
+        local combat = {
+            { wild_controller, "MonsterAIController_Wild" },
+            { manager_field("MonsterAIControllerClass"), "MonsterAIControllerClass" },
+            { manager_field("EnemyAIControllerClass"), "EnemyAIControllerClass" },
+        }
+        for _, entry in ipairs(combat) do
+            handle = attempt(entry[1], entry[2])
             if handle then
-                controller_kind = field
+                controller_kind = entry[2]
                 break
             end
+            info("hostile spawn attempt failed — " .. tostring(last_error))
         end
         if not handle then
             info("no combat AI controller class on this build — spawning with the base controller. " ..
@@ -1539,7 +1680,7 @@ IMPL["pal.spawn"] = function(state, p, finish)
     end
     if not handle then
         controller_kind = "NPCAIControllerBaseClass"
-        handle = attempt("NPCAIControllerBaseClass", "NPCAIControllerBaseClass")
+        handle = attempt(manager_field("NPCAIControllerBaseClass"), "NPCAIControllerBaseClass")
     end
     if not handle then
         return false, "spawn_failed (" .. tostring(last_error) .. ")"
@@ -1584,21 +1725,104 @@ IMPL["pal.spawn"] = function(state, p, finish)
     -- that exists rather than to a handle that does not yet.
     local userid = state and player_userid(state) or ""
 
-    -- The base NPC controller has no combat behaviour, so hostility is the hate
-    -- seed against the target rather than a controller class this build does
-    -- not have.
-    local function report(actor, pal_id)
+    -- The handle's TryGetIndividualActor never answers on this build even
+    -- when the pal is long since standing in the world, so the actor comes
+    -- from the world scan — by id when the scan agrees on it, else the
+    -- nearest pal of the spawned species to the spawn point. Species
+    -- casing differs between the request and the save ("SheepBall" vs
+    -- "Sheepball"), hence the case-insensitive compare. Callers re-resolve
+    -- immediately before every engine call: a reference does not survive
+    -- intervening engine work.
+    local RESOLVE_RADIUS = 5000
+    local function resolve_actor(pal_id)
+        local actor = valid(handle) and handle:TryGetIndividualActor() or nil
+        if valid(actor) then return actor end
+        local wanted = tostring(p.species):lower()
+        local best, best_d
+        for _, pal in ipairs(world_pals()) do
+            if pal_id ~= "" and pal.id == pal_id then return pal.character end
+            if tostring(pal.species):lower() == wanted then
+                local at = position_of(pal.character)
+                local d = at and distance(at, location)
+                if d and (best_d == nil or d < best_d) then best, best_d = pal.character, d end
+            end
+        end
+        if best and best_d <= RESOLVE_RADIUS then return best end
+        return nil
+    end
+
+    -- The NPC manager silently refuses to spawn with the wild controller, but
+    -- PalUtility.SpawnControllerAndPossess can attach one to a pawn that
+    -- already exists. The signature is undocumented, so the plausible argument
+    -- orders are tried until one takes; the result reports which.
+    local function possess_wild(pal_id)
+        if controller_kind ~= "NPCAIControllerBaseClass" then return end
+        local wild = wild_controller()
+        local fresh = pal_utility()
+        if not wild or not fresh then
+            info("wild possession skipped: " .. (wild and "no PalUtility" or "wild class unresolved"))
+            return
+        end
+        local world = FindFirstOf("World")
+        -- Resolved last, after every lookup above: an actor reference does
+        -- not survive intervening engine work (see the header rules).
+        local actor = resolve_actor(pal_id)
+        if not valid(actor) then
+            info("wild possession skipped: actor went stale before the call")
+            return
+        end
+        local tries = {
+            { "world,class,pawn", function() fresh:SpawnControllerAndPossess(world, wild, actor) end },
+            { "class,pawn", function() fresh:SpawnControllerAndPossess(wild, actor) end },
+            { "world,pawn,class", function() fresh:SpawnControllerAndPossess(world, actor, wild) end },
+        }
+        for _, try in ipairs(tries) do
+            local took, err = pcall(try[2])
+            if took then
+                controller_kind = "MonsterAIController_Wild (possessed: " .. try[1] .. ")"
+                info("wild possession took: " .. try[1])
+                -- Possession alone leaves the brain idle: the wild controller
+                -- runs Palworld's Action system, and PlayDefaultAction is the
+                -- kick the game's own spawn path gives it.
+                local again = resolve_actor(pal_id)
+                local brain = valid(again) and member(again, "Controller") or nil
+                if valid(brain) and declares(brain, "PlayDefaultAction") then
+                    local kicked, kerr = pcall(function() brain:PlayDefaultAction() end)
+                    info("PlayDefaultAction " .. (kicked and "took" or ("failed: " .. tostring(kerr))))
+                else
+                    info("PlayDefaultAction not declared on the possessed controller")
+                end
+                return
+            end
+            info("wild possession " .. try[1] .. " failed: " .. tostring(err))
+        end
+    end
+
+    -- The base NPC controller has no combat behaviour, so hostility is the
+    -- wild controller if possession works, plus the hate seed against the
+    -- target either way.
+    local function report(pal_id)
         local aggro = "none"
+        local actor
         if p.hostile then
             local target_controller, target_pawn = pawn_of(find_player_state(userid))
+            actor = resolve_actor(pal_id) -- the lookup above invalidated any held reference
             if not valid(actor) then
                 aggro = "the spawned pal did not resolve"
             elseif target_pawn then
-                local seeded, via = seed_hate(actor, target_controller, target_pawn, HOSTILE_HATE)
-                aggro = seeded and via or ("failed: " .. tostring(via))
+                possess_wild(pal_id)
+                actor = resolve_actor(pal_id) -- possession swapped engine state again
+                if valid(actor) then
+                    local seeded, via = seed_hate(actor, target_controller, target_pawn, HOSTILE_HATE)
+                    aggro = seeded and via or ("failed: " .. tostring(via))
+                else
+                    aggro = "actor lost after possession"
+                end
             else
                 aggro = "no target player online"
             end
+        else
+            actor = resolve_actor(pal_id)
         end
         local at = position_of(actor) or location
         finish(true, nil, {
@@ -1614,12 +1838,29 @@ IMPL["pal.spawn"] = function(state, p, finish)
 
     local function settle(attempt_no)
         local parameter = valid(handle) and handle:TryGetIndividualParameter() or nil
-        local actor = valid(handle) and handle:TryGetIndividualActor() or nil
         local pal_id = valid(parameter) and pal_id_of(parameter) or ""
-        if (pal_id == "" or not valid(actor)) and attempt_no < 8
+        local actor = resolve_actor(pal_id)
+        -- The handle is blind on this build — neither its parameter nor its
+        -- actor ever answer — so once the world scan produced the actor, the
+        -- id is read off the actor itself rather than waited for.
+        if valid(actor) and pal_id == "" then
+            local own = pal_parameter(actor)
+            pal_id = own and pal_id_of(own) or ""
+        end
+        if (pal_id == "" or not valid(actor)) and attempt_no < 20
             and type(ExecuteWithDelay) == "function" then
             ExecuteWithDelay(250, function() guard("pal.spawn settle", settle, attempt_no + 1) end)
             return
+        end
+        if pal_id == "" or not valid(actor) then
+            local scan = world_pals()
+            local seen = 0
+            for _, pal in ipairs(scan) do
+                if tostring(pal.species):lower() == tostring(p.species):lower() then seen = seen + 1 end
+            end
+            info(string.format(
+                "settle gave up after %d tries: id=%s, world scan has %d pals, %d of species %s",
+                attempt_no, pal_id == "" and "none" or pal_id, #scan, seen, tostring(p.species)))
         end
 
         -- The manager places its work near the player who owns it, so explicit
@@ -1631,13 +1872,13 @@ IMPL["pal.spawn"] = function(state, p, finish)
             if type(ExecuteWithDelay) == "function" then
                 ExecuteWithDelay(SPAWN_SETTLE_MS, function()
                     guard("pal.spawn report", function()
-                        report(valid(handle) and handle:TryGetIndividualActor() or nil, pal_id)
+                        report(pal_id)
                     end)
                 end)
                 return
             end
         end
-        report(actor, pal_id)
+        report(pal_id)
     end
     guard("pal.spawn settle", settle, 1)
     return "deferred"
@@ -1647,6 +1888,21 @@ IMPL["player.stats"] = function(state)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
     return true, nil, { { "stats", { raw = read_stats(pawn) } } }
+end
+
+-- Answers for offline players too: the total is history, not presence, so
+-- the id from the registry is enough and no engine object is touched.
+IMPL["player.playtime"] = function(_state, _p, _finish, raw)
+    local userid = raw.userid or ""
+    if userid == "" then return false, "invalid_params: no player given", {} end
+    local record = playtime:get(userid)
+    local started = session_start[userid]
+    return true, nil, {
+        { "minutes", record and tonumber(record.minutes) or 0 },
+        { "session", started and math.floor((os.time() - started) / 60) or 0 },
+        { "online", present[userid] ~= nil },
+        { "name", (record and record.name) or present[userid] or "" },
+    }
 end
 
 IMPL["player.set_stats"] = function(state, p)
@@ -1729,7 +1985,7 @@ IMPL["player.status_point"] = function(state, p)
 end
 
 -- ── pals in the world ───────────────────────────────────────────────────────
-local function world_pals()
+function world_pals() -- forward-declared above pal.spawn
     local ok, characters = pcall(FindAllOf, "PalCharacter")
     if not ok or type(characters) ~= "table" then return {} end
     local out = {}
@@ -1792,7 +2048,7 @@ local function hate_system(character)
     return nil
 end
 
-local function find_pal(pal_id)
+function find_pal(pal_id) -- forward-declared above pal.spawn
     for _, pal in ipairs(world_pals()) do
         if pal.id ~= "" and pal.id == pal_id then return pal end
     end
@@ -2113,8 +2369,9 @@ IMPL["permission.nodes"] = function()
 end
 
 IMPL["permission.grant"] = function(_state, p, _finish, raw)
-    perms:grant(raw.userid or "", p.node, p.effect, p.where)
-    return true, nil, { { "node", p.node } }
+    local ok, err = perms:grant(raw.userid or "", p.node, p.effect, p.where, p["until"])
+    if not ok then return false, err, {} end
+    return true, nil, { { "node", p.node }, { "until", p["until"] or "" } }
 end
 
 IMPL["permission.revoke"] = function(_state, p, _finish, raw)
@@ -2153,7 +2410,7 @@ IMPL["group.delete"] = function(_state, p)
 end
 
 IMPL["group.set_entry"] = function(_state, p)
-    local ok, err = perms:group_set_entry(p.group, p.node, p.effect, p.where)
+    local ok, err = perms:group_set_entry(p.group, p.node, p.effect, p.where, p["until"])
     return ok == true, err, { { "group", p.group }, { "node", p.node } }
 end
 
@@ -2492,7 +2749,8 @@ end
 -- the game learns what they added.
 -- What a mod may hold a handler for: everything with a hook, plus the ones the
 -- agent produces without one.
-local PUBLISHED = { ["player.leave"] = true, ["bridge.ready"] = true, ["bridge.hook"] = true }
+local PUBLISHED = { ["player.leave"] = true, ["bridge.ready"] = true, ["bridge.hook"] = true,
+                    ["player.hour"] = true, ["clock.minute"] = true }
 for _, event in ipairs(CAPS.events or {}) do PUBLISHED[event.type] = true end
 
 framework.init({
@@ -2508,12 +2766,14 @@ framework.init({
     json_string = json_string,
     agent = MOD,
     permissions = perms,
+    player_by_name = player_by_name,
 })
 guard("mod loading", framework.load)
 guard("mod registry snapshot", framework.snapshot)
 
 if type(LoopAsync) == "function" then
     local LEAVE_SCAN_TICKS = math.max(1, math.floor(LEAVE_SCAN_MS / ACTION_POLL_MS))
+    local PLAYTIME_TICKS = math.max(1, math.floor(60000 / ACTION_POLL_MS))
     local tick = 0
     LoopAsync(ACTION_POLL_MS, function()
         guard("action poll", poll_actions)
@@ -2522,6 +2782,8 @@ if type(LoopAsync) == "function" then
         -- An operator editing permissions.config by hand is meant to work, so
         -- the config files are re-read on the same cadence as the leave scan.
         if tick % LEAVE_SCAN_TICKS == 0 then guard("config reload", Collections.reload_changed) end
+        if tick % LEAVE_SCAN_TICKS == 0 then guard("clock", publish_clock) end
+        if tick % PLAYTIME_TICKS == 0 then guard("playtime credit", credit_playtime) end
         if tick % LEAVE_SCAN_TICKS == 0 then
             -- Enumerating actors is engine work, so it goes where every other
             -- engine call in this file goes.

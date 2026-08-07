@@ -195,6 +195,48 @@ export const CAPABILITIES: Capability[] = [
     }
   },
   {
+    "type": "player.hour",
+    "kind": "event",
+    "runtime": "agent",
+    "subject": "player",
+    "since": "4.5.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "A player's counted playtime just completed another full hour. Fired by the same minute-ticker that credits playtime, so it lands within a minute of the boundary and only while they are online. Carries the new hour total and the exact minute count.",
+    "data": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  {
+    "type": "clock.minute",
+    "kind": "event",
+    "runtime": "agent",
+    "subject": "server",
+    "since": "4.5.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "The wall-clock minute turned, in server-local time. The event mods schedule real-world things against — a weekday, hour and minute comparison replaces owning a timer. Published within two seconds of the minute boundary.",
+    "data": {
+      "date": {
+        "type": "string"
+      },
+      "weekday": {
+        "type": "string"
+      },
+      "hour": {
+        "type": "int"
+      },
+      "minute": {
+        "type": "int"
+      }
+    }
+  },
+  {
     "type": "player.message",
     "kind": "action",
     "runtime": "agent",
@@ -591,6 +633,10 @@ export const CAPABILITIES: Capability[] = [
         "type": "string",
         "required": true,
         "maxLen": 128
+      },
+      "target": {
+        "type": "string",
+        "maxLen": 64
       }
     },
     "returns": {
@@ -627,6 +673,14 @@ export const CAPABILITIES: Capability[] = [
       },
       "constraints": {
         "type": "json"
+      },
+      "until": {
+        "type": "string",
+        "maxLen": 20
+      },
+      "where": {
+        "type": "string",
+        "maxLen": 200
       }
     },
     "returns": {
@@ -810,6 +864,14 @@ export const CAPABILITIES: Capability[] = [
       },
       "constraints": {
         "type": "json"
+      },
+      "until": {
+        "type": "string",
+        "maxLen": 20
+      },
+      "where": {
+        "type": "string",
+        "maxLen": 200
       }
     },
     "returns": {
@@ -1191,6 +1253,28 @@ export const CAPABILITIES: Capability[] = [
       "invalid_params",
       "not_supported"
     ]
+  },
+  {
+    "type": "player.playtime",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "player",
+    "target": "player",
+    "since": "4.4.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "Minutes a player has actually spent on this server, credited one minute at a time while they are online — a crash costs at most the minute in progress. Also reports the current session's minutes and whether they are online right now. Answers for offline players too: the total is history, not presence.",
+    "params": {},
+    "returns": {
+      "minutes": "int",
+      "session": "int",
+      "online": "bool",
+      "name": "string"
+    },
+    "errors": [
+      "invalid_params"
+    ],
+    "targetOptional": true
   },
   {
     "type": "pal.stats",
