@@ -77,7 +77,7 @@ call that loads the file is the call that reads the manifest.
 | `name` | Must match the folder name |
 | `permissions` | Nodes the mod owns, each with a description and a default. They must start with the mod's own lowercased name |
 | `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
-| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock) |
+| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `pal.capture` and `player.item_use` (experimental) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
 
 ### What `pal` offers

@@ -34,7 +34,7 @@ jobs:
       # One mod failing to publish must not stop the others.
       fail-fast: false
       matrix:
-        mod: [Palladium, GoldStreak, WelcomeKit, TimedRewards]
+        mod: [Palladium, GoldStreak, WelcomeKit, TimedRewards, Leaderboards]
     steps:
       - uses: actions/checkout@v4
 

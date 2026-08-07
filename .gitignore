@@ -25,6 +25,7 @@ dist/
 !/mods/GoldStreak/
 !/mods/WelcomeKit/
 !/mods/TimedRewards/
+!/mods/Leaderboards/
 # …but what a mod writes beside itself is runtime state, not source.
 /mods/*/*.config
 /mods/*/*.data

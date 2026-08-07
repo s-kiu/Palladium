@@ -263,7 +263,8 @@ targets fault this UE4SS build rather than failing cleanly — registering one,
 or even looking a UFunction path up with `StaticFindObject`, takes the server
 down. The agent refuses them outright. Consequences: `player.leave` is derived
 from the agent watching who is still in the world (a few seconds' delay rather
-than instant), and Pal-capture events are not available. Capabilities marked `experimental` in the reference use engine
+than instant). Pal-capture events, long impossible for exactly this reason,
+now ride a native judge-object hook as the experimental `pal.capture`. Capabilities marked `experimental` in the reference use engine
 calls that are unproven against a live player, and may fail with
 `not_supported` rather than doing nothing quietly; the fastcrash guard (three
 rapid crashes → unmodded boot) is the safety net around them.

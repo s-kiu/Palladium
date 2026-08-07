@@ -809,5 +809,64 @@ check("an existing settings.config is never overwritten by the example",
     framework.mods.Seeded.pal.settings.greeting == "operator",
     framework.mods.Seeded.pal.settings.greeting)
 
+-- ── Leaderboards, driven for real ───────────────────────────────────────────
+-- Standings refresh on the clock's cadence, never because somebody asked.
+
+os.execute("mkdir -p '" .. MODS .. "/Leaderboards'")
+os.execute("cp '" .. SCRIPTS .. "/../../Leaderboards/mod.lua' '" .. MODS .. "/Leaderboards/mod.lua'")
+write(MODS .. "/Palladium/mods.list", "Leaderboards\n")
+
+local levels = { HIGH = 42, LOW = 7 }
+framework.init({
+    event_types = { ["player.join"] = true, ["player.chat"] = true, ["clock.minute"] = true },
+    call = function(action_type, userid, params, report)
+        calls[#calls + 1] = { type = action_type, userid = userid, params = params }
+        if action_type == "player.stats" then
+            return report(true, nil, { { "level", levels[userid] or 0 }, { "hp", 1 }, { "maxHp", 1 } })
+        end
+        report(true, nil, {})
+    end,
+})
+framework.load()
+
+framework.enqueue("player.join", { kind = "player", id = "HIGH", name = "Hi" }, {})
+framework.enqueue("player.join", { kind = "player", id = "LOW", name = "Lo" }, {})
+framework.drain()
+
+levels.LOW = 90 -- they levelled hard; only a refresh may notice
+calls = {}
+framework.enqueue("player.chat", { kind = "player", id = "HIGH", name = "Hi" }, { message = "!lb" })
+framework.drain()
+local asked_engine, board
+for _, call in ipairs(calls) do
+    if call.type == "player.stats" then asked_engine = true end
+    if call.type == "player.message" and call.params.text:find("Level leaders", 1, true) then board = call end
+end
+check("!lb answers from the last refresh and asks the engine nothing",
+    asked_engine == nil and board ~= nil and board.params.text:find("1. Hi (Lv 42)", 1, true) ~= nil,
+    board and board.params.text)
+
+calls = {}
+framework.enqueue("clock.minute", { kind = "server" }, { minute = 10, hour = 12, weekday = "friday" })
+framework.drain()
+framework.enqueue("player.chat", { kind = "player", id = "LOW", name = "Lo" }, { message = "!lb" })
+framework.drain()
+local board2
+for _, call in ipairs(calls) do
+    if call.type == "player.message" and call.params.text:find("Level leaders", 1, true) then board2 = call end
+end
+check("a scheduled refresh reorders the board",
+    board2 ~= nil and board2.params.text:find("1. Lo (Lv 90)", 1, true) ~= nil,
+    board2 and board2.params.text)
+
+calls = {}
+framework.enqueue("clock.minute", { kind = "server" }, { minute = 7, hour = 12, weekday = "friday" })
+framework.drain()
+local off_cadence
+for _, call in ipairs(calls) do
+    if call.type == "player.stats" then off_cadence = true end
+end
+check("a minute off the cadence refreshes nothing", off_cadence == nil, off_cadence)
+
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

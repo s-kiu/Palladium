@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.10.0"
+local VERSION = "4.11.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -673,6 +673,66 @@ end
 -- Player characters are filtered by their empty CharacterID / IsPlayer flag,
 -- and the whole thing is throttled: on a busy server this is the loudest hook.
 local npc_bucket, npc_bucket_count = 0, 0
+
+-- A capture verdict from the native judge object — the hook the Blueprint
+-- route could never give. The character parameter is the pal that was
+-- judged; the judge actor's owner chain names the thrower. Payload shapes
+-- on this build are reported once if they surprise, then refined.
+local reported_capture_shape = false
+local function on_capture(context, first, second)
+    local judge = unwrap(context)
+    local character = unwrap(first)
+    local result = unwrap(second)
+    local species, level, pal_id = "", 0, ""
+    if valid(character) then
+        local parameter = pal_parameter(character)
+        local save = parameter and member(parameter, "SaveParameter")
+        species = (save and to_text(member(save, "CharacterID"))) or ""
+        level = (save and tonumber(member(save, "Level"))) or 0
+        pal_id = (parameter and pal_id_of(parameter)) or ""
+    end
+    local success = result ~= nil and member(result, "IsSuccess") == true
+    local state = state_of(member(judge, "Owner"))
+        or state_of(member(judge, "Instigator"))
+    if species == "" and not reported_capture_shape then
+        reported_capture_shape = true
+        info("capture hook fired but no species resolved — payload shape differs on this build")
+    end
+    publish("pal.capture",
+        state and player_subject(state) or pal_subject(species, nil, pal_id),
+        {
+            { "species", species },
+            { "level", level },
+            { "pal", pal_id },
+            { "success", success },
+        }, state and subject_of(state) or { kind = "pal", id = pal_id, name = species })
+end
+
+-- A player using an item on a character — feeding, medicine, and their
+-- kin. The slot is known here; which item sat in it is a container lookup
+-- this build has not needed yet, so the event carries what the call does.
+local function on_item_use(context, first, second)
+    local controller = unwrap(context)
+    local item_data = unwrap(first)
+    local target = unwrap(second)
+    local state = state_of(controller)
+    if not state then return end
+    local count = (item_data and tonumber(member(item_data, "Num"))) or 0
+    local slot = ""
+    local slot_id = item_data and member(item_data, "SlotId")
+    if slot_id ~= nil then
+        slot = tostring(tonumber(member(slot_id, "SlotIndex")) or "")
+    end
+    local target_text = ""
+    if target ~= nil then
+        target_text = to_text(member(target, "DebugName")) or ""
+    end
+    publish("player.item_use", player_subject(state), {
+        { "count", count },
+        { "slot", slot },
+        { "target", target_text },
+    }, subject_of(state))
+end
 
 local function on_param_init(context)
     local component = unwrap(context)
@@ -1969,7 +2029,15 @@ end
 IMPL["player.stats"] = function(state)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
-    return true, nil, { { "stats", { raw = read_stats(pawn) } } }
+    -- The blob is for readers with a JSON parser; the scalars are for mods,
+    -- which have none — a leaderboard needs `level` as a plain field.
+    local snapshot = stat_snapshot(pawn)
+    return true, nil, {
+        { "level", tonumber(snapshot.level) or 0 },
+        { "hp", tonumber(snapshot.hp) or 0 },
+        { "maxHp", tonumber(snapshot.maxHp) or 0 },
+        { "stats", { raw = read_stats(pawn) } },
+    }
 end
 
 -- Answers for offline players too: the total is history, not presence, so
@@ -2925,6 +2993,8 @@ local HOOK_IMPL = {
     ["/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter"] = on_character_init,
     ["/Script/Pal.PalCharacter:OnDeadCharacter"] = on_death,
     ["/Script/Pal.PalCharacterParameterComponent:OnInitialize_AfterSetIndividualParameter"] = on_param_init,
+    ["/Script/Pal.PalCaptureJudgeObject:OnCaptureSuccess"] = on_capture,
+    ["/Script/Pal.PalPlayerController:RequestUseItemToCharacter_ToServer"] = on_item_use,
 }
 
 local function announce_hook(event_type, target, ok)

@@ -7,6 +7,8 @@ return {
     { type = "player.respawn", hook = "/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter" },
     { type = "player.death", hook = "/Script/Pal.PalCharacter:OnDeadCharacter" },
     { type = "npc.spawn", hook = "/Script/Pal.PalCharacterParameterComponent:OnInitialize_AfterSetIndividualParameter" },
+    { type = "pal.capture", hook = "/Script/Pal.PalCaptureJudgeObject:OnCaptureSuccess" },
+    { type = "player.item_use", hook = "/Script/Pal.PalPlayerController:RequestUseItemToCharacter_ToServer" },
     },
     actions = {
         ["player.message"] = {
