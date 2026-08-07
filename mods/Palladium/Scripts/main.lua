@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.9.3"
+local VERSION = "4.9.4"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1433,7 +1433,14 @@ local IMPL = {}
 -- ability a modding framework can be missing.
 local function send_system_chat(state, text)
     local util = pal_utility()
-    local world = FindFirstOf("World")
+    -- A dedicated server holds several UWorld objects and their enumeration
+    -- order is not stable across boots: FindFirstOf can answer with a dead
+    -- one, into which a chat message sends "successfully" and is never seen.
+    -- The player's own state knows the world it lives in.
+    local world
+    local ok_world, own = pcall(function() return state:GetWorld() end)
+    if ok_world and valid(own) then world = own end
+    if not valid(world) then world = FindFirstOf("World") end
     if not util or not valid(world) then return false, "not_supported" end
     local uid = member(state, "PlayerUId")
     if uid == nil then return false, "player_offline" end
