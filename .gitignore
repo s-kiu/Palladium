@@ -24,9 +24,12 @@ dist/
 !/mods/Palladium/
 !/mods/GoldStreak/
 !/mods/WelcomeKit/
+!/mods/HourlyReward/
 # …but what a mod writes beside itself is runtime state, not source.
 /mods/*/*.config
 /mods/*/*.data
+# The commented tour of the permission system is documentation, not state.
+!/mods/Palladium/example.permissions.config
 !/paks/.gitkeep
 !/logicmods/.gitkeep
 !/backups/.gitkeep
