@@ -26,6 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: the release reads Info.json; the agent announces main.lua
+        run: |
+          info="$(jq -er '.Version' mods/Palladium/Info.json)"
+          code="$(grep -oP 'local VERSION = "\K[^"]+' mods/Palladium/Scripts/main.lua)"
+          if [ "$info" != "$code" ]; then
+            echo "Info.json says $info but main.lua says $code — bump them together" >&2
+            exit 1
+          fi
       - name: agent syntax and action tests
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
