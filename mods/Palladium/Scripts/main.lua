@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.11.0"
+local VERSION = "4.11.1"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -2030,10 +2030,13 @@ IMPL["player.stats"] = function(state)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
     -- The blob is for readers with a JSON parser; the scalars are for mods,
-    -- which have none — a leaderboard needs `level` as a plain field.
+    -- which have none — a leaderboard needs `level` as a plain field. Level
+    -- lives on the save parameter, not behind a getter, so the snapshot
+    -- cannot carry it; it is read where read_stats reads it.
     local snapshot = stat_snapshot(pawn)
+    local save = member(stat_sources(pawn)[3], "SaveParameter")
     return true, nil, {
-        { "level", tonumber(snapshot.level) or 0 },
+        { "level", (save and as_number(member(save, "Level"))) or 0 },
         { "hp", tonumber(snapshot.hp) or 0 },
         { "maxHp", tonumber(snapshot.maxHp) or 0 },
         { "stats", { raw = read_stats(pawn) } },
