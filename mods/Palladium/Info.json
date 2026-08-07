@@ -1,16 +1,24 @@
 {
   "ModName": "Palladium",
   "PackageName": "Palladium",
-  "Version": "4.1.0",
+  "Version": "4.9.3",
   "DebugMode": false,
   "Author": "pal-up",
-  "Dependencies": ["UE4SS"],
-  "Tags": ["UE4SS", "Server", "Integration"],
+  "Dependencies": [
+    "UE4SS"
+  ],
+  "Tags": [
+    "UE4SS",
+    "Server",
+    "Integration"
+  ],
   "InstallRule": [
     {
       "Type": "Lua",
       "IsServer": true,
-      "Targets": ["./Scripts"]
+      "Targets": [
+        "./Scripts"
+      ]
     }
   ]
 }
