@@ -1,9 +1,12 @@
 name: mod-release
 
 # Every mod that ships here is a normal mod: somebody running a Palworld server
-# without pal-up should be able to download one and drop it in. A push to main
-# that touches a mod publishes it, keyed on that mod's own version — bump the
-# version to cut a release, leave it alone and the run is a no-op.
+# without pal-up should be able to download one and drop it in. Each mod holds
+# exactly one release, updated in place: bump the version in the manifest and
+# a push replaces that mod's release — same tag, new zip, title carrying the
+# version — so the releases page lists one entry per mod, always current.
+# History lives in git; the releases page is a download counter, not an
+# archive.
 #
 # Three shapes, three places the version lives:
 #   Info.json  a UE4SS mod (Palladium itself)
@@ -55,16 +58,17 @@ jobs:
             *[!0-9.a-zA-Z-]*|'') echo "refusing unsafe version string: $version" >&2; exit 1 ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$slug-v$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$slug" >> "$GITHUB_OUTPUT"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
-      - name: skip if this version was already released
+      - name: skip if the release already carries this version
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${{ steps.mod.outputs.tag }}" >/dev/null 2>&1; then
-            echo "already released — bump the version in the manifest to cut a new one"
+          current="$(gh release view "${{ steps.mod.outputs.tag }}" --json name -q .name 2>/dev/null || true)"
+          if [ "$current" = "${{ matrix.mod }} ${{ steps.mod.outputs.version }}" ]; then
+            echo "release is already at this version — bump the manifest to replace it"
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -116,8 +120,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Replace, not append: the old release and its tag go, the new one
+          # takes the same tag on the released commit. Palladium wears the
+          # repository's Latest badge; the mods never claim it.
+          gh release delete "${{ steps.mod.outputs.tag }}" --cleanup-tag --yes 2>/dev/null || true
+          if [ "${{ matrix.mod }}" = "Palladium" ]; then latest=true; else latest=false; fi
           gh release create "${{ steps.mod.outputs.tag }}" \
+            --target "$GITHUB_SHA" \
             --title "${{ matrix.mod }} ${{ steps.mod.outputs.version }}" \
+            --latest=$latest \
             --notes-file release-notes.md \
             "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip" \
             "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip.sha256"
