@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.6.0"
+local VERSION = "4.7.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1572,7 +1572,7 @@ local HOSTILE_HATE = 10000
 
 -- Defined with the other pal helpers below; pal.spawn's settle needs them,
 -- and forward declaration beats moving the whole block above the handler.
-local world_pals, find_pal
+local world_pals, find_pal, make_sight_aggressive
 
 IMPL["pal.spawn"] = function(state, p, finish)
     local util = pal_utility()
@@ -1802,6 +1802,41 @@ IMPL["pal.spawn"] = function(state, p, finish)
                 else
                     info("PlayDefaultAction not declared on the possessed controller")
                 end
+                -- Combat permission is group membership, and the group call
+                -- takes the pal's *handle* — the property the parameter
+                -- component already holds (community modding kit signature;
+                -- the actor-typed guess is what used to fault the process).
+                -- The spawner scan stales references, so it runs first and
+                -- the handle is read immediately before the call.
+                local nearest_sp, nearest_d
+                local okf, spawners = pcall(FindAllOf, "BP_PalSpawner_Standard_C")
+                if okf and type(spawners) == "table" then
+                    local at3 = position_of(resolve_actor(pal_id))
+                    for _, sp in ipairs(spawners) do
+                        if valid(sp) then
+                            local lc = position_of(sp)
+                            local dd = at3 and lc and distance(lc, at3)
+                            if dd and (nearest_d == nil or dd < nearest_d) then
+                                nearest_sp, nearest_d = sp, dd
+                            end
+                        end
+                    end
+                end
+                if valid(nearest_sp) then
+                    local fresh3 = resolve_actor(pal_id)
+                    local parameter3 = valid(fresh3) and pal_parameter(fresh3) or nil
+                    local handle = parameter3 and member(parameter3, "IndividualHandle") or nil
+                    if handle ~= nil then
+                        local adopted, aerr = pcall(function() nearest_sp:AddGroupCharacter(handle) end)
+                        info("wild group adopt " .. (adopted and "took" or ("failed: " .. tostring(aerr))))
+                    else
+                        info("wild group adopt skipped: no IndividualHandle on the parameter")
+                    end
+                else
+                    info("wild group adopt skipped: no pal spawner in the world")
+                end
+                local sighted, swhy = make_sight_aggressive(resolve_actor(pal_id))
+                info("sight aggression " .. (sighted and "on" or ("failed: " .. tostring(swhy))))
                 return
             end
             info("wild possession " .. try[1] .. " failed: " .. tostring(err))
@@ -2081,11 +2116,15 @@ IMPL["pal.force_spawn"] = function(state, p)
     end
 
     local want_boss = p.kind == "boss"
+    local want_species = p.species ~= nil and p.species ~= ""
     local radius = p.radius or 50000
     local found, in_range, errors = 0, 0, {}
     local best, best_distance, best_boss
 
     for _, class_name in ipairs(SPAWNER_CLASSES) do
+        -- A species override rewrites a pal spawner's lottery, so only the
+        -- pal spawner class qualifies when one is asked for.
+        if want_species and class_name ~= "BP_PalSpawner_Standard_C" then goto next_class end
         local ok, spawners = pcall(FindAllOf, class_name)
         if ok and type(spawners) == "table" then
             for _, spawner in ipairs(spawners) do
@@ -2112,11 +2151,62 @@ IMPL["pal.force_spawn"] = function(state, p)
                 end
             end
         end
+        ::next_class::
     end
 
     if found == 0 then return false, "not_supported: no spawner actors in the world" end
     if not best then
         return false, string.format("no spawner within %d units (%d exist)", radius, found)
+    end
+
+    -- With a species, the chosen spawner's lottery is rewritten before the
+    -- shot — struct layout and signatures from the community modding kit,
+    -- not guessed. The game then does all of its own wiring: controller,
+    -- wild group, combat permission — everything a hand spawn cannot reach.
+    -- The list is restored in the same breath: the lottery is drawn during
+    -- the fire call, so the originals can go straight back.
+    local saved = {}
+    if want_species then
+        local rewritten = pcall(function()
+            local groups = best.SpawnGroupList
+            for i = 1, #groups do
+                local pals = groups[i].PalList
+                for j = 1, #pals do
+                    local tribe = pals[j]
+                    saved[#saved + 1] = {
+                        i = i, j = j,
+                        key = tribe.PalId.Key,
+                        level = tribe.Level, level_max = tribe.Level_Max,
+                        num = tribe.Num, num_max = tribe.Num_Max,
+                    }
+                    tribe.PalId.Key = FName(p.species)
+                    tribe.Level = p.level or 15
+                    tribe.Level_Max = p.level or 15
+                    tribe.Num = 1
+                    tribe.Num_Max = 1
+                end
+            end
+        end)
+        if not rewritten or #saved == 0 then
+            return false, "not_supported: this spawner's lottery could not be rewritten"
+        end
+        pcall(function() best:ResetLottery() end)
+    end
+
+    local function restore_lottery()
+        if #saved == 0 then return end
+        pcall(function()
+            local groups = best.SpawnGroupList
+            for _, entry in ipairs(saved) do
+                local tribe = groups[entry.i].PalList[entry.j]
+                tribe.PalId.Key = entry.key
+                tribe.Level = entry.level
+                tribe.Level_Max = entry.level_max
+                tribe.Num = entry.num
+                tribe.Num_Max = entry.num_max
+            end
+        end)
+        pcall(function() best:ResetLottery() end)
     end
 
     -- The calls AlphaRespawnScheduler uses in production on this same build:
@@ -2125,17 +2215,69 @@ IMPL["pal.force_spawn"] = function(state, p)
     pcall(function() best.RespawnTimer = 0.0 end)
     pcall(function() best.RespawnTime = 0.0 end)
 
-    local shapes = {
-        { "RespawnByOutside()", function() return best:RespawnByOutside() end },
-        { "SpawnRequest_ByOutside(false)", function() return best:SpawnRequest_ByOutside(false) end },
-        { "SpawnRequest_ByOutside(true)", function() return best:SpawnRequest_ByOutside(true) end },
-    }
+    -- With a species, the spawner's living brood is replaced outright —
+    -- SpawnRequest_ByOutside(true) — or an occupied spawner would answer the
+    -- rewritten lottery with nothing. Without one, the gentle order stands.
+    local shapes
+    if want_species then
+        shapes = {
+            { "SpawnRequest_ByOutside(true)", function() return best:SpawnRequest_ByOutside(true) end },
+            { "RespawnByOutside()", function() return best:RespawnByOutside() end },
+            { "SpawnRequest_ByOutside(false)", function() return best:SpawnRequest_ByOutside(false) end },
+        }
+    else
+        shapes = {
+            { "RespawnByOutside()", function() return best:RespawnByOutside() end },
+            { "SpawnRequest_ByOutside(false)", function() return best:SpawnRequest_ByOutside(false) end },
+            { "SpawnRequest_ByOutside(true)", function() return best:SpawnRequest_ByOutside(true) end },
+        }
+    end
     for _, shape in ipairs(shapes) do
         local called, err = pcall(shape[2])
         if called then
+            -- The spawner works through its request on later ticks, so the
+            -- list is restored after it has had its read — on the game
+            -- thread, where struct writes belong.
+            if #saved > 0 and type(ExecuteWithDelay) == "function" then
+                ExecuteWithDelay(8000, function()
+                    guard("force_spawn lottery restore", function()
+                        if valid(best) then restore_lottery() end
+                    end)
+                end)
+            end
+            -- A species can also be made to mean it: once the spawn has
+            -- landed, the nearest one of its kind to the spawner gets the
+            -- attack-on-sight temperament.
+            if want_species and p.aggressive and type(ExecuteWithDelay) == "function" then
+                local best_at = position_of(best)
+                ExecuteWithDelay(3000, function()
+                    guard("force_spawn temperament", function()
+                        local wanted = tostring(p.species):lower()
+                        local nearest, nearest_d
+                        for _, pal in ipairs(world_pals()) do
+                            if tostring(pal.species):lower() == wanted then
+                                local at2 = position_of(pal.character)
+                                local d2 = at2 and best_at and distance(at2, best_at)
+                                if d2 and (nearest_d == nil or d2 < nearest_d) then
+                                    nearest, nearest_d = pal.character, d2
+                                end
+                            end
+                        end
+                        if nearest then
+                            local turned, why = make_sight_aggressive(nearest)
+                            info("force_spawn temperament " ..
+                                (turned and "set: attack on sight" or ("failed: " .. tostring(why))))
+                        else
+                            info("force_spawn temperament: no " .. tostring(p.species) .. " landed to set")
+                        end
+                    end)
+                end)
+            end
             return true, nil, {
                 { "method", shape[1] },
                 { "boss", best_boss == true },
+                { "species", want_species and p.species or "" },
+                { "overridden", #saved },
                 { "distance", math.floor(best_distance) },
                 { "spawnersInRange", in_range },
             }
@@ -2143,6 +2285,7 @@ IMPL["pal.force_spawn"] = function(state, p)
         errors[#errors + 1] = shape[1] .. " -> " .. tostring(err)
     end
 
+    restore_lottery()
     info("pal.force_spawn: no shape worked: " .. table.concat(errors, " | "))
     return false, "not_supported: " .. tostring(errors[1])
 end
@@ -2204,19 +2347,59 @@ IMPL["pal.inspect"] = function(_, p)
     }
 end
 
+-- Temperament is the sensor's response preset: what the AI does when it
+-- *discovers* someone, before any damage — Ignore(0), Escape(1), Battle(2),
+-- Special(3), Battle_Anyway(4). A docile species carries Ignore, which is
+-- why a wild spawn of one watches you walk past. Setting every Discover_*
+-- to Battle_Anyway is the attack-on-sight switch. The preset object may be
+-- shared by the species' other individuals until the next restart — for a
+-- deliberately hostile spawn, that is the accepted cost.
+function make_sight_aggressive(character) -- forward-declared above pal.spawn
+    local controller = member(character, "Controller")
+    local sensor = valid(controller) and member(controller, "PalAISensor") or nil
+    if not valid(sensor) then return false, "no PalAISensor on the controller" end
+    local preset = member(sensor, "AIResponsePreset")
+    if preset == nil then return false, "no AIResponsePreset on the sensor" end
+    local set = 0
+    for _, field in ipairs({ "Discover_Player", "Discover_Greater", "Discover_Equal", "Discover_Smaller" }) do
+        local wrote = pcall(function() preset[field] = 4 end)
+        if wrote then set = set + 1 end
+    end
+    if set == 0 then return false, "the preset refused every write" end
+    return true, nil
+end
+
 IMPL["pal.aggro"] = function(state, p)
     local pal = find_pal(p.pal)
     if not pal then return false, "pal_not_found" end
     local controller, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end
 
+    local sight = "off"
+    if p.sight then
+        local turned, why = make_sight_aggressive(pal.character)
+        sight = turned and "on" or ("failed: " .. tostring(why))
+        -- The sight flip needs no target and stands on its own; the hate
+        -- seed below aims the pal at the caller as before. The pal was
+        -- resolved before the flip touched the engine, so resolve it again.
+        pal = find_pal(p.pal)
+        if not pal then
+            return true, nil, { { "pal", p.pal }, { "sight", sight },
+                { "via", "the pal went away mid-call" } }
+        end
+    end
+
     local amount = p.amount or 1000
     local ok, via = seed_hate(pal.character, controller, pawn, amount)
     if not ok then
         info("pal.aggro: no hate shape took — " .. tostring(via))
+        if sight == "on" then
+            return true, nil, { { "pal", p.pal }, { "sight", sight },
+                { "via", "sight only: " .. tostring(via) } }
+        end
         return false, "not_supported: " .. tostring(via)
     end
-    return true, nil, { { "pal", p.pal }, { "amount", amount }, { "via", via } }
+    return true, nil, { { "pal", p.pal }, { "amount", amount }, { "via", via }, { "sight", sight } }
 end
 
 IMPL["pal.stats"] = function(_, p)

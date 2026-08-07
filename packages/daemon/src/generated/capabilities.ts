@@ -1429,7 +1429,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.7.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Make a loaded pal hate a player, so it turns on them and fights. The hate system itself is not callable on this build, so the pal, its controller and its parameter component are searched for a hate function that is, and the engine's own damage path is the last resort. The result names the call that worked; a failure lists the hate-related functions this build does expose.",
+    "summary": "Make a loaded pal hate a player, so it turns on them and fights. The hate system itself is not callable on this build, so the pal, its controller and its parameter component are searched for a hate function that is, and the engine's own damage path is the last resort. The result names the call that worked; a failure lists the hate-related functions this build does expose. sight=true additionally flips the pal's sensor temperament to attack-on-sight — it then goes for anyone who comes close, not only the caller.",
     "params": {
       "pal": {
         "type": "string",
@@ -1442,6 +1442,10 @@ export const CAPABILITIES: Capability[] = [
         "min": 1,
         "max": 100000,
         "default": 1000
+      },
+      "sight": {
+        "type": "bool",
+        "default": false
       }
     },
     "returns": {
@@ -1493,8 +1497,22 @@ export const CAPABILITIES: Capability[] = [
     "since": "2.9.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Ask one of the world's own spawners near the player to fire. Unlike pal.spawn this does not construct an NPC by hand — the game spawns it through its normal path, so it gets the AI a wild pal has and will fight back. kind=boss prefers a boss/alpha spawner (hostile by design), anything else takes the nearest. radius is in world units, where 100 units is one metre. The spawner decides species and location, not you.",
+    "summary": "Ask one of the world's own spawners near the player to fire — the pal that arrives has the AI a wild one has, aggression included. With a species, the chosen spawner's lottery is rewritten for the shot and restored right after, so the wild pal is the one you asked for at the level you asked; without one, the spawner rolls its own table. kind=boss prefers an alpha spawner. aggressive=true (with a species) also sets the newcomer's temperament to attack-on-sight.",
     "params": {
+      "species": {
+        "type": "item_id",
+        "picker": "pal"
+      },
+      "level": {
+        "type": "int",
+        "min": 1,
+        "max": 100,
+        "default": 15
+      },
+      "aggressive": {
+        "type": "bool",
+        "default": false
+      },
       "kind": {
         "type": "string",
         "default": "nearest",
