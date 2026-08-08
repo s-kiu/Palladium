@@ -32,7 +32,7 @@ return {
             if not event.data.firstEver or pal.tag(who, "claimed") then return end
             if not pal.can(who, "welcomekit.kit") then return end
             for _, entry in ipairs(pal.settings.items) do
-                pal.give(who, entry.item, entry.count)
+                pal.player.give_item(who, { item = entry.item, count = entry.count })
             end
             pal.set_tag(who, "claimed", os.time())
             pal.player.message(who, "Welcome! Here is a starter kit to get you going.")
@@ -55,9 +55,9 @@ the call that loads the file is the call that reads the manifest.
 from the generated table at load time, so what chat calls `!give_item` and
 HTTP calls `player.give_item` can never be something else here. Alongside them
 sit the framework's own services, which are not capabilities: `pal.call` (any
-capability by full name), `pal.give` (give *and* read the inventory back),
-`pal.can`, `pal.tag`/`set_tag`/`delete_tag` (namespaced to your mod),
-`pal.data` (your declared collections), `pal.settings` and `pal.log`.
+capability by full name), `pal.can`, `pal.tag`/`set_tag`/`delete_tag`
+(namespaced to your mod), `pal.data` (your declared collections),
+`pal.settings` and `pal.log`.
 
 Palladium loads the names in `Mods/Palladium/mods.list`, one per line, and
 falls back to a directory listing when that file is absent. Each mod gets its

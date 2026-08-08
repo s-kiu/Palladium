@@ -363,22 +363,10 @@ local function api_for(name, mod)
     -- told whether the items arrived, not merely whether the call returned. A
     -- build that cannot answer the count is not an empty inventory, so an
     -- unanswerable check is taken as delivered rather than as a failure.
+    -- The read-back this used to do itself now lives in the capability, so
+    -- every surface gets a truthful answer and there is one way to give.
     function pal.give(userid, item, count, done)
-        count = count or 1
-        pal.call("player.count_item", userid, { item = item }, function(ok_before, _, before)
-            local had = ok_before and tonumber(before.count) or nil
-            pal.call("player.give_item", userid, { item = item, count = count }, function(ok, err)
-                if not ok then
-                    if done then done(false, err) end
-                    return
-                end
-                pal.call("player.count_item", userid, { item = item }, function(ok_after, _, after)
-                    local now = ok_after and tonumber(after.count) or nil
-                    local arrived = not (had and now and now < had + count)
-                    if done then done(arrived, arrived and nil or "did not arrive") end
-                end)
-            end)
-        end)
+        pal.call("player.give_item", userid, { item = item, count = count or 1 }, done)
     end
 
     function pal.heal(userid, done)
@@ -480,6 +468,7 @@ local function api_for(name, mod)
     pal.message = moved("message", "player.message", pal.message)
     pal.heal = moved("heal", "player.heal", pal.heal)
     pal.announce = moved("announce", "server.announce", pal.announce)
+    pal.give = moved("give", "player.give_item", pal.give)
 
     return pal
 end

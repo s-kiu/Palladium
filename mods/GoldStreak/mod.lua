@@ -32,9 +32,9 @@ return {
             pal.set_tag(who, "respawns", streak)
             if streak % pal.settings.every ~= 0 then return end
 
-            -- pal.give reads the inventory back, so ok means the gold is
+            -- player.give_item reads the inventory back, so ok means the gold is
             -- there — a payout that did not arrive is logged, not announced.
-            pal.give(who, pal.settings.item, pal.settings.count, function(ok, err)
+            pal.player.give_item(who, { item = pal.settings.item, count = pal.settings.count }, function(ok, err)
                 if not ok then
                     pal.log(string.format("%s: %s x%d failed — %s",
                         event.subject.name, pal.settings.item, pal.settings.count, tostring(err)))

@@ -51,7 +51,7 @@ local function settle(who, name, pal, always_tell)
         if not pal.can(who, "timedrewards.reward") then return end
 
         for _, reward in ipairs(owed) do
-            pal.give(who, reward.item, tonumber(reward.count) or 1)
+            pal.player.give_item(who, { item = reward.item, count = tonumber(reward.count) or 1 })
             set[tostring(tonumber(reward.hours) or 0)] = true
             pal.player.message(who, string.format("%d hour(s) on the server: %s x%d is yours.",
                 reward.hours, reward.item, tonumber(reward.count) or 1))

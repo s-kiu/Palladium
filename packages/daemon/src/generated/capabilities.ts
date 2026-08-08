@@ -310,7 +310,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "1.1.0",
     "stability": "stable",
     "scope": "write",
-    "summary": "Put items into an online player's inventory. Item ids are the game's internal names (bread is Pan); an unknown id is accepted by the game and silently does nothing.",
+    "summary": "Hand items to a player. The count is read before and after, so the result says whether they arrived: an unknown item id is reported as a failure rather than a success that added nothing.",
     "params": {
       "item": {
         "type": "item_id",
@@ -326,7 +326,9 @@ export const CAPABILITIES: Capability[] = [
     },
     "returns": {
       "item": "item_id",
-      "count": "int"
+      "count": "int",
+      "delivered": "bool",
+      "gained": "int"
     },
     "errors": [
       "player_offline",

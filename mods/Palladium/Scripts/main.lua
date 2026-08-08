@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.13.0"
+local VERSION = "4.14.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1653,11 +1653,48 @@ IMPL["server.announce"] = function(_state, p)
     return true, nil, { { "players", sent } }
 end
 
-IMPL["player.give_item"] = function(state, p)
+-- The engine accepts a grant of an unknown item id and reports success having
+-- added nothing, so the count is read on both sides of the hand-over and the
+-- answer says whether the items *arrived*. Every surface gets that answer:
+-- there is no second, more careful way to give something.
+local GIVE_SETTLE_MS = 250
+
+IMPL["player.give_item"] = function(state, p, finish)
     local inventory = state:GetInventoryData()
     if not inventory then return false, "player_offline" end
+    local userid = player_userid(state)
+    local before = item_count(state, p.item)
     inventory:AddItem_ServerInternal(FName(p.item), p.count, false, 0.0, true)
-    return true, nil, { { "item", p.item }, { "count", p.count } }
+
+    local function told(delivered, gained)
+        local fields = { { "item", p.item }, { "count", p.count }, { "delivered", delivered } }
+        if gained ~= nil then fields[#fields + 1] = { "gained", gained } end
+        return fields
+    end
+
+    -- A build that cannot answer the count is not an empty inventory, so an
+    -- unanswerable check is taken as delivered rather than as a failure.
+    if before == nil or type(ExecuteWithDelay) ~= "function" then
+        return true, nil, told(true)
+    end
+
+    ExecuteWithDelay(GIVE_SETTLE_MS, function()
+        guard("give check", function()
+            local after = item_count(find_player_state(userid), p.item)
+            if after == nil then
+                finish(true, nil, told(true))
+                return
+            end
+            local gained = after - before
+            if gained <= 0 then
+                finish(false, string.format('give_failed: nothing arrived — is "%s" a real item id?', p.item),
+                    told(false, 0))
+                return
+            end
+            finish(true, nil, told(true, gained))
+        end)
+    end)
+    return "deferred"
 end
 
 -- The move lands a frame or two after the call, and the placement call puts a

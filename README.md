@@ -211,7 +211,7 @@ return {
       if not pal.can(who, "welcomekit.kit") then return end
 
       for _, entry in ipairs(pal.settings.items) do
-        pal.give(who, entry.item, entry.count)
+        pal.player.give_item(who, { item = entry.item, count = entry.count })
       end
       pal.set_tag(who, "claimed", os.time())      -- survives restarts
       pal.player.message(who, "Welcome, " .. name .. "! Here is a starter kit to get you going.")

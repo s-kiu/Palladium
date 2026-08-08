@@ -50,8 +50,8 @@ return {
             local streak = (tonumber(pal.tag(who, "respawns")) or 0) + 1
             pal.set_tag(who, "respawns", streak)          -- outlives the restart
             if streak % pal.settings.every ~= 0 then return end
-            pal.give(who, pal.settings.item, pal.settings.count, function(ok)
-                if ok then pal.message(who, "Here is your gold.") end
+            pal.player.give_item(who, { item = pal.settings.item, count = pal.settings.count }, function(ok)
+                if ok then pal.player.message(who, "Here is your gold.") end
             end)
         end,
     },
@@ -59,7 +59,7 @@ return {
     commands = {
         ["!streak"] = {
             description = "how many respawns until the next payout",
-            run = function(event, args, pal) pal.message(event.subject.id, "…") end,
+            run = function(event, args, pal) pal.player.message(event.subject.id, "…") end,
         },
     },
 }
@@ -116,16 +116,22 @@ their own names:
 | Call | Does | Why it is not a capability |
 |---|---|---|
 | `pal.call(type, userid, params, done)` | Any capability by its full name | The generic form of the table above |
-| `pal.give(userid, item, count, done)` | Hands over items **and reads the inventory back**, so `done` learns whether they arrived | A composition of `player.count_item`, `player.give_item` and `player.count_item` — the engine reports success for an unknown item id having added nothing |
 | `pal.can(userid, node)` | May this player? | Resolves in-process and answers immediately; `permission.check` is a queued call |
 | `pal.tag(userid, key)` · `pal.set_tag` · `pal.delete_tag` | A stored value per player, surviving restarts | Namespaced to your mod, so two mods can both keep a `count`. `player.get_tag` reads the raw, shared key instead |
 | `pal.data(name)` | A handle on one of your declared collections | Scoped to your mod. `pal.data.list` and friends are the capabilities, over any collection |
 | `pal.settings` · `pal.log` · `pal.name` | Your settings, your log line, your name | Framework state, not engine calls |
 
-`pal.message`, `pal.heal` and `pal.announce` still work and say once in the log
-that they have moved — they were `player.message`, `player.heal` and
-`server.announce` under invented names, which is exactly the drift the one
-manifest exists to prevent.
+`pal.message`, `pal.heal`, `pal.announce` and `pal.give` still work and say
+once in the log that they have moved — they were `player.message`,
+`player.heal`, `server.announce` and `player.give_item` under invented names,
+which is exactly the drift the one manifest exists to prevent.
+
+`pal.give` was the last one to go, and it took a real fix to retire: it existed
+because it read the inventory back and the plain capability did not, so the two
+were not the same call. That read-back now lives inside `player.give_item`
+itself, which means a chat command, an HTTP call and a mod all learn whether
+the items actually arrived — `ok` is false and `delivered` is false when an
+unknown item id was accepted and added nothing.
 
 ### The operator's settings.config
 

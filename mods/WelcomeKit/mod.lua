@@ -7,7 +7,7 @@
 -- produce a second kit, and neither can a second copy of this mod.
 --
 -- The kit is only marked claimed once the items have actually arrived:
--- `pal.give` reads the inventory back, because the engine accepts a grant of
+-- `player.give_item` reads the inventory back, because the engine accepts a grant of
 -- an unknown item id and reports success having added nothing.
 
 return {
@@ -67,7 +67,7 @@ return {
             if outstanding == 0 then return end
 
             for _, entry in ipairs(items) do
-                pal.give(who, entry.item, entry.count, function(ok, err)
+                pal.player.give_item(who, { item = entry.item, count = entry.count }, function(ok, err)
                     if not ok then
                         missed = entry.item
                         pal.log(string.format('%s: %s x%d did not arrive (%s) — is "%s" a real item id?',
