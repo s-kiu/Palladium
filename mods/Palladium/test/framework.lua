@@ -9,6 +9,29 @@
 
 local ROOT = assert(os.getenv("PALLADIUM_TEST_ROOT"), "PALLADIUM_TEST_ROOT is not set")
 local SCRIPTS = assert(os.getenv("PALLADIUM_SCRIPTS"), "PALLADIUM_SCRIPTS is not set")
+
+-- The mods this framework ships with are examples first: they live in
+-- examples/palladium/, and an operator may also have copied one into mods/ to
+-- run it. Look in both, and say so loudly when neither has it — a missing file
+-- otherwise reads as a dozen unrelated failures further down.
+local REPO = SCRIPTS .. "/../../.."
+local function shipped_mod(name)
+    for _, path in ipairs({
+        REPO .. "/examples/palladium/" .. name .. "/mod.lua",
+        REPO .. "/mods/" .. name .. "/mod.lua",
+    }) do
+        local probe = io.open(path, "r")
+        if probe then probe:close() return path end
+    end
+    error(string.format(
+        "cannot find the shipped mod %s: looked in examples/palladium/%s and mods/%s", name, name, name))
+end
+
+-- Those mods call real capabilities, so the fixtures they run against have to
+-- be the real ones: this is the table the agent hands the framework in
+-- production. Using it here means a shipped mod that learns a new call does
+-- not also need a line adding to a fixture before its test can pass.
+local REAL_CAPABILITIES = dofile(SCRIPTS .. "/generated/capabilities.lua").actions
 package.path = SCRIPTS .. "/?.lua;" .. package.path
 
 local framework = require("framework")
@@ -284,12 +307,13 @@ check("with the shape needed to render one it has never heard of",
     body:find('"storage":"data"', 1, true) and body:find('"fields":{', 1, true), body)
 
 -- ── the mod that ships here, driven for real ────────────────────────────────
--- Everything above uses fixtures. This one loads mods/GoldStreak/mod.lua as
+-- Everything above uses fixtures. This one loads GoldStreak's real mod.lua as
 -- written and counts to a payout, so the example cannot rot while the tests
 -- stay green.
 
+framework.init({ capabilities = REAL_CAPABILITIES })
 os.execute("mkdir -p '" .. MODS .. "/GoldStreak'")
-os.execute("cp '" .. SCRIPTS .. "/../../GoldStreak/mod.lua' '" .. MODS .. "/GoldStreak/mod.lua'")
+os.execute("cp '" .. shipped_mod("GoldStreak") .. "' '" .. MODS .. "/GoldStreak/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "GoldStreak\n")
 framework.load()
 check("GoldStreak loads as written", framework.mods.GoldStreak and framework.mods.GoldStreak.ok == true,
@@ -633,12 +657,15 @@ check("a chat write landed in the audit file",
 -- The other mod that ships: one kit ever, and only once the items arrived.
 
 os.execute("mkdir -p '" .. MODS .. "/WelcomeKit'")
-os.execute("cp '" .. SCRIPTS .. "/../../WelcomeKit/mod.lua' '" .. MODS .. "/WelcomeKit/mod.lua'")
+os.execute("cp '" .. shipped_mod("WelcomeKit") .. "' '" .. MODS .. "/WelcomeKit/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "WelcomeKit\n")
 
--- An inventory the stub actually tracks, so the read-back means something.
+-- An inventory the stub actually tracks, because the read-back now lives in
+-- the capability rather than in the mod: player.give_item is what reports
+-- whether the items arrived, so the stub has to answer the way it does.
 local carried = {}
 framework.init({
+    capabilities = REAL_CAPABILITIES,
     call = function(action_type, userid, params, report)
         calls[#calls + 1] = { type = action_type, userid = userid, params = params }
         if action_type == "player.count_item" then
@@ -646,10 +673,17 @@ framework.init({
         end
         if action_type == "player.give_item" then
             local key = userid .. params.item
-            -- PalSphere lands; Pan is the unknown id that silently adds nothing.
-            if params.item ~= "Pan" then
-                carried[key] = (carried[key] or 0) + tonumber(params.count)
+            -- PalSphere lands; Pan is the unknown id the engine accepts while
+            -- adding nothing, which the real capability catches by counting
+            -- before and after and reports as a failure.
+            if params.item == "Pan" then
+                return report(false,
+                    'give_failed: nothing arrived — is "' .. params.item .. '" a real item id?',
+                    { { "item", params.item }, { "delivered", "false" } })
             end
+            carried[key] = (carried[key] or 0) + tonumber(params.count)
+            return report(true, nil,
+                { { "item", params.item }, { "count", params.count }, { "delivered", "true" } })
         end
         report(true, nil, {})
     end,
@@ -717,7 +751,7 @@ check("a returning player gets a greeting and no kit", gave == 0, gave)
 -- pays once, and the ladder is the operator's to redefine.
 
 os.execute("mkdir -p '" .. MODS .. "/TimedRewards'")
-os.execute("cp '" .. SCRIPTS .. "/../../TimedRewards/mod.lua' '" .. MODS .. "/TimedRewards/mod.lua'")
+os.execute("cp '" .. shipped_mod("TimedRewards") .. "' '" .. MODS .. "/TimedRewards/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "TimedRewards\n")
 
 local play_minutes = 330 -- five and a half hours: the 1 and 5 marks, not the 10
@@ -813,7 +847,7 @@ check("an existing settings.config is never overwritten by the example",
 -- Standings refresh on the clock's cadence, never because somebody asked.
 
 os.execute("mkdir -p '" .. MODS .. "/Leaderboards'")
-os.execute("cp '" .. SCRIPTS .. "/../../Leaderboards/mod.lua' '" .. MODS .. "/Leaderboards/mod.lua'")
+os.execute("cp '" .. shipped_mod("Leaderboards") .. "' '" .. MODS .. "/Leaderboards/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "Leaderboards\n")
 
 local levels = { HIGH = 42, LOW = 7 }
