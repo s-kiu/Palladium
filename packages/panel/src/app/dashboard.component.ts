@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
+import { streamerMode, toggleStreamerMode } from './streamer';
 
 @Component({
   selector: 'app-dashboard',
@@ -47,7 +48,32 @@ import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
 
       <div class="grid">
         <div class="card">
-          <h2>Connect</h2>
+          <div class="row spread">
+            <h2>Connect</h2>
+            <button
+              class="ghost streamer-toggle"
+              [class.on]="streamer()"
+              (click)="toggleStreamer()"
+              [title]="streamer()
+                ? 'Addresses, tokens, player ids and the log are hidden. Click to show them again.'
+                : 'Hide addresses, tokens, player ids and the log — for screenshots and streams.'"
+            >
+              @if (streamer()) {
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 3l18 18" />
+                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                  <path d="M9.4 5.2A9.6 9.6 0 0 1 12 5c5 0 9 4.5 9 7a11 11 0 0 1-2.4 3.5" />
+                  <path d="M6.2 6.8A11.4 11.4 0 0 0 3 12c0 2.5 4 7 9 7a9.8 9.8 0 0 0 3.4-.6" />
+                </svg>
+              } @else {
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z" />
+                  <circle cx="12" cy="12" r="2.6" />
+                </svg>
+              }
+              <span>{{ streamer() ? 'hidden' : 'hide' }}</span>
+            </button>
+          </div>
           @if (connect(); as c) {
             @if (!c.online) {
               <p class="error">Server is offline or still starting — nobody can join right now.</p>
@@ -126,6 +152,8 @@ import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private api = inject(Api);
+  streamer = streamerMode;
+  toggleStreamer = toggleStreamerMode;
   status = signal<Status | null>(null);
   connect = signal<ConnectInfo | null>(null);
   feedback = signal('');

@@ -449,27 +449,47 @@ select:focus-visible {
   user-select: none;
 }
 .streamer-mode .secret::after {
-  content: "hidden — streamer mode";
+  content: "hidden";
   position: absolute;
-  inset: -2px -4px;
+  inset: -2px -6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--surface-2);
-  border: 1px dashed var(--border-strong);
+  border: 1px solid var(--border-strong);
   color: var(--muted);
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 11.5px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
 }
-/* Table cells and log panes are too small or too large for the caption; they
-   get the block without the words. */
-.streamer-mode td.secret::after,
-.streamer-mode .secret.tight::after { content: "••••••••"; letter-spacing: 0.1em; }
-.streamer-mode .secret.block::after { content: "server log hidden — streamer mode"; }
 
-.streamer-toggle.on { color: var(--warn); }
+/* The switch lives in the Connect card, beside the values it hides. */
+.streamer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.streamer-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.streamer-toggle:hover { background: var(--hover); color: var(--text); }
+.streamer-toggle.on {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}

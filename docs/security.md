@@ -111,8 +111,8 @@ rate-limited. Deliberate design constraints:
 
 The panel shows things that should not survive a screenshot: your server's
 public IP, API tokens at the moment they are created, player ids, and a server
-log that carries both. Before you share your screen, press **streamer** in the
-top bar.
+log that carries both. Before you share your screen, press **hide** on the
+dashboard's Connect card — beside the addresses it exists for.
 
 With streamer mode on, those values are painted over with a solid block. Solid,
 not blurred, on purpose — a blur can be reconstructed from enough frames of
