@@ -41,7 +41,8 @@ code, .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, mono
   gap: 20px;
   height: 52px;
   padding: 0 20px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -62,7 +63,12 @@ code, .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, mono
   white-space: nowrap;
 }
 .topbar nav button:hover { color: var(--text); }
-.topbar nav button.active { color: var(--text); background: var(--surface-2); }
+.topbar nav button { transition: color 0.14s ease, background 0.14s ease; }
+.topbar nav button.active {
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
 
 main {
   max-width: 1080px;
@@ -85,12 +91,17 @@ app-bridge, app-chat {
 }
 
 .card {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 120px), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
-.card h2 { margin-bottom: 12px; }
+.card h2 {
+  margin-bottom: 12px;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
 .card > p.muted { margin: 0 0 12px; font-size: 0.85rem; }
 
 /* ── key/value rows ─────────────────────────────────────────────────────── */
@@ -114,6 +125,15 @@ app-bridge, app-chat {
 .row.wrap { flex-wrap: wrap; }
 
 button {
+  /* Flex, not inline-block: an icon beside a label has to sit on the label's
+     centre line, and when the label is hidden on a narrow screen the icon has
+     to end up in the middle of the button rather than where the text used to
+     start. `gap` does that for free — a margin on the icon cannot, because the
+     hidden label is still a child. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -123,9 +143,11 @@ button {
   font-size: 13.5px;
   font-weight: 500;
   font-family: inherit;
-  transition: background 0.12s, border-color 0.12s;
+  line-height: 1.4;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.06s ease;
 }
 button:hover:not(:disabled) { background: var(--hover); border-color: #48505c; }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent-strong); border-color: transparent; color: #fff; }
 button.primary:hover:not(:disabled) { background: #4f8ef7; }
@@ -170,11 +192,13 @@ input, select {
   min-width: 0;
 }
 input.short { flex: 0 0 90px; }
+input, select { transition: border-color 0.14s ease, box-shadow 0.14s ease; }
 input:focus, select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(91, 157, 255, 0.12);
+  box-shadow: 0 0 0 3px rgba(91, 157, 255, 0.14);
 }
+input:hover:not(:focus), select:hover:not(:focus) { border-color: #48505c; }
 input::placeholder { color: #5b6470; }
 
 /* ── tables ─────────────────────────────────────────────────────────────── */
@@ -188,11 +212,15 @@ th {
   letter-spacing: 0.06em;
   padding: 6px 10px;
 }
-td { padding: 9px 10px; border-top: 1px solid var(--border); }
-tbody tr:hover td { background: #191d23; }
+thead th { border-bottom: 1px solid var(--border); }
+td { padding: 10px; border-top: 1px solid var(--border); vertical-align: top; }
+tbody tr:first-child td { border-top: none; }
+tbody tr { transition: background 0.12s ease; }
+tbody tr:hover td { background: rgba(255, 255, 255, 0.022); }
 td.num { text-align: right; white-space: nowrap; color: var(--muted); }
 td.actions { text-align: right; white-space: nowrap; }
 td.actions button { padding: 3px 10px; font-size: 12.5px; }
+td.actions { vertical-align: middle; }
 td.actions button + button { margin-left: 6px; }
 
 .tag {
@@ -200,11 +228,15 @@ td.actions button + button { margin-left: 6px; }
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   font-size: 11px;
   font-weight: 500;
+  letter-spacing: 0.01em;
   color: var(--muted);
+  white-space: nowrap;
 }
+.tag.warn-tag { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.tag.ok-tag { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
 /* ── banners ────────────────────────────────────────────────────────────── */
 .banner {
@@ -504,9 +536,8 @@ select:focus-visible {
    A button carries the icon and the word. Wide screens read the word; narrow
    ones hide it and keep the icon, so the same markup serves both and nothing
    has to be duplicated per breakpoint. */
-button > app-icon { margin-right: 6px; }
-button.icon-only > app-icon,
-.actions button > app-icon:only-child { margin-right: 0; }
+/* Spacing between an icon and its word is the button's `gap`, so a hidden
+   label leaves no phantom margin behind. */
 
 /* ── narrow screens ─────────────────────────────────────────────────────────
    The panel is an admin tool people reach for from a phone when something is
@@ -529,7 +560,6 @@ button.icon-only > app-icon,
 
   /* The word goes; the icon and the title stay. */
   .btn-label { display: none; }
-  button > app-icon { margin-right: 0; }
 
   /* Thumbs, not cursors. */
   button, input, select { min-height: 38px; }
