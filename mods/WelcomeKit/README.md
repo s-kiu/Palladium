@@ -1,8 +1,9 @@
 # WelcomeKit
 
 Players joining the server for the first time get a private welcome and a
-starter kit, once ever. Returning players get a greeting. Who receives a kit is
-a single permission node, allowed by default.
+starter kit, once ever. Returning players get a greeting, and `!kit` answers
+whether your kit has been delivered. Who receives a kit is a single permission
+node, allowed by default.
 
 A Palladium mod: one `mod.lua`. No panel, no token, no process.
 

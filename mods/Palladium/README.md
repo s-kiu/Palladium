@@ -17,24 +17,32 @@ but a server that just wants mods needs this folder and nothing else.
 
 ## Writing a mod
 
-`Mods/GoldStreak/mod.lua`:
+`Mods/WelcomeKit/mod.lua`:
 
 ```lua
 return {
-    name = "GoldStreak",
+    name = "WelcomeKit",
     permissions = {
-        { node = "goldstreak.reward", description = "earn gold on a streak", default = "allow" },
+        { node = "welcomekit.kit", description = "receive the starter kit on first join", default = "allow" },
     },
-    settings = { count = 50 },
+    settings = { items = { { item = "PalSphere", count = 10 } } },
     on = {
-        ["player.respawn"] = function(event, pal)
-            if pal.can(event.subject.id, "goldstreak.reward") then
-                pal.give(event.subject.id, "Money", pal.settings.count)
+        ["player.join"] = function(event, pal)
+            local who = event.subject.id
+            if not event.data.firstEver or pal.tag(who, "claimed") then return end
+            if not pal.can(who, "welcomekit.kit") then return end
+            for _, entry in ipairs(pal.settings.items) do
+                pal.give(who, entry.item, entry.count)
             end
+            pal.set_tag(who, "claimed", os.time())
+            pal.message(who, "Welcome! Here is a starter kit to get you going.")
         end,
     },
     commands = {
-        ["!gold"] = { run = function(event, args, pal) pal.message(event.subject.id, "hello") end },
+        ["!kit"] = { node = "welcomekit.kit", run = function(event, args, pal)
+            pal.message(event.subject.id, pal.tag(event.subject.id, "claimed")
+                and "Delivered." or "Arrives on your first-ever join.")
+        end },
     },
 }
 ```

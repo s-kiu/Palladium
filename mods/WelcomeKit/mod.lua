@@ -12,7 +12,7 @@
 
 return {
     name = "WelcomeKit",
-    version = "2.0.1",
+    version = "2.1.0",
     api = 1,
     description = "A starter kit for players joining for the first time, once ever.",
 
@@ -85,5 +85,19 @@ return {
                 end)
             end
         end,
+    },
+
+    commands = {
+        ["!kit"] = {
+            node = "welcomekit.kit",
+            help = "!kit — whether your starter kit has been delivered.",
+            run = function(event, _args, pal)
+                local who = event.subject and event.subject.id
+                if not who or who == "" then return end
+                pal.message(who, pal.tag(who, "claimed")
+                    and "Your starter kit was delivered."
+                    or "No kit claimed yet — it arrives on your first-ever join.")
+            end,
+        },
     },
 }

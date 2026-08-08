@@ -173,42 +173,62 @@ program** when it lives somewhere else entirely: a bot, a dashboard, a CLI.
 
 ```lua
 return {
-  name = "GoldStreak",
+  name = "WelcomeKit",
   api = 1,                        -- which framework shape this was written for
-  description = "Gold for sticking with it: a reward on every fifth respawn.",
+  description = "A starter kit for players joining for the first time, once ever.",
 
   -- Registered for you. Operators change the default in permissions.config,
   -- and their change outranks what you asked for.
   permissions = {
-    { node = "goldstreak.reward", description = "earn gold on a respawn streak", default = "allow" },
+    { node = "welcomekit.kit", description = "receive the starter kit on first join", default = "allow" },
   },
 
   -- Yours to read as pal.settings; an operator edits them without touching code.
-  settings = { every = 5, item = "Money", count = 50 },
-
-  -- Storage you declare, so the panel can list and edit it without being
-  -- taught what it holds.
-  data = {
-    streaks = { description = "how many respawns each player has banked", fields = { count = "int" } },
+  settings = {
+    items = { { item = "PalSphere", count = 10 }, { item = "Pan", count = 5 } },
+    announce = true,
   },
 
   on = {
-    ["player.respawn"] = function(event, pal)
-      local who = event.subject.id
-      if not pal.can(who, "goldstreak.reward") then return end
-      local streak = (tonumber(pal.tag(who, "respawns")) or 0) + 1
-      pal.set_tag(who, "respawns", streak)
-      if streak % pal.settings.every ~= 0 then return end
-      pal.give(who, pal.settings.item, pal.settings.count)
-      pal.message(who, "Here is your gold.")
+    ["player.join"] = function(event, pal)
+      local who, name = event.subject.id, event.subject.name
+      if not event.data.firstEver or pal.tag(who, "claimed") then
+        return pal.message(who, "Welcome back, " .. name .. ".")
+      end
+      if not pal.can(who, "welcomekit.kit") then return end
+
+      for _, entry in ipairs(pal.settings.items) do
+        pal.give(who, entry.item, entry.count)
+      end
+      pal.set_tag(who, "claimed", os.time())      -- survives restarts
+      pal.message(who, "Welcome, " .. name .. "! Here is a starter kit to get you going.")
+      if pal.settings.announce then
+        pal.announce(name .. " just joined for the first time — say hi!")
+      end
     end,
   },
 
   commands = {
-    ["!streak"] = { node = "goldstreak.reward", run = function(event, args, pal) ... end },
+    ["!kit"] = {
+      node = "welcomekit.kit",
+      help = "!kit — whether your starter kit has been delivered.",
+      run = function(event, args, pal)
+        pal.message(event.subject.id, pal.tag(event.subject.id, "claimed")
+          and "Your starter kit was delivered."
+          or "No kit claimed yet — it arrives on your first-ever join.")
+      end,
+    },
   },
 }
 ```
+
+The shipped [WelcomeKit](mods/WelcomeKit) is this plus delivery verification —
+the kit is only marked claimed once the items verifiably arrived, because the
+engine accepts an unknown item id and reports success having added nothing.
+Notice what the mod never does: it doesn't track who joined before
+(`event.data.firstEver` arrives already answered from a registry that outlives
+every restart), and it doesn't parse chat (`!kit` is routed, gated and
+rate-limited for it).
 
 Drop the folder into `./mods`, restart, and Palladium finds it, registers its
 nodes, declares its storage, routes its command and calls its handlers. There is
