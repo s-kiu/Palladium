@@ -22,7 +22,7 @@ import { Api, BanEntry, Player } from './api.service';
                 <td>{{ p.name }}</td>
                 <td>{{ p.level }}</td>
                 <td>{{ p.ping | number: '1.0-0' }}</td>
-                <td class="mono">{{ p.userId }}</td>
+                <td class="mono secret">{{ p.userId }}</td>
                 <td class="actions">
                   <button (click)="kick(p)">kick</button>
                   <button class="danger" (click)="ban(p)">ban</button>

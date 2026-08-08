@@ -107,6 +107,29 @@ rate-limited. Deliberate design constraints:
 - The console tab is a curated allowlist of the game's own REST commands —
   it is not a shell, and nothing it runs leaves the game's API surface.
 
+## Recording or streaming the panel
+
+The panel shows things that should not survive a screenshot: your server's
+public IP, API tokens at the moment they are created, player ids, and a server
+log that carries both. Before you share your screen, press **streamer** in the
+top bar.
+
+With streamer mode on, those values are painted over with a solid block. Solid,
+not blurred, on purpose — a blur can be reconstructed from enough frames of
+video, a block cannot. The real value stays in the page, so click-to-copy keeps
+working while the pixels never show it, and the choice is remembered in that
+browser so a reload mid-stream does not undo it.
+
+What it covers: the connect addresses on the dashboard, a newly created API
+token, the player id column, and the live server log. What it does not cover:
+player names, which are public in game anyway, and anything outside the panel —
+your terminal, your `.env`, and the game's own UI are still yours to watch.
+
+If an address does escape into a published video, it is worth knowing that most
+home connections are handed a new IP when the router reconnects, which retires
+the leaked one. A token that escapes has no such grace: revoke it on the admin
+page immediately.
+
 ## Remote access to the panel
 
 Want to administer from outside your network? Three supported paths, easiest
@@ -121,7 +144,7 @@ and safest first:
 3. **TLS reverse proxy** — a domain plus Caddy or nginx proxy manager
    terminating HTTPS in front of the panel, with `PANEL_BIND=127.0.0.1` so
    the proxy is the only way in (with nginx proxy manager, attach the panel
-   container to the proxy network and target `Pal-Up-panel:3000`). The
+   container to the proxy network and target `pal-up-panel:3000`). The
    panel's login is one password with rate limiting — no 2FA, no lockout —
    which is fine behind a VPN but thin as the only wall on the open
    internet, so give the proxy its own auth layer (basic auth or an access

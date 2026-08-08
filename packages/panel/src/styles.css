@@ -437,3 +437,39 @@ select:focus-visible {
   outline-offset: 2px;
 }
 .drawer-heading { margin-top: 18px; }
+
+/* ── streamer mode ──────────────────────────────────────────────────────────
+   A solid block over anything that should not survive a screenshot. Solid
+   rather than blurred on purpose: a blur can be reconstructed from enough
+   frames, a block cannot. The real value stays in the DOM so click-to-copy
+   keeps working while the pixels never show it. */
+.streamer-mode .secret {
+  position: relative;
+  color: transparent !important;
+  user-select: none;
+}
+.streamer-mode .secret::after {
+  content: "hidden — streamer mode";
+  position: absolute;
+  inset: -2px -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* Table cells and log panes are too small or too large for the caption; they
+   get the block without the words. */
+.streamer-mode td.secret::after,
+.streamer-mode .secret.tight::after { content: "••••••••"; letter-spacing: 0.1em; }
+.streamer-mode .secret.block::after { content: "server log hidden — streamer mode"; }
+
+.streamer-toggle.on { color: var(--warn); }

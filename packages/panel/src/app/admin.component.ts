@@ -82,7 +82,7 @@ import { SettingsComponent } from './settings.component';
       @if (newToken()) {
         <div class="banner info">
           <b>Copy it now — this is the only time it is shown:</b>
-          <span class="mono">{{ newToken() }}</span>
+          <span class="mono secret">{{ newToken() }}</span>
         </div>
       }
       <div class="row wrap">

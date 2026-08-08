@@ -53,11 +53,11 @@ import { Api, ConnectInfo, Status, fmtUptime } from './api.service';
               <p class="error">Server is offline or still starting — nobody can join right now.</p>
             } @else {
               <div class="kv"><span>Same network</span>
-                <b class="mono copy" (click)="copy(lanAddress(c))" title="click to copy">{{ lanAddress(c) }}</b>
+                <b class="mono copy secret" (click)="copy(lanAddress(c))" title="click to copy">{{ lanAddress(c) }}</b>
               </div>
               <div class="kv"><span>Internet</span>
                 @if (c.publicIp) {
-                  <b class="mono copy" (click)="copy(c.publicIp + ':' + c.publicPort)" title="click to copy">
+                  <b class="mono copy secret" (click)="copy(c.publicIp + ':' + c.publicPort)" title="click to copy">
                     {{ c.publicIp }}:{{ c.publicPort }}
                   </b>
                 } @else {

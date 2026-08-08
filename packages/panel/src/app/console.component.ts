@@ -34,7 +34,7 @@ import { Api } from './api.service';
         Live output of the game server and its manager — refreshes every 3 seconds. Includes
         startup, updates, backups and mod-loader events.
       </p>
-      <pre class="logview" #logview>{{ logText() }}</pre>
+      <pre class="logview secret block" #logview>{{ logText() }}</pre>
     </div>
   `,
 })
