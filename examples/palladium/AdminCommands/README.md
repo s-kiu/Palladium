@@ -1,6 +1,6 @@
 # AdminCommands
 
-Moderator commands in chat: teleport, give, slay, god and mute. Every one is
+Moderator commands in chat: teleport, give, slay, god, freeze and mute. Every one is
 gated by its own permission node, **all denied by default**, so installing this
 mod hands nobody anything until you say so.
 
@@ -35,11 +35,10 @@ so a moderator can slay players below their own rank and nobody at or above it.
 mods/AdminCommands/
 ├── mod.lua                      the mod itself
 ├── settings.example.config      shipped and commented; reference material
-├── settings.config              yours — the god-mode ceiling, the slay
-│                                announcement
+├── settings.config              yours — the slay announcement
 ├── permissions.example.config   shipped and commented
-├── permissions.config           yours — the five nodes and their defaults
-├── admincommands.data           who is muted, who is in god mode
+├── permissions.config           yours — the seven nodes and their defaults
+├── admincommands.data           who is muted, who is godded
 └── (nothing else)
 ```
 
@@ -55,35 +54,46 @@ nobody online carries is refused rather than guessed at.
 | `!tp @Name @Other` | Sends the first player to the second |
 | `!give @Name <item> [count]` | Hands over items. Ids are the game's own — gold is `Money`, bread is `Pan`. Answers only once the inventory agrees |
 | `!slay @Name` | Kills them outright |
-| `!god @Name` / `!god @Name off` | Raises them out of reach, and puts them back |
+| `!god @Name` / `!god @Name off` | Makes them unkillable, and puts them back |
+| `!freeze @Name` / `!freeze @Name off` | Holds them where they stand. `@me` works — it stops movement, not chat |
 | `!mute @Name` / `!mute @Name off` | Ignores their chat **commands** |
 
 ## God mode, honestly
 
-This build exposes no invincibility flag, so there is nothing to switch on.
-What this mod does instead is raise the player's maximum health to `god_hp`
-(99,999,999 by default) and fill it — a ceiling nothing in the world reaches.
+There is no single invincibility switch on this build that works. Two of them
+look like one and are not: `IsImmortality` and the enemy damage-rate flag were
+both verified written, and verified still set twenty-five seconds later, while
+the player went on dying. Unreal's own `bCanBeDamaged` fared no better.
 
-That is not the same thing, and the difference matters:
+The reason is worth knowing, because it shapes everything here: **this game
+simulates the player on the player's own machine.** Movement, stamina and the
+damage you take are decided there and reported to the server. A flag the server
+sets is not a flag the client reads.
 
-- Damage still lands. The number goes down; it just never runs out.
-- Anything that kills regardless of health — should this build have such a
-  thing — would still kill.
-- The old maximum is stored in `admincommands.data` and handed back by
-  `!god @Name off`. **If you delete that file while somebody is godded, their
-  maximum health stays raised** and you will have to set it back by hand with
-  `!player.set_stats @Name maxHp=<number>`.
+What the server *does* own is corrections — a position the client accepts, a
+health value it is told. So god mode is three things at once:
+
+- **DefenseUp** raised to a million, so almost nothing gets through in the
+  first place. This is what makes it feel like immunity rather than first aid.
+- **Health, stomach and stamina refilled** on the agent's own tick, twice a
+  second, as the backstop for whatever does get through.
+- **Their real defence remembered**, and handed back by `!god @Name off`, so
+  nobody is left permanently tougher than the game made them.
+
+It is enforcement rather than prevention, and the difference is visible: a hit
+big enough to kill between two ticks still kills. Freeze works the same way and
+for the same reason — the player is put back where they stood rather than
+prevented from leaving.
 
 ## What this mod does not do, and why
 
-Four of the things an admin toolkit usually has cannot be done from inside the
+Three of the things an admin toolkit usually has cannot be done from inside the
 game on this build. They are left out rather than stubbed, because a command
 that quietly does nothing is worse than one that does not exist.
 
 | Wanted | Why not |
 |---|---|
-| **fly** | The engine exposes no flight toggle this build can reach. There is nothing to call |
-| **freeze** | No movement lock either — no input-disable, no speed floor to pin to zero |
+| **fly** | Flight is a mode the *client* enters. `ClientCheatFly` is the right call and it reaches your machine — but it runs `CheatManager->Fly()` there, and a normal client has no cheat manager, so it arrives and does nothing. Palworld's own `Debug_CheatCommand_ToServer` was tried too. Everything we can reach is server-side; flight is not |
 | **mute** (real) | Palladium *observes* chat, it cannot cancel it: a message is already on its way to everyone by the time a mod sees it. `!mute` stops the player using commands, which is the part that is real — their words still reach the room |
 | **kick / ban** | These live in the game's REST API. The panel reaches it; a mod running inside the game has no network, so it cannot. Kick and ban from the panel's **Players** page, or from `pal-up palapi` |
 

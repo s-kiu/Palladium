@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.23.0"
+local VERSION = "4.23.2"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1819,6 +1819,13 @@ IMPL["player.set_immortal"] = function(state, p)
     end
     -- The flags above hold and change nothing on this build, so the tick is
     -- what actually keeps them alive: health refilled as fast as it is taken.
+    -- Read back what the stamina calls answer with, so "it did not keep my
+    -- stamina up" can be told apart from "it could not read it".
+    local sp_now, sp_max_now = nil, nil
+    pcall(function() sp_now = as_number(component:GetSP()) end)
+    pcall(function() sp_max_now = as_number(component:GetMaxSP()) end)
+    if want then pcall(function() component:ResetSP() end) end
+
     local userid = player_userid(state)
     if want then
         -- Their own defence, kept so switching off puts it back rather than
@@ -1836,6 +1843,8 @@ IMPL["player.set_immortal"] = function(state, p)
         { "can_be_damaged", tostring(damageable_now) },
         { "defence", tostring(member(component, "DefenseUp")) },
         { "infinite_stamina", tostring(member(component, "bIsInfinitySP")) },
+        { "sp", tostring(sp_now) },
+        { "sp_max", tostring(sp_max_now) },
     }
 end
 
@@ -1887,17 +1896,28 @@ local function enforce_held()
             -- Nobody in god mode should be starving or winded either.
             local fed = stat_value(pawn, "GetFullStomach")
             local fed_max = stat_value(pawn, "GetMaxFullStomach")
-            if fed and fed_max and fed_max > 0 and fed < fed_max * 0.9 then
+            if fed and fed_max and fed_max > 0 and fed < fed_max then
                 apply_stat(pawn, "hunger", fed_max)
             end
 
+            -- SP is a fixed-point value, so SetSP(number) is the wrong shape
+            -- and quietly does nothing. ResetSP takes no argument at all,
+            -- which is why it is tried first — and when the reading cannot be
+            -- had, refilling anyway beats deciding from a nil.
             local component = member(pawn, "CharacterParameterComponent")
             if valid(component) then
                 local sp, sp_max = nil, nil
                 pcall(function() sp = as_number(component:GetSP()) end)
                 pcall(function() sp_max = as_number(component:GetMaxSP()) end)
-                if sp and sp_max and sp_max > 0 and sp < sp_max * 0.9 then
-                    pcall(function() component:SetSP(sp_max) end)
+                -- Any drain at all, not a fraction of one: ResetSP restores the
+                -- bar outright and stamina is spent continuously, so a
+                -- threshold only decides how far it gets to fall first.
+                local low = (sp == nil) or (sp_max and sp_max > 0 and sp < sp_max)
+                if low then
+                    if not pcall(function() component:ResetSP() end) then
+                        pcall(function() component:SetSP(sp_max) end)
+                    end
+                    pcall(function() component.bIsInfinitySP = true end)
                 end
             end
         end
@@ -1958,9 +1978,16 @@ IMPL["player.set_flying"] = function(state, p)
         local ok = pcall(function()
             if want then controller:StartFlyToServer() else controller:EndFlyToServer() end
         end)
-        if not ok then return false, "not_supported: this build takes no flight call" end
-        how = want and "StartFlyToServer" or "EndFlyToServer"
+        if ok then how = want and "StartFlyToServer" or "EndFlyToServer" end
     end
+
+    -- Palworld's own debug channel, tried last: a string parameter, so a word
+    -- this build does not recognise costs nothing.
+    if member(controller, "Debug_CheatCommand_ToServer") ~= nil then
+        pcall(function() controller:Debug_CheatCommand_ToServer(want and "fly" or "walk") end)
+        how = how and (how .. "+debug") or "Debug_CheatCommand_ToServer"
+    end
+    if not how then return false, "not_supported: this build takes no flight call" end
 
     -- Nothing reports flight back, so this says what was asked for and which
     -- call carried it — an answer that names its own uncertainty.
