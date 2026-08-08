@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api, ApiToken, Status } from './api.service';
+import { IconComponent } from './icon.component';
 import { ChatComponent } from './chat.component';
 import { ConsoleComponent } from './console.component';
 import { SettingsComponent } from './settings.component';
@@ -8,7 +9,7 @@ import { SettingsComponent } from './settings.component';
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [FormsModule, ChatComponent, ConsoleComponent, SettingsComponent],
+  imports: [IconComponent, FormsModule, ChatComponent, ConsoleComponent, SettingsComponent],
   template: `
     <div class="card">
       <div class="row spread">
@@ -103,7 +104,7 @@ import { SettingsComponent } from './settings.component';
                 <td class="num">{{ date(t.createdAt) }}</td>
                 <td class="num">{{ t.lastUsedAt ? date(t.lastUsedAt) : 'never' }}</td>
                 <td class="actions">
-                  <button class="danger" (click)="revokeToken(t.id)">Revoke</button>
+                  <button class="danger" (click)="revokeToken(t.id)" title="Revoke this token"><app-icon name="trash" /><span class="btn-label">Revoke</span></button>
                 </td>
               </tr>
             }

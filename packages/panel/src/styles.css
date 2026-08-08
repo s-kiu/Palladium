@@ -499,3 +499,64 @@ select:focus-visible {
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
 }
+
+/* ── icon buttons ───────────────────────────────────────────────────────────
+   A button carries the icon and the word. Wide screens read the word; narrow
+   ones hide it and keep the icon, so the same markup serves both and nothing
+   has to be duplicated per breakpoint. */
+button > app-icon { margin-right: 6px; }
+button.icon-only > app-icon,
+.actions button > app-icon:only-child { margin-right: 0; }
+
+/* ── narrow screens ─────────────────────────────────────────────────────────
+   The panel is an admin tool people reach for from a phone when something is
+   wrong, so the target is legibility under one thumb rather than a second
+   layout to maintain. */
+@media (max-width: 760px) {
+  body { font-size: 15px; }
+  main { padding: 12px 10px 32px; }
+  .card { padding: 14px 12px; border-radius: 10px; }
+  h2 { font-size: 17px; }
+
+  /* One column, always: the dashboard's cards stop competing for width. */
+  .grid { grid-template-columns: 1fr !important; }
+
+  /* A table with six columns cannot shrink to fit a phone, so let it scroll
+     inside its own card instead of stretching the page sideways. */
+  .card table { display: block; width: 100%; overflow-x: auto; }
+  .card table thead th, .card table td { white-space: nowrap; }
+  .card table td.setting-name, .card table td .muted { white-space: normal; }
+
+  /* The word goes; the icon and the title stay. */
+  .btn-label { display: none; }
+  button > app-icon { margin-right: 0; }
+
+  /* Thumbs, not cursors. */
+  button, input, select { min-height: 38px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button { padding: 6px 10px; }
+
+  /* Rows of controls stack rather than squeeze. */
+  .row { flex-wrap: wrap; }
+  .row.spread { gap: 8px; }
+  input, select { width: 100%; min-width: 0; }
+  .row input, .row select { flex: 1 1 160px; width: auto; }
+  .kv { flex-wrap: wrap; gap: 2px 8px; }
+
+  /* The tab strip already scrolls; make it feel deliberate. */
+  .topbar { padding: 8px 10px; gap: 8px; }
+  .topbar nav { scrollbar-width: none; }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav button { padding: 7px 10px; }
+  .brand { font-size: 15px; }
+  .signout span, .streamer-toggle span { display: none; }
+
+  .logview { font-size: 11.5px; max-height: 45vh; }
+  .dlg { width: calc(100vw - 24px); padding: 16px; }
+}
+
+/* Very narrow: hand back the last of the horizontal padding. */
+@media (max-width: 400px) {
+  main { padding: 10px 6px 28px; }
+  .card { padding: 12px 10px; }
+}

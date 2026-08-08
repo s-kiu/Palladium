@@ -1,11 +1,12 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { Api, BackupEntry, fmtBytes } from './api.service';
+import { IconComponent } from './icon.component';
 
 @Component({
   selector: 'app-backups',
   standalone: true,
-  imports: [DatePipe],
+  imports: [IconComponent, DatePipe],
   template: `
     <div class="card">
       <div class="row spread">
@@ -33,7 +34,7 @@ import { Api, BackupEntry, fmtBytes } from './api.service';
                 <td>{{ b.mtime | date: 'yyyy-MM-dd HH:mm' }}</td>
                 <td class="num">{{ size(b) }}</td>
                 <td class="actions">
-                  <button class="danger" (click)="restore(b)">restore</button>
+                  <button class="danger" (click)="restore(b)" title="Restore this snapshot"><app-icon name="restore" /><span class="btn-label">restore</span></button>
                 </td>
               </tr>
             }

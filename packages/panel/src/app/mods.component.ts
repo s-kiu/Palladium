@@ -1,9 +1,11 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, ScriptModEntry, fmtBytes } from './api.service';
+import { IconComponent } from './icon.component';
 
 @Component({
   selector: 'app-mods',
   standalone: true,
+  imports: [IconComponent],
   template: `
     <div class="card">
       <h2>Palladium mods</h2>
@@ -61,8 +63,8 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
                   @if (m.commands.length === 0) { <span class="muted">none</span> }
                 </td>
                 <td class="actions">
-                  <button (click)="toggleFramework(m)">{{ m.disabled ? 'enable' : 'disable' }}</button>
-                  <button (click)="showFrameworkLogs(m)">{{ logsFor() === m.name ? 'hide' : 'logs' }}</button>
+                  <button (click)="toggleFramework(m)" [title]="m.disabled ? 'Enable — loads at the next restart' : 'Disable — stops at the next restart'"><app-icon [name]="m.disabled ? 'play' : 'pause'" /><span class="btn-label">{{ m.disabled ? 'enable' : 'disable' }}</span></button>
+                  <button (click)="showFrameworkLogs(m)" title="What this mod logged inside the game"><app-icon name="logs" /><span class="btn-label">{{ logsFor() === m.name ? 'hide' : 'logs' }}</span></button>
                 </td>
               </tr>
             }
@@ -111,7 +113,7 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
                 </td>
                 <td class="num">{{ c.count }}</td>
                 <td class="actions">
-                  <button (click)="showRecords(c)">{{ recordsFor() === c.name ? 'hide' : 'records' }}</button>
+                  <button (click)="showRecords(c)" title="The records this collection holds"><app-icon name="records" /><span class="btn-label">{{ recordsFor() === c.name ? 'hide' : 'records' }}</span></button>
                 </td>
               </tr>
             }
@@ -166,8 +168,8 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
                 </td>
                 <td class="actions">
                   @if (m.entry) {
-                    <button (click)="toggleScript(m)">{{ m.disabled ? 'enable' : 'disable' }}</button>
-                    <button (click)="showLogs(m)">logs</button>
+                    <button (click)="toggleScript(m)" [title]="m.disabled ? 'Start this mod' : 'Stop this mod'"><app-icon [name]="m.disabled ? 'play' : 'pause'" /><span class="btn-label">{{ m.disabled ? 'enable' : 'disable' }}</span></button>
+                    <button (click)="showLogs(m)" title="This mod's output"><app-icon name="logs" /><span class="btn-label">logs</span></button>
                   }
                 </td>
               </tr>

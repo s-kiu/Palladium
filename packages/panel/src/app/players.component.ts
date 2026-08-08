@@ -1,11 +1,12 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Api, BanEntry, Player } from './api.service';
+import { IconComponent } from './icon.component';
 
 @Component({
   selector: 'app-players',
   standalone: true,
-  imports: [DecimalPipe, DatePipe],
+  imports: [IconComponent, DecimalPipe, DatePipe],
   template: `
     <div class="card">
       <h2>Online players</h2>
@@ -24,8 +25,8 @@ import { Api, BanEntry, Player } from './api.service';
                 <td>{{ p.ping | number: '1.0-0' }}</td>
                 <td class="mono secret">{{ p.userId }}</td>
                 <td class="actions">
-                  <button (click)="kick(p)">kick</button>
-                  <button class="danger" (click)="ban(p)">ban</button>
+                  <button (click)="kick(p)" title="Kick this player"><app-icon name="kick" /><span class="btn-label">kick</span></button>
+                  <button class="danger" (click)="ban(p)" title="Ban this player"><app-icon name="ban" /><span class="btn-label">ban</span></button>
                 </td>
               </tr>
             }
@@ -53,7 +54,7 @@ import { Api, BanEntry, Player } from './api.service';
                 <td class="mono">{{ b.userid }}</td>
                 <td>{{ b.bannedAt ? (b.bannedAt | date: 'yyyy-MM-dd HH:mm') : '—' }}</td>
                 <td class="actions">
-                  <button (click)="unban(b)">unban</button>
+                  <button (click)="unban(b)" title="Lift this ban"><app-icon name="unban" /><span class="btn-label">unban</span></button>
                 </td>
               </tr>
             }
