@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.24.0"
+local VERSION = "4.24.1"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -50,7 +50,7 @@ local ACTION_POLL_MS = 500
 -- topped back up. Declared here rather than beside the tick that reads it,
 -- because the capabilities that write it are defined further up this file —
 -- a local declared after its first use is a global lookup, and a nil one.
-local held = { frozen = {}, immortal = {}, defence = {} }
+local held = { frozen = {}, immortal = {}, defence = {}, said = {} }
 
 -- Large enough that the damage calculation has almost nothing left to take,
 -- small enough to stay a plain int the engine will accept.
@@ -1883,9 +1883,10 @@ local function enforce_held()
     for userid, anchor in pairs(held.frozen) do
         local state = find_player_state(userid)
         local _, pawn = pawn_of(state)
-        if not valid(pawn) then
-            held.frozen[userid] = nil
-        else
+        -- Offline, mid-teleport, or simply not resolvable this tick: skip, do
+        -- not forget. Dropping the hold on a failed lookup is how a held
+        -- player quietly stops being held while still being told they are.
+        if valid(pawn) then
             local at = position_of(pawn)
             if at and distance(at, anchor) > FREEZE_TOLERANCE then
                 place_actor(pawn, anchor)
@@ -1896,9 +1897,7 @@ local function enforce_held()
     for userid in pairs(held.immortal) do
         local state = find_player_state(userid)
         local _, pawn = pawn_of(state)
-        if not valid(pawn) then
-            held.immortal[userid] = nil
-        else
+        if valid(pawn) then
             local hp = stat_value(pawn, "GetHP")
             local max = stat_value(pawn, "GetMaxHP")
             if hp and max and max > 0 and hp < max then
@@ -1926,10 +1925,17 @@ local function enforce_held()
                 -- threshold only decides how far it gets to fall first.
                 local low = (sp == nil) or (sp_max and sp_max > 0 and sp < sp_max)
                 if low then
-                    if not pcall(function() component:ResetSP() end) then
-                        pcall(function() component:SetSP(sp_max) end)
-                    end
+                    local reset = pcall(function() component:ResetSP() end)
+                    if not reset then pcall(function() component:SetSP(sp_max) end) end
                     pcall(function() component.bIsInfinitySP = true end)
+
+                    local now = os.time()
+                    if now - (held.said[userid] or 0) >= 60 then
+                        held.said[userid] = now
+                        info(string.format("holding %s: stamina %s/%s refilled (%s)",
+                            userid:sub(1, 8), tostring(sp), tostring(sp_max),
+                            reset and "ResetSP" or "SetSP"))
+                    end
                 end
             end
         end
