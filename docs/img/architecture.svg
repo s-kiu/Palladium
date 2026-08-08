@@ -1,0 +1,96 @@
+<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Architecture: players reach the game directly, admins and apps go through the panel, Palladium bridges the game to both</title>
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#64748B"/>
+    </marker>
+    <marker id="ahs" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#FFB74D"/>
+    </marker>
+    <marker id="ahsr" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto">
+      <path d="M10,0 L0,4 L10,8 Z" fill="#FFB74D"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="900" fill="#1A2028"/>
+
+  <!-- actors -->
+  <g stroke="#4FC3F7" stroke-width="3" fill="none">
+    <rect x="100" y="160" width="120" height="70" rx="24"/>
+    <circle cx="135" cy="195" r="6" fill="#4FC3F7"/>
+    <circle cx="185" cy="195" r="6" fill="#4FC3F7"/>
+  </g>
+  <text x="160" y="270" text-anchor="middle" fill="#C7D0DA" font-size="22">Players</text>
+
+  <g stroke="#4FC3F7" stroke-width="3" fill="none">
+    <rect x="95" y="560" width="130" height="90" rx="10"/>
+    <line x1="95" y1="588" x2="225" y2="588"/>
+    <circle cx="113" cy="574" r="4" fill="#4FC3F7"/>
+    <circle cx="128" cy="574" r="4" fill="#4FC3F7"/>
+    <circle cx="143" cy="574" r="4" fill="#4FC3F7"/>
+  </g>
+  <text x="160" y="690" text-anchor="middle" fill="#C7D0DA" font-size="22">Admin</text>
+
+  <g stroke="#4FC3F7" stroke-width="3" fill="none">
+    <rect x="95" y="720" width="130" height="90" rx="10"/>
+  </g>
+  <text x="120" y="775" fill="#4FC3F7" font-size="28" font-family="ui-monospace, Menlo, Consolas, monospace">&gt;_</text>
+  <text x="160" y="850" text-anchor="middle" fill="#C7D0DA" font-size="22">Your apps &amp; bots</text>
+
+  <!-- Pal-Up container -->
+  <rect x="340" y="50" width="1180" height="740" rx="16" fill="none" stroke="#4FC3F7" stroke-width="2.5"/>
+  <text x="930" y="105" text-anchor="middle" fill="#4FC3F7" font-size="30" font-weight="600">Pal-Up — Docker</text>
+
+  <!-- game server -->
+  <rect x="390" y="130" width="520" height="440" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="650" y="172" text-anchor="middle" fill="#C7D0DA" font-size="24">Palworld Dedicated Server</text>
+  <rect x="420" y="195" width="460" height="55" rx="8" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="650" y="230" text-anchor="middle" fill="#8CA0B3" font-size="20">UE4SS mod loader</text>
+
+  <rect x="420" y="275" width="460" height="205" rx="10" fill="#232B36" stroke="#FFB74D" stroke-width="2.5"/>
+  <text x="650" y="318" text-anchor="middle" fill="#FFB74D" font-size="24" font-weight="600">Palladium — modding framework</text>
+  <g fill="#232B36" stroke="#FFB74D" stroke-width="1.5" opacity="0.85">
+    <rect x="440" y="350" width="130" height="100" rx="8"/>
+    <rect x="585" y="350" width="130" height="100" rx="8"/>
+    <rect x="730" y="350" width="130" height="100" rx="8"/>
+  </g>
+  <g fill="#FFB74D" font-size="19" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace" opacity="0.9">
+    <text x="505" y="406">mod.lua</text>
+    <text x="650" y="406">mod.lua</text>
+    <text x="795" y="406">mod.lua</text>
+  </g>
+
+  <!-- panel -->
+  <rect x="1040" y="130" width="430" height="560" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="1255" y="172" text-anchor="middle" fill="#C7D0DA" font-size="24">Web Panel + HTTP API</text>
+  <g fill="#232B36" stroke="#3A4654" stroke-width="1.5">
+    <rect x="1085" y="215" width="340" height="65" rx="10"/>
+    <rect x="1085" y="315" width="340" height="65" rx="10"/>
+    <rect x="1085" y="415" width="340" height="65" rx="10"/>
+    <rect x="1085" y="515" width="340" height="65" rx="10"/>
+  </g>
+  <g fill="#C7D0DA" font-size="20" text-anchor="middle">
+    <text x="1255" y="255">backups &amp; updates</text>
+    <text x="1255" y="355">players, kick / ban</text>
+    <text x="1255" y="455">permissions editor</text>
+    <text x="1255" y="555">a form for every capability</text>
+  </g>
+
+  <!-- events & actions -->
+  <line x1="925" y1="410" x2="1030" y2="410" stroke="#FFB74D" stroke-width="3" marker-end="url(#ahs)" marker-start="url(#ahsr)"/>
+  <text x="978" y="385" text-anchor="middle" fill="#FFB74D" font-size="19">events &amp;</text>
+  <text x="978" y="445" text-anchor="middle" fill="#FFB74D" font-size="19">actions</text>
+
+  <!-- actor arrows -->
+  <line x1="230" y1="195" x2="382" y2="195" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="300" y="178" text-anchor="middle" fill="#8CA0B3" font-size="19">8211/udp</text>
+
+  <line x1="235" y1="605" x2="1032" y2="605" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="630" y="588" text-anchor="middle" fill="#8CA0B3" font-size="19">browser</text>
+
+  <line x1="235" y1="765" x2="1032" y2="668" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="630" y="712" text-anchor="middle" fill="#8CA0B3" font-size="19">HTTP + token</text>
+
+  <!-- standalone card -->
+  <rect x="1030" y="815" width="490" height="60" rx="10" fill="none" stroke="#FFB74D" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="1275" y="853" text-anchor="middle" fill="#FFB74D" font-size="21">Palladium alone — drop into any UE4SS server</text>
+</svg>
