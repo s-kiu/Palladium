@@ -1,14 +1,11 @@
 # Palladium
 
-**Server-side Palworld modding on Linux — a framework, a server that ships it, and one contract between them.**
+**A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
-Two products, one project. Pick your door:
+- **[Palladium](mods/Palladium)** is the framework: one UE4SS Lua mod, on any UE4SS dedicated server. A mod built on it is a single `mod.lua` — permissions, settings, storage, chat commands and in-game events all handled for it. [Download from releases](https://github.com/s-kiu/palladium/releases).
+- **pal-up** — *Palladium, up* — is the server: a modded Palworld dedicated server for Linux — which the official mod system doesn't support — in one `docker compose up`, with Palladium preinstalled, drop-in mod folders, a web panel, backups and safe updates. Clone this repo.
 
-- **"I want a modded Palworld server."** → **pal-up** — *Palladium, up.* Palworld's official mod system supports **Windows** dedicated servers only, so pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container: mod loading, folder routing, config generation, safe updates, backups and a web panel, driven by three drop-in folders and one `.env` file. Clone this repo, `docker compose up`, done — Palladium comes installed, and you never have to think about what a mod framework is.
-- **"I have a server — I want to build on it."** → **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod, [released standalone](https://github.com/s-kiu/palladium/releases) for any UE4SS Palworld server. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns, played hours, the wall clock) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. No Docker, no panel, no pal-up required.
-- **"Both."** → You are who this project is really for. Everything the framework publishes, the panel renders; everything the panel can do, a mod or an external program can do too — a Discord relay, a shop bot, an event-driven mod — because both ends speak [one generated contract](docs/bridge-reference.md), so a mod, a chat command and an HTTP call always agree.
-
-The third door is more than the sum of the first two — what the combination unlocks:
+Used together they become more than the sum — the framework's file protocol plus the server's panel:
 
 | **Palladium** brings | **pal-up** brings | together that becomes |
 |---|---|---|
