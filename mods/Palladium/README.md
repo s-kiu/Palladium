@@ -1,6 +1,6 @@
 # Palladium
 
-A modding framework for **Palworld Linux dedicated servers**, as one UE4SS Lua
+A modding framework for **Palworld dedicated servers**, as one UE4SS Lua
 mod. It does two things:
 
 - **Runs other mods.** Drop a folder with a `mod.lua` beside it and Palladium
@@ -41,8 +41,9 @@ return {
 
 The manifest is a Lua table because there is no JSON parser in this runtime —
 the call that loads the file is the call that reads the manifest. `pal` carries
-`call`, `give`, `message`, `heal`, `can`, `tag`, `set_tag`, `delete_tag`,
-`settings` and `log`; `call` reaches every capability the mod declares below.
+`call`, `give`, `message`, `announce`, `heal`, `can`, `tag`, `set_tag`,
+`delete_tag`, `data`, `settings` and `log`; `call` reaches every capability
+the mod declares below, and `data` opens any collection the mod declares.
 
 Palladium loads the names in `Mods/Palladium/mods.list`, one per line, and
 falls back to a directory listing when that file is absent. Each mod gets its
@@ -57,6 +58,12 @@ an operator edits, `<Mod>/<mod>.data` for its records. Palladium's own live
 beside it — `Palladium/permissions.config` and `Palladium/bridge.data`. Both
 formats are plain text: INI for config, tab-separated records for data, because
 this runtime has no JSON parser and no database.
+
+Settings ride the same folder. A mod may ship a commented
+`settings.example.config` beside its code; on the first load with no live
+`settings.config`, the example becomes it. From then on the operator's file
+overrides the manifest defaults key by key, edits are picked up within seconds
+without a restart, and updating the mod never touches it.
 
 Permissions are one file rather than one per mod: a group spans every mod, so
 splitting membership across them would leave no answer for which copy wins.
@@ -124,6 +131,10 @@ store that cannot persist looks perfectly healthy until the next restart.
 The mod announces itself on load with a `ready` event and reports every hook it
 registers as a `hook` event, so a consumer can tell what is live without
 hardcoding a list.
+
+Write-scope actions also land in `<root>/logs/bridge-audit.log` — one line per
+call with who asked and from where (chat or a mod; Pal-Up's daemon writes the
+same trail for HTTP), so an operator can answer "who spawned that" later.
 
 `player.leave` has no hook behind it — nothing native fires on disconnect, and
 a Blueprint target faults this build. The agent watches who is still in the
