@@ -455,7 +455,11 @@ types follow:
 end
 ```
 
-**Script mods.** `packages/mod-sdk/index.d.ts` types the client and
+**Script mods.** A root [`jsconfig.json`](../jsconfig.json) maps
+`@pal-up/mod-sdk` to the types, so a mod written anywhere in this repository
+completes with no `npm install` and no build step — VS Code, VSCodium and
+anything else running the TypeScript language server pick it up from the
+JSDoc. `packages/mod-sdk/index.d.ts` types the client and
 `generated/capabilities.d.ts` types every capability, so TypeScript checks the
 call, the parameters and the shape of what comes back:
 
