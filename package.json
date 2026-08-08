@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/s-kiu/pal-up.git"
+    "url": "https://github.com/s-kiu/palladium.git"
   },
   "engines": {
     "node": ">=22"

@@ -11,7 +11,7 @@ mod. It does two things:
   relays and web panels a way in and out. UE4SS Lua has no sockets; files on
   disk are the only transport available.
 
-Nothing outside the game is required for either. [pal-up](https://github.com/s-kiu/pal-up)
+Nothing outside the game is required for either. [pal-up](https://github.com/s-kiu/palladium)
 adds a web panel on top — permissions editing, item and pal pickers, history —
 but a server that just wants mods needs this folder and nothing else.
 
@@ -73,12 +73,12 @@ That is what makes `pal.can` and `pal.tag` work on a server running nothing but
 this mod: permissions resolve as overrides, then groups by weight, then the
 default group, then the node's registered default.
 
-Full guide: [docs/mods.md](https://github.com/s-kiu/pal-up/blob/main/docs/mods.md).
+Full guide: [docs/mods.md](https://github.com/s-kiu/palladium/blob/main/docs/mods.md).
 
 ## Install
 
 Drop the `Palladium` folder into your server's UE4SS `Mods` directory (on
-[pal-up](https://github.com/s-kiu/pal-up), into `./mods`) and restart the server.
+[pal-up](https://github.com/s-kiu/palladium), into `./mods`) and restart the server.
 `server/UE4SS.log` will show each hook registering.
 
 Nothing else is required: the mod has no configuration and no dependencies
@@ -158,4 +158,4 @@ plain server, truncate them in your start script.
   ids are validated before they reach the inventory call.
 
 Full contract, the HTTP API pal-up layers on top, and runnable examples:
-[docs/bridge.md](https://github.com/s-kiu/pal-up/blob/main/docs/bridge.md).
+[docs/bridge.md](https://github.com/s-kiu/palladium/blob/main/docs/bridge.md).

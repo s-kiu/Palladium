@@ -1,13 +1,12 @@
-# pal-up + Palladium
+# Palladium
 
-**A modded Palworld dedicated server for Linux in one `docker compose up` — and a modding API for building on top of it.**
+**Server-side Palworld modding on Linux — a framework, a server that ships it, and one contract between them.**
 
-Two halves of one project:
+Two products, one project. Pick your door:
 
-- **pal-up** — the server. Palworld's official mod system supports **Windows** dedicated servers only, so pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container: mod loading, folder routing, config generation, safe updates, backups and a web panel, driven by three drop-in folders and one `.env` file.
-- **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns, played hours, the wall clock) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. It ships inside pal-up with a full GUI, and is [released standalone](https://github.com/s-kiu/pal-up/releases) for servers not running pal-up.
-
-If you just want a Palworld server that runs mods, use pal-up. If you want to *build* something — a Discord relay, a shop bot, an event-driven mod — that is what Palladium is for, and the panel gives you a UI for all of it before you write a line of code.
+- **"I want a modded Palworld server."** → **pal-up** — *Palladium, up.* Palworld's official mod system supports **Windows** dedicated servers only, so pal-up brings server-side modding to Linux by integrating the native [UE4SS Linux port](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) into a batteries-included container: mod loading, folder routing, config generation, safe updates, backups and a web panel, driven by three drop-in folders and one `.env` file. Clone this repo, `docker compose up`, done — Palladium comes installed, and you never have to think about what a mod framework is.
+- **"I have a server — I want to build on it."** → **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod, [released standalone](https://github.com/s-kiu/palladium/releases) for any UE4SS Palworld server. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns, played hours, the wall clock) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. No Docker, no panel, no pal-up required.
+- **"Both."** → You are who this project is really for. Everything the framework publishes, the panel renders; everything the panel can do, a mod or an external program can do too — a Discord relay, a shop bot, an event-driven mod — because both ends speak [one generated contract](docs/bridge-reference.md), so a mod, a chat command and an HTTP call always agree.
 
 > [!NOTE]
 > Mod loading currently ships via the community-maintained
@@ -35,7 +34,7 @@ If you just want a Palworld server that runs mods, use pal-up. If you want to *b
 Requirements: Linux x86_64, Docker with the compose plugin, ~25 GB free disk, 16 GB RAM recommended.
 
 ```bash
-git clone https://github.com/s-kiu/pal-up.git && cd pal-up
+git clone https://github.com/s-kiu/palladium.git && cd palladium
 cp .env.example .env
 # edit .env — at minimum set ADMIN_PASSWORD
 
@@ -274,7 +273,7 @@ docker compose start palworld
 ## Repository layout
 
 ```
-pal-up/
+palladium/
 ├── compose.yaml              # the one command
 ├── .env.example              # all server & container settings
 ├── mods/                     # ← drop mod folders here
@@ -298,7 +297,7 @@ pal-up/
 
 The game install, world saves, and server state live in the `palworld-data`
 Docker named volume, not in this folder — inspect it with
-`docker volume inspect pal-up_palworld-data`.
+`docker volume inspect palladium_palworld-data`.
 
 The image is fully documented in [packages/server-image/README.md](packages/server-image/README.md), including the complete environment-variable reference.
 

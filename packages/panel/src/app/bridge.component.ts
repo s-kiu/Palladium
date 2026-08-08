@@ -311,9 +311,9 @@ interface PickOption {
         <p class="muted small-note">
           <code>GET /api/bridge/schema</code> lists every capability with parameters and live
           state. Full contract:
-          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
-          <a href="https://github.com/s-kiu/pal-up/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
-          <a href="https://github.com/s-kiu/pal-up/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
+          <a href="https://github.com/s-kiu/palladium/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
+          <a href="https://github.com/s-kiu/palladium/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
+          <a href="https://github.com/s-kiu/palladium/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
         </p>
       </details>
     </div>

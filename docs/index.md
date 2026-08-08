@@ -1,17 +1,24 @@
 # Palladium & pal-up
 
-**A modded Palworld dedicated server for Linux in one `docker compose up` —
-and a modding API for building on top of it.**
+**Server-side Palworld modding on Linux — a framework, a server that ships
+it, and one contract between them.**
 
-Two halves of one project:
+Two products, one project. Pick your door:
 
-- **pal-up** — the server. Palworld's official mod system supports Windows
-  dedicated servers only; pal-up brings server-side modding to Linux by
-  integrating the native UE4SS port into a batteries-included container.
-- **Palladium** — the modding framework, as one UE4SS Lua mod. A mod is one
-  `mod.lua`: it declares its permissions, settings, data and chat commands,
-  and Palladium does the rest — inside the game, with the same events and
-  actions published to disk and over HTTP for everything outside it.
+- **"I want a modded server."** → **pal-up** — *Palladium, up.* Palworld's
+  official mod system supports Windows dedicated servers only; pal-up brings
+  server-side modding to Linux by integrating the native UE4SS port into a
+  batteries-included container. Clone the repo, `docker compose up`, done —
+  Palladium comes installed.
+- **"I have a server — I want to build on it."** → **Palladium** — the
+  modding framework, as one UE4SS Lua mod, released standalone for any UE4SS
+  Palworld server. A mod is one `mod.lua`: it declares its permissions,
+  settings, data and chat commands, and Palladium does the rest — inside the
+  game, with the same events and actions published to disk and over HTTP for
+  everything outside it.
+- **"Both."** → Then everything connects: what the framework publishes, the
+  panel renders, and what the panel can do, a mod or an external program can
+  do too — both ends speak one generated contract.
 
 ## Where to start
 
@@ -28,16 +35,16 @@ Two halves of one project:
 
 Read them before writing your own — each is one file:
 
-- [GoldStreak](https://github.com/s-kiu/pal-up/tree/main/mods/GoldStreak) —
+- [GoldStreak](https://github.com/s-kiu/palladium/tree/main/mods/GoldStreak) —
   gold on a respawn streak
-- [WelcomeKit](https://github.com/s-kiu/pal-up/tree/main/mods/WelcomeKit) —
+- [WelcomeKit](https://github.com/s-kiu/palladium/tree/main/mods/WelcomeKit) —
   a starter kit on a first-ever join, delivery-verified
-- [TimedRewards](https://github.com/s-kiu/pal-up/tree/main/mods/TimedRewards)
+- [TimedRewards](https://github.com/s-kiu/palladium/tree/main/mods/TimedRewards)
   — rewards at the playtime hour marks the operator defines
-- [Leaderboards](https://github.com/s-kiu/pal-up/tree/main/mods/Leaderboards)
+- [Leaderboards](https://github.com/s-kiu/palladium/tree/main/mods/Leaderboards)
   — who leads the server, refreshed on the clock's cadence
 
 ## Downloads
 
 One always-current release per mod:
-[github.com/s-kiu/pal-up/releases](https://github.com/s-kiu/pal-up/releases)
+[github.com/s-kiu/palladium/releases](https://github.com/s-kiu/palladium/releases)
