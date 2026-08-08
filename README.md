@@ -2,6 +2,8 @@
 
 **A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
+![Architecture: players reach the Palworld dedicated server directly, admins and external apps go through the web panel, and Palladium — running inside the game via UE4SS — exchanges events and actions with the panel. Palladium also drops into any UE4SS server on its own.](docs/img/architecture.png)
+
 - **[Palladium](mods/Palladium)** is the framework: one UE4SS Lua mod, on any UE4SS dedicated server. A mod built on it is a single `mod.lua` — permissions, settings, storage, chat commands and in-game events all handled for it. [Download from releases](https://github.com/s-kiu/palladium/releases).
 - **Pal-Up** — *Palladium, up* — is the server: a modded Palworld dedicated server for Linux — which the official mod system doesn't support — in one `docker compose up`, with Palladium preinstalled, drop-in mod folders, a web panel, backups and safe updates. Clone this repo.
 
