@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.22.0"
+local VERSION = "4.22.1"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -45,6 +45,12 @@ local MAX_TEXT = 512
 local HOOK_RETRY_MS = 2000
 local HOOK_RETRY_LIMIT = 15
 local ACTION_POLL_MS = 500
+
+-- Players the agent is holding: frozen ones anchored to a point, immortal ones
+-- topped back up. Declared here rather than beside the tick that reads it,
+-- because the capabilities that write it are defined further up this file —
+-- a local declared after its first use is a global lookup, and a nil one.
+local held = { frozen = {}, immortal = {} }
 local JOIN_DEDUP_SECONDS = 30
 local NPC_EVENTS_PER_SECOND = 20
 
@@ -1825,8 +1831,6 @@ end
 -- own tick. It is enforcement rather than prevention, and the difference shows:
 -- a frozen player can take a step before being returned, and a hit big enough
 -- to kill between two ticks still kills.
-local held = { frozen = {}, immortal = {} }
-
 local FREEZE_TOLERANCE = 150   -- a step, not a jitter
 local FREEZE_FLAG = "Palladium_Freeze"
 
