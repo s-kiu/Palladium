@@ -1,4 +1,4 @@
-# Palladium
+![Palladium — server-side Palworld modding: a mod is one file](docs/img/header.svg)
 
 [![CI](https://github.com/s-kiu/Palladium/actions/workflows/ci.yaml/badge.svg)](https://github.com/s-kiu/Palladium/actions/workflows/ci.yaml)
 [![docs](https://github.com/s-kiu/Palladium/actions/workflows/docs.yaml/badge.svg)](https://s-kiu.github.io/Palladium/)

@@ -41,22 +41,22 @@
   <text x="930" y="105" text-anchor="middle" fill="#4FC3F7" font-size="30" font-weight="600">Pal-Up — Docker</text>
 
   <!-- game server -->
-  <rect x="390" y="130" width="520" height="440" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
-  <text x="650" y="172" text-anchor="middle" fill="#C7D0DA" font-size="24">Palworld Dedicated Server</text>
-  <rect x="420" y="195" width="460" height="55" rx="8" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
-  <text x="650" y="230" text-anchor="middle" fill="#8CA0B3" font-size="20">UE4SS mod loader</text>
+  <rect x="390" y="130" width="490" height="440" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="635" y="172" text-anchor="middle" fill="#C7D0DA" font-size="24">Palworld Dedicated Server</text>
+  <rect x="420" y="195" width="430" height="55" rx="8" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="635" y="230" text-anchor="middle" fill="#8CA0B3" font-size="20">UE4SS mod loader</text>
 
-  <rect x="420" y="275" width="460" height="205" rx="10" fill="#232B36" stroke="#FFB74D" stroke-width="2.5"/>
-  <text x="650" y="318" text-anchor="middle" fill="#FFB74D" font-size="24" font-weight="600">Palladium — modding framework</text>
+  <rect x="420" y="275" width="430" height="205" rx="10" fill="#232B36" stroke="#FFB74D" stroke-width="2.5"/>
+  <text x="635" y="318" text-anchor="middle" fill="#FFB74D" font-size="24" font-weight="600">Palladium — modding framework</text>
   <g fill="#232B36" stroke="#FFB74D" stroke-width="1.5" opacity="0.85">
-    <rect x="440" y="350" width="130" height="100" rx="8"/>
-    <rect x="585" y="350" width="130" height="100" rx="8"/>
-    <rect x="730" y="350" width="130" height="100" rx="8"/>
+    <rect x="435" y="350" width="125" height="100" rx="8"/>
+    <rect x="572" y="350" width="125" height="100" rx="8"/>
+    <rect x="709" y="350" width="125" height="100" rx="8"/>
   </g>
   <g fill="#FFB74D" font-size="19" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace" opacity="0.9">
-    <text x="505" y="406">mod.lua</text>
-    <text x="650" y="406">mod.lua</text>
-    <text x="795" y="406">mod.lua</text>
+    <text x="497" y="406">mod.lua</text>
+    <text x="634" y="406">mod.lua</text>
+    <text x="771" y="406">mod.lua</text>
   </g>
 
   <!-- panel -->
@@ -76,21 +76,20 @@
   </g>
 
   <!-- events & actions -->
-  <line x1="925" y1="410" x2="1030" y2="410" stroke="#FFB74D" stroke-width="3" marker-end="url(#ahs)" marker-start="url(#ahsr)"/>
-  <text x="978" y="385" text-anchor="middle" fill="#FFB74D" font-size="19">events &amp;</text>
-  <text x="978" y="445" text-anchor="middle" fill="#FFB74D" font-size="19">actions</text>
+  <line x1="890" y1="410" x2="1030" y2="410" stroke="#FFB74D" stroke-width="3" marker-end="url(#ahs)" marker-start="url(#ahsr)"/>
+  <text x="960" y="386" text-anchor="middle" fill="#FFB74D" font-size="19">events &amp; actions</text>
 
-  <!-- actor arrows -->
+  <!-- actor arrows: straight, orthogonal -->
   <line x1="230" y1="195" x2="382" y2="195" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
-  <text x="300" y="178" text-anchor="middle" fill="#8CA0B3" font-size="19">8211/udp</text>
+  <text x="300" y="176" text-anchor="middle" fill="#8CA0B3" font-size="19">8211/udp</text>
 
   <line x1="235" y1="605" x2="1032" y2="605" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
-  <text x="630" y="588" text-anchor="middle" fill="#8CA0B3" font-size="19">browser</text>
+  <text x="630" y="586" text-anchor="middle" fill="#8CA0B3" font-size="19">browser</text>
 
-  <line x1="235" y1="765" x2="1032" y2="668" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
-  <text x="630" y="712" text-anchor="middle" fill="#8CA0B3" font-size="19">HTTP + token</text>
+  <polyline points="235,765 1255,765 1255,698" fill="none" stroke="#64748B" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="630" y="746" text-anchor="middle" fill="#8CA0B3" font-size="19">HTTP + token</text>
 
   <!-- standalone card -->
-  <rect x="1030" y="815" width="490" height="60" rx="10" fill="none" stroke="#FFB74D" stroke-width="2" stroke-dasharray="8 6"/>
-  <text x="1275" y="853" text-anchor="middle" fill="#FFB74D" font-size="21">Palladium alone — drop into any UE4SS server</text>
+  <rect x="340" y="815" width="490" height="60" rx="10" fill="none" stroke="#FFB74D" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="585" y="853" text-anchor="middle" fill="#FFB74D" font-size="21">Palladium alone — drop into any UE4SS server</text>
 </svg>
