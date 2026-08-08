@@ -303,6 +303,7 @@
 ---@field set_tag fun(userid: string, key: string, value: any): boolean
 ---@field delete_tag fun(userid: string, key: string): boolean
 ---@field data fun(collection: string): table
+---@field player_by_name fun(name: string): string|nil
 
 -- Event types this build publishes:
 --   bridge.ready — agent: string, version: string, envelope: integer

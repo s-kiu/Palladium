@@ -515,6 +515,15 @@ local function api_for(name, mod)
 
     -- The mod's own declared collections, by the short name it used. Only its
     -- own: the namespace rule that keeps permissions honest applies here too.
+    -- The online player of that name, or nil. Chat already resolves @Name this
+    -- way; a mod that takes a name from an operator needs the same answer, and
+    -- without this it can only build its own registry from events it happened
+    -- to see.
+    function pal.player_by_name(name)
+        if not host.player_by_name then return nil end
+        return host.player_by_name(tostring(name or ""))
+    end
+
     local function open_collection(collection)
         if not host.collections then return nil end
         return host.collections.open(name:lower() .. "." .. tostring(collection):lower())

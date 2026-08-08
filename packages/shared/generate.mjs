@@ -315,6 +315,7 @@ luadef += `---@field tag fun(userid: string, key: string): string|nil\n`;
 luadef += `---@field set_tag fun(userid: string, key: string, value: any): boolean\n`;
 luadef += `---@field delete_tag fun(userid: string, key: string): boolean\n`;
 luadef += `---@field data fun(collection: string): table\n`;
+luadef += `---@field player_by_name fun(name: string): string|nil\n`;
 luadef += `\n-- Event types this build publishes:\n`;
 for (const c of eventCaps) {
   const fields = Object.entries(c.data ?? {}).map(([n, f]) => `${n}: ${luaType(f.type)}`).join(', ');
