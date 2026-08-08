@@ -44,6 +44,24 @@ What each delivers — and what only the combination can:
 
 ## Features
 
+### The framework — Palladium, with or without Pal-Up
+
+Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
+
+- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the six mods shipped beside it ([WelcomeKit](mods/WelcomeKit), [Leaderboards](mods/Leaderboards), [TimedRewards](mods/TimedRewards), [DailyBonus](mods/DailyBonus), [GoldStreak](mods/GoldStreak), [MimogRide](mods/MimogRide)) are each that one file, doubling as the tutorial.
+
+- **The game surface as capabilities** — over forty actions behind one call: give items, heal, teleport, spawn pals up to bosses, read and write stats and status points, tags, saved locations, announcements. Every parameter is validated against a generated manifest, and every action is also a chat command — and, on Pal-Up, a panel form.
+
+- **Events for everything that happens** — joins arriving with first-ever and join counts already answered, chat, deaths and respawns told apart, leaves (watched for — the engine never announces them), pal spawns, item use, each completed hour of playtime, and the wall clock by minute and day, so *"every Friday at 18:00"* is a field comparison in a handler, not a scheduler.
+
+- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
+
+- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
+
+- **Storage an operator can open** — mods declare collections instead of inventing files: `data` records ride an append-only, crash-safe log; `config` records are INI files meant for hand-editing, re-read within seconds of a change, mistakes reported line by line with a did-you-mean. A mod's settings overlay the author's defaults the same live way — tuning a reward needs no restart.
+
+- **A contract anything local can speak** — every event goes to disk as a JSON line, every action comes back as one tab-separated line; a shell script can welcome players. It is the same contract the Pal-Up panel drives ([docs/bridge.md](docs/bridge.md)) — nothing the panel does is closed to your own tooling.
+
 ### The server — Pal-Up, this repo
 
 Everything in this group **needs Pal-Up**: it is the server and panel built around the framework.
@@ -74,14 +92,6 @@ The Pal-Up panel, page by page — click any image for full size. **Standalone P
     <td align="center"><a href="docs/img/admin.png"><img src="docs/img/admin.png" alt="Server actions, API tokens, chat and the live log" width="215"></a><br><sub>Admin</sub></td>
   </tr>
 </table>
-### The framework — Palladium, with or without Pal-Up
-
-Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
-
-- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
-
-- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
-
 
 ## Quickstart
 
