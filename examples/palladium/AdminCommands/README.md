@@ -1,6 +1,6 @@
 # AdminCommands
 
-Moderator commands in chat: teleport, give, slay, god, freeze and mute. Every one is
+Moderator commands in chat: teleport, give, slay, god, freeze, fly and mute. Every one is
 gated by its own permission node, **all denied by default**, so installing this
 mod hands nobody anything until you say so.
 
@@ -38,7 +38,7 @@ mods/AdminCommands/
 ├── settings.config              yours — the slay announcement
 ├── permissions.example.config   shipped and commented
 ├── permissions.config           yours — the seven nodes and their defaults
-├── admincommands.data           who is muted, who is godded
+├── admincommands.data           who is muted, godded, frozen or flying
 └── (nothing else)
 ```
 
@@ -54,9 +54,16 @@ nobody online carries is refused rather than guessed at.
 | `!tp @Name @Other` | Sends the first player to the second |
 | `!give @Name <item> [count]` | Hands over items. Ids are the game's own — gold is `Money`, bread is `Pan`. Answers only once the inventory agrees |
 | `!slay @Name` | Kills them outright |
-| `!god @Name` / `!god @Name off` | Makes them unkillable, and puts them back |
-| `!freeze @Name` / `!freeze @Name off` | Holds them where they stand. `@me` works — it stops movement, not chat |
-| `!mute @Name` / `!mute @Name off` | Ignores their chat **commands** |
+| `!god @Name` | Makes them unkillable. **Toggles** — run it again to undo |
+| `!freeze @Name` | Holds them where they stand. Toggles. `@me` works — it stops movement, not chat |
+| `!fly @Name` | Toggles flight. **Needs the [client mod](../../client/AdminControlsClient) installed on that player's game**, and is unverified even then |
+| `!mute @Name` | Ignores their chat **commands**. Toggles |
+
+Every switch above toggles: `!god @Name` turns it on, `!god @Name` again turns
+it off. An explicit `on` or `off` still wins — `!god @Name off` — because a
+script or a second admin should be able to say what it means rather than flip
+whatever it finds. The state lives in this mod's own collections, so it
+survives a restart and two admins see the same answer.
 
 ## God mode, honestly
 
@@ -75,10 +82,16 @@ health value it is told. So god mode is three things at once:
 
 - **DefenseUp** raised to a million, so almost nothing gets through in the
   first place. This is what makes it feel like immunity rather than first aid.
-- **Health, stomach and stamina refilled** on the agent's own tick, twice a
-  second, as the backstop for whatever does get through.
+- **Health and stomach refilled** on the agent's own tick, twice a second, as
+  the backstop for whatever does get through.
 - **Their real defence remembered**, and handed back by `!god @Name off`, so
   nobody is left permanently tougher than the game made them.
+
+**Stamina is deliberately not touched.** The server's copy can be refilled and
+verified full while the player's bar empties in front of them, because that bar
+is drawn from the client's own simulation. Writing it changed nothing the
+player could see and interfered with their regeneration, so the only correct
+amount of it is none.
 
 It is enforcement rather than prevention, and the difference is visible: a hit
 big enough to kill between two ticks still kills. Freeze works the same way and
@@ -87,19 +100,24 @@ prevented from leaving.
 
 ## What this mod does not do, and why
 
-Three of the things an admin toolkit usually has cannot be done from inside the
+Two of the things an admin toolkit usually has cannot be done from inside the
 game on this build. They are left out rather than stubbed, because a command
 that quietly does nothing is worse than one that does not exist.
 
 | Wanted | Why not |
 |---|---|
-| **fly** | Flight is a mode the *client* enters. `ClientCheatFly` is the right call and it reaches your machine — but it runs `CheatManager->Fly()` there, and a normal client has no cheat manager, so it arrives and does nothing. Palworld's own `Debug_CheatCommand_ToServer` was tried too. Everything we can reach is server-side; flight is not |
 | **mute** (real) | Palladium *observes* chat, it cannot cancel it: a message is already on its way to everyone by the time a mod sees it. `!mute` stops the player using commands, which is the part that is real — their words still reach the room |
 | **kick / ban** | These live in the game's REST API. The panel reaches it; a mod running inside the game has no network, so it cannot. Kick and ban from the panel's **Players** page, or from `pal-up palapi` |
 
-If a future game build exposes any of them, the missing piece is a capability
-in Palladium rather than a rewrite here — the mod would gain a command and
-nothing else would change.
+**Flight is a third case, and a different one.** It cannot be done from the
+server either — flight is a mode the player's own game enters — but it *can* be
+done with a mod on their machine, which is what
+[AdminControlsClient](../../client/AdminControlsClient) is for. `!fly` sends the
+instruction whether or not that mod is installed; without it, nothing happens.
+
+If a future game build exposes any of the rest, the missing piece is a
+capability in Palladium rather than a rewrite here — the mod would gain a
+command and nothing else would change.
 
 ## Notes
 

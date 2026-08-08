@@ -49,6 +49,26 @@ local function is_muted(pal, id)
     return pal.data("muted"):get(id) ~= nil
 end
 
+-- Every switch here is a toggle: !god turns it on, !god again turns it off.
+-- An explicit `on` or `off` still wins, because a script or a second admin
+-- should be able to say what it means rather than flip whatever it finds.
+--
+-- The mod's own collections are what remember the state, so the answer
+-- survives a restart and two admins see the same one.
+local function wanted(parts, currently_on)
+    local said = (parts[1] or ""):lower()
+    if said == "off" or said == "false" then return false, true end
+    if said == "on" or said == "true" then return true, true end
+    return not currently_on, false
+end
+
+-- @Name off → target token and the rest, whichever order they were written in.
+local function target_and_rest(parts)
+    local token = ""
+    if parts[1] and parts[1]:sub(1, 1) == "@" then token = table.remove(parts, 1) end
+    return token, parts
+end
+
 return {
     name = "AdminCommands",
     version = "1.0.0",
@@ -79,6 +99,14 @@ return {
         -- Immortality is a flag on the character, not something this mod
         -- holds, but who has it is worth surviving a restart so an operator
         -- can see who is still unkillable.
+        frozen = {
+            description = "players currently held still, and when",
+            fields = { name = "string", at = "int" },
+        },
+        flying = {
+            description = "players currently allowed to fly, and when",
+            fields = { name = "string", at = "int" },
+        },
         godded = {
             description = "players currently made immortal, and when",
             fields = { name = "string", was_max_hp = "string", at = "int" },
@@ -184,31 +212,24 @@ return {
         -- is derived from level, so a raised maximum does not stay raised.
         ["!god"] = {
             node = "admincommands.god",
-            help = "!god @Name [off] — make them unkillable, or mortal again.",
+            help = "!god @Name — toggle. !god @Name off to be explicit.",
             run = function(event, args, pal)
                 local caller = event.subject.id
                 if is_muted(pal, caller) then return end
-                local parts = words(args)
-                local target_token = ""
-                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
-                local off = (parts[1] or ""):lower() == "off"
-
+                local target_token, parts = target_and_rest(words(args))
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
 
-                pal.player.set_immortal(target, { on = not off }, function(ok, err)
-                    if not ok then
-                        return say(pal, caller, "Could not change that: " .. tostring(err))
-                    end
-                    -- Remembered so !godded can answer, and so an operator can
-                    -- see who is still immortal after a restart.
-                    local ledger = pal.data("godded")
-                    if off then ledger:delete(target)
-                    else ledger:set(target, { name = "", was_max_hp = "", at = os.time() }) end
+                local ledger = pal.data("godded")
+                local on = wanted(parts, ledger:get(target) ~= nil)
 
-                    say(pal, caller, off and "God mode off." or "God mode on.")
+                pal.player.set_immortal(target, { on = on }, function(ok, err)
+                    if not ok then return say(pal, caller, "Could not change that: " .. tostring(err)) end
+                    if on then ledger:set(target, { name = "", was_max_hp = "", at = os.time() })
+                    else ledger:delete(target) end
+                    say(pal, caller, on and "God mode on." or "God mode off.")
                     if target ~= caller then
-                        say(pal, target, off and "You are mortal again." or "An admin made you unkillable.")
+                        say(pal, target, on and "An admin made you unkillable." or "You are mortal again.")
                     end
                 end)
             end,
@@ -219,21 +240,22 @@ return {
         -- and something any other mod can reach.
         ["!fly"] = {
             node = "admincommands.fly",
-            help = "!fly @Name [off] — take off, or land.",
+            help = "!fly @Name — toggle. Needs the client half; see the README.",
             run = function(event, args, pal)
                 local caller = event.subject.id
                 if is_muted(pal, caller) then return end
-                local parts = words(args)
-                local target_token = ""
-                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
-                local off = (parts[1] or ""):lower() == "off"
+                local target_token, parts = target_and_rest(words(args))
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
 
-                pal.player.set_flying(target, { on = not off }, function(ok, err)
+                local ledger = pal.data("flying")
+                local on = wanted(parts, ledger:get(target) ~= nil)
+
+                pal.player.set_flying(target, { on = on }, function(ok, err)
                     if not ok then return say(pal, caller, "Could not do that: " .. tostring(err)) end
-                    -- Nothing reports flight back, so this says what was asked.
-                    say(pal, caller, off and "Asked them to land." or "Asked them to take off.")
+                    if on then ledger:set(target, { name = "", at = os.time() })
+                    else ledger:delete(target) end
+                    say(pal, caller, on and "Flight on." or "Flight off.")
                 end)
             end,
         },
@@ -241,21 +263,26 @@ return {
         ["!freeze"] = {
             node = "admincommands.freeze",
             -- Freezing yourself is allowed: it stops movement, not chat, so
-            -- !freeze @me off is always still reachable.
-            help = "!freeze @Name [off] — hold them still, or let them go. @me works.",
+            -- !freeze @me again is always still reachable.
+            help = "!freeze @Name — toggle. @me works.",
             run = function(event, args, pal)
                 local caller = event.subject.id
                 if is_muted(pal, caller) then return end
-                local parts = words(args)
-                local target_token = ""
-                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
-                local off = (parts[1] or ""):lower() == "off"
+                local target_token, parts = target_and_rest(words(args))
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
-                pal.player.set_frozen(target, { on = not off }, function(ok, err)
+
+                local ledger = pal.data("frozen")
+                local on = wanted(parts, ledger:get(target) ~= nil)
+
+                pal.player.set_frozen(target, { on = on }, function(ok, err)
                     if not ok then return say(pal, caller, "Could not do that: " .. tostring(err)) end
-                    say(pal, caller, off and "Released." or "Frozen.")
-                    say(pal, target, off and "You can move again." or "An admin froze you.")
+                    if on then ledger:set(target, { name = "", at = os.time() })
+                    else ledger:delete(target) end
+                    say(pal, caller, on and "Frozen." or "Released.")
+                    if target ~= caller then
+                        say(pal, target, on and "An admin froze you." or "You can move again.")
+                    end
                 end)
             end,
         },
@@ -264,30 +291,25 @@ return {
         -- does not carry it, so the words still reach the room.
         ["!mute"] = {
             node = "admincommands.mute",
-            help = "!mute @Name — ignore their chat commands. !mute @Name off to lift it.",
+            help = "!mute @Name — toggle. Ignores their chat commands.",
             run = function(event, args, pal)
                 local caller = event.subject.id
-                local parts = words(args)
-                local target_token = ""
-                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
-                local off = (parts[1] or ""):lower() == "off"
-
+                local target_token, parts = target_and_rest(words(args))
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
                 if target == caller then return say(pal, caller, "Mute somebody else.") end
 
                 local muted = pal.data("muted")
-                if off then
-                    if not muted:get(target) then return say(pal, caller, "They are not muted.") end
+                local on = wanted(parts, muted:get(target) ~= nil)
+                if on then
+                    muted:set(target, { name = "", by = event.subject.name or caller, at = os.time() })
+                    say(pal, caller, "Muted — their commands are ignored. Their chat still reaches the server.")
+                    say(pal, target, "An admin muted your commands.")
+                else
                     muted:delete(target)
                     say(pal, caller, "Unmuted.")
                     say(pal, target, "An admin lifted your mute.")
-                    return
                 end
-
-                muted:set(target, { name = "", by = event.subject.name or caller, at = os.time() })
-                say(pal, caller, "Muted — their commands are ignored. Their chat still reaches the server.")
-                say(pal, target, "An admin muted your commands.")
             end,
         },
     },
