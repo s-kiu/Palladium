@@ -44,6 +44,9 @@ export interface ScriptModEntry {
 
 export interface ModLogLine {
   at: number;
+  // The agent's log carries a wall-clock reading rather than an epoch, so a
+  // line from inside the game can still say when it happened.
+  clock?: string;
   stream: 'out' | 'err';
   text: string;
 }
@@ -333,7 +336,9 @@ export class Api {
       '/api/bridge/call', { type: 'data.list', target: null, data: { collection } });
   }
   modLogs(name: string) {
-    return this.http.get<{ name: string; lines: ModLogLine[] }>('/api/mods/logs', { params: { name } });
+    return this.http.get<{ name: string; lines: ModLogLine[]; source?: 'panel' | 'agent' }>(
+      '/api/mods/logs', { params: { name } },
+    );
   }
 
   connect() {

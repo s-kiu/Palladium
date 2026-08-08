@@ -45,6 +45,10 @@ const PUBLIC_PORT = Number(process.env.PUBLIC_PORT ?? GAME_PORT);
 const PUBLIC_IP_ENV = process.env.PUBLIC_IP || null;
 const PUBLIC_IP_LOOKUP = (process.env.PUBLIC_IP_LOOKUP ?? 'true') !== 'false';
 const SERVER_LOG = path.join(PAL_ROOT, 'logs', 'server.log');
+// Palladium and its mods log through UE4SS, which keeps its own file rather
+// than writing to the server's stdout — so a mod's own lines live here and
+// nowhere else.
+const AGENT_LOG = path.join(PAL_ROOT, 'server', 'UE4SS.log');
 const FASTCRASH_LIMIT = Number(process.env.FASTCRASH_LIMIT ?? 3);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_DAYS ?? 30) * 86_400_000;
 const PUBLIC_DIR = process.env.PANEL_STATIC_DIR ?? path.join(HERE, '..', 'public');
@@ -655,10 +659,61 @@ app.get('/api/mods', async () => ({
   paks: await pakList('paks'),
 }));
 
+// Read the tail of a file without pulling all of it into memory: these logs
+// grow for as long as the server runs.
+async function tailLines(file: string, budgetBytes = 262_144): Promise<string[]> {
+  try {
+    const st = await fs.stat(file);
+    const readBytes = Math.min(st.size, budgetBytes);
+    const fh = await fs.open(file, 'r');
+    try {
+      const buf = Buffer.alloc(readBytes);
+      await fh.read(buf, 0, readBytes, st.size - readBytes);
+      const all = buf.toString('utf8').split('\n');
+      if (st.size > readBytes) all.shift(); // a possibly-partial first line
+      return all;
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return [];
+  }
+}
+
 app.get<{ Querystring: { name?: string } }>('/api/mods/logs', async (req, reply) => {
   const name = req.query.name ?? '';
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) return reply.code(400).send({ error: 'bad mod name' });
-  return { name, lines: modRunner.logs(name) };
+
+  // A script mod is a process the panel owns, so its output is already here.
+  const own = modRunner.logs(name);
+  if (own.length > 0) return { name, lines: own, source: 'panel' };
+
+  // A Palladium mod runs inside the game and logs through the agent, which
+  // prefixes every line with the mod's own name — that prefix is the filter.
+  // The framework's own lines about a mod (loading it, refusing it, reporting
+  // a handler that threw) carry the same name, so they come along, which is
+  // exactly what someone debugging that mod wants to see.
+  const scannedMod = scanned.find((m) => m.name === name);
+  if (!scannedMod?.hasFramework) return { name, lines: own, source: 'panel' };
+
+  const needles = [`[Palladium] ${name}:`, `[Palladium] framework: ${name}:`, `] ${name} (`];
+  const lines = (await tailLines(AGENT_LOG))
+    .filter((l) => needles.some((needle) => l.includes(needle)) || l.includes(` ${name} `))
+    .slice(-400)
+    .map((raw) => {
+      // UE4SS stamps every line "[Y-08-08 14:36:28] [Lua] " — keep the clock
+      // reading, drop the rest, and hand back the shape the panel already
+      // renders for a script mod's output.
+      const stamp = /^\[[^\]]*?(\d{2}:\d{2}:\d{2})\]\s*(?:\[Lua\]\s*)?/.exec(raw);
+      const text = stamp ? raw.slice(stamp[0].length) : raw;
+      return {
+        at: 0,
+        clock: stamp?.[1] ?? '',
+        stream: /fail|error|refus|could not|denied/i.test(text) ? 'err' : 'out',
+        text: text.replace(`[Palladium] `, ''),
+      };
+    });
+  return { name, lines, source: 'agent' };
 });
 
 app.post<{ Body: { name?: string; disabled?: boolean } }>('/api/mods/toggle', async (req, reply) => {

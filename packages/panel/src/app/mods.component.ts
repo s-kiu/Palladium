@@ -62,11 +62,24 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
                 </td>
                 <td class="actions">
                   <button (click)="toggleFramework(m)">{{ m.disabled ? 'enable' : 'disable' }}</button>
+                  <button (click)="showFrameworkLogs(m)">{{ logsFor() === m.name ? 'hide' : 'logs' }}</button>
                 </td>
               </tr>
             }
           </tbody>
         </table>
+      }
+      @if (logsFor() && logsSource() === 'agent') {
+        <h3>{{ logsFor() }}</h3>
+        <p class="muted small-note">
+          What this mod wrote through <code>pal.log</code>, plus what Palladium said about it —
+          read from the agent's own log inside the game, newest last.
+        </p>
+        @if (logLines().length === 0) {
+          <p class="muted">Nothing logged since the server last started.</p>
+        } @else {
+          <pre class="logview small">{{ logText() }}</pre>
+        }
       }
     </div>
 
@@ -162,7 +175,7 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
           </tbody>
         </table>
       }
-      @if (logsFor()) {
+      @if (logsFor() && logsSource() !== 'agent') {
         <h3>{{ logsFor() }}</h3>
         @if (logLines().length === 0) {
           <p class="muted">Nothing logged yet.</p>
@@ -285,6 +298,7 @@ export class ModsComponent implements OnInit, OnDestroy {
   feedback = signal('');
   logsFor = signal('');
   logLines = signal<ModLogLine[]>([]);
+  logsSource = signal<'panel' | 'agent'>('panel');
   private timer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -349,7 +363,10 @@ export class ModsComponent implements OnInit, OnDestroy {
 
   logText(): string {
     return this.logLines()
-      .map((l) => `${new Date(l.at).toISOString().slice(11, 19)} ${l.stream === 'err' ? '! ' : '  '}${l.text}`)
+      .map((l) => {
+        const when = l.at ? new Date(l.at).toISOString().slice(11, 19) : (l.clock ?? '--:--:--');
+        return `${when} ${l.stream === 'err' ? '! ' : '  '}${l.text}`;
+      })
       .join('\n');
   }
 
@@ -363,10 +380,26 @@ export class ModsComponent implements OnInit, OnDestroy {
     this.loadLogs(m.name);
   }
 
+  showFrameworkLogs(m: FrameworkMod): void {
+    if (this.logsFor() === m.name) {
+      this.logsFor.set('');
+      this.logLines.set([]);
+      return;
+    }
+    this.logsFor.set(m.name);
+    this.loadLogs(m.name);
+  }
+
   private loadLogs(name: string): void {
     this.api.modLogs(name).subscribe({
-      next: (r) => this.logLines.set(r.lines),
-      error: () => this.logLines.set([]),
+      next: (r) => {
+        this.logLines.set(r.lines);
+        this.logsSource.set(r.source ?? 'panel');
+      },
+      error: () => {
+        this.logLines.set([]);
+        this.logsSource.set('panel');
+      },
     });
   }
 
