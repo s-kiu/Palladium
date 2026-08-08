@@ -52,26 +52,8 @@ What each delivers — and what only the combination can:
 - **Admin without ceremony** — a `pal-up` CLI inside the container: player list, broadcast, kick/ban, save-now, update check, backup management, all against the server's local REST API.
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: live server status, one-click game updates, online players with kick/ban/unban, mod toggles, backups with one-click create and rollback, server controls with the live log, and a grouped, searchable settings editor with diff-before-apply. It needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
 
-  <details><summary>Screenshot: the admin page — server actions, API tokens, chat, live log</summary>
-  
-  <img src="docs/img/admin.png" alt="The admin page: restart, stop, save-world and broadcast buttons, read-only server state, API token minting with an allow-write toggle, the in-game chat feed, and the live server log." width="700">
-  
-  </details>
-
 - **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform, and the panel gives it a face: every capability rendered as a form, with searchable pickers (2,400+ items, 750+ pal species), a live event stream, a stats editor, and the permissions page pictured below. Mods that need the network run in the panel instead, in JavaScript or TypeScript.
-
-  <details><summary>Screenshot: the pal picker over the capability forms</summary>
-  
-  <img src="docs/img/picker.png" alt="The pal picker over the capability forms: search, element filters, variants, and a species list annotated with what has been seen on this server — feeding forms like pal.spawn and pal.set_stats." width="700">
-  
-  </details>
 - **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
-
-  <details><summary>Screenshot: the permissions page — groups, grants, constraints</summary>
-  
-  <img src="docs/img/permissions.png" alt="The panel's permissions page: the five shipped tiers as editable groups, and per-player grants with node, allow/deny, an optional where-constraint and an until-expiry — the same state that lives in permissions.config." width="700">
-  
-  </details>
 
 - **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
 
@@ -80,6 +62,23 @@ What each delivers — and what only the combination can:
   <img src="docs/img/leaderboard.png" alt="In-game chat: a join announcement, !commands and !heal, an hour-mark reward paid by TimedRewards, and !lb answering with the current level leaders." width="700">
   
   </details>
+
+The panel, page by page — click any image for full size:
+
+<table>
+  <tr>
+    <td align="center"><a href="docs/img/dashboard.png"><img src="docs/img/dashboard.png" alt="Dashboard: server status, connect addresses, resources" width="215"></a><br><sub>Dashboard</sub></td>
+    <td align="center"><a href="docs/img/players.png"><img src="docs/img/players.png" alt="Online players with kick, ban and unban" width="215"></a><br><sub>Players</sub></td>
+    <td align="center"><a href="docs/img/mods.png"><img src="docs/img/mods.png" alt="Every mod with what it handles, owns and stores" width="215"></a><br><sub>Mods</sub></td>
+    <td align="center"><a href="docs/img/backups.png"><img src="docs/img/backups.png" alt="Backups with one-click create and rollback" width="215"></a><br><sub>Backups</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/img/palladium.png"><img src="docs/img/palladium.png" alt="A form for every capability, tab by tab" width="215"></a><br><sub>Palladium forms</sub></td>
+    <td align="center"><a href="docs/img/picker.png"><img src="docs/img/picker.png" alt="The pal picker: search, elements, seen on this server" width="215"></a><br><sub>Pickers</sub></td>
+    <td align="center"><a href="docs/img/permissions.png"><img src="docs/img/permissions.png" alt="Groups, grants, constraints and expiry" width="215"></a><br><sub>Permissions</sub></td>
+    <td align="center"><a href="docs/img/admin.png"><img src="docs/img/admin.png" alt="Server actions, API tokens, chat and the live log" width="215"></a><br><sub>Admin</sub></td>
+  </tr>
+</table>
 
 ## Quickstart
 
