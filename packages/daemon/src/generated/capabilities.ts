@@ -1252,7 +1252,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "4.18.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Make a player unkillable, or mortal again. This build's own switches do not reach the client — bCanBeDamaged and IsImmortality were both verified set while the player went on dying — so the agent refills their health on its own tick instead. Enforcement rather than prevention: a hit big enough to kill between two ticks still kills.",
+    "summary": "Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, switches on the build's infinite-stamina flag, and tops health, stomach and stamina back up on the agent's tick as a backstop. The player's own defence is remembered and handed back when it is switched off.",
     "params": {
       "on": {
         "type": "bool",
@@ -1263,7 +1263,8 @@ export const CAPABILITIES: Capability[] = [
       "immortal": "bool",
       "was": "bool",
       "can_be_damaged": "bool",
-      "enforced": "string"
+      "defence": "string",
+      "infinite_stamina": "bool"
     }
   },
   {

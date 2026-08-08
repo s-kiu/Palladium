@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.22.1"
+local VERSION = "4.23.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -50,7 +50,11 @@ local ACTION_POLL_MS = 500
 -- topped back up. Declared here rather than beside the tick that reads it,
 -- because the capabilities that write it are defined further up this file —
 -- a local declared after its first use is a global lookup, and a nil one.
-local held = { frozen = {}, immortal = {} }
+local held = { frozen = {}, immortal = {}, defence = {} }
+
+-- Large enough that the damage calculation has almost nothing left to take,
+-- small enough to stay a plain int the engine will accept.
+local GOD_DEFENCE = 1000000
 local JOIN_DEDUP_SECONDS = 30
 local NPC_EVENTS_PER_SECOND = 20
 
@@ -1793,6 +1797,17 @@ IMPL["player.set_immortal"] = function(state, p)
     local gate_ok = pcall(function() pawn.bCanBeDamaged = not want end)
     local damageable_now = member(pawn, "bCanBeDamaged")
 
+    -- Refilling health after the fact is the backstop, not the plan. These two
+    -- are what make it feel like god mode rather than a defibrillator:
+    -- DefenseUp is an int the damage calculation reads, so a large one leaves
+    -- almost nothing to refill, and bIsInfinitySP is the build's own switch
+    -- for a stamina bar that never empties.
+    local defence_was = member(component, "DefenseUp")
+    pcall(function()
+        component.DefenseUp = want and GOD_DEFENCE or (tonumber(held.defence[player_userid(state)]) or 0)
+    end)
+    pcall(function() component.bIsInfinitySP = want end)
+
     local now = member(component, "IsImmortality")
     if now ~= nil and now ~= want then
         return false, "unverified: the flag did not hold",
@@ -1805,13 +1820,22 @@ IMPL["player.set_immortal"] = function(state, p)
     -- The flags above hold and change nothing on this build, so the tick is
     -- what actually keeps them alive: health refilled as fast as it is taken.
     local userid = player_userid(state)
-    if want then held.immortal[userid] = true else held.immortal[userid] = nil end
+    if want then
+        -- Their own defence, kept so switching off puts it back rather than
+        -- leaving them permanently tougher than the game made them.
+        if held.defence[userid] == nil then held.defence[userid] = defence_was or 0 end
+        held.immortal[userid] = true
+    else
+        held.immortal[userid] = nil
+        held.defence[userid] = nil
+    end
 
     return true, nil, {
         { "immortal", tostring(want) },
         { "was", tostring(was) },
         { "can_be_damaged", tostring(damageable_now) },
-        { "enforced", "tick" },
+        { "defence", tostring(member(component, "DefenseUp")) },
+        { "infinite_stamina", tostring(member(component, "bIsInfinitySP")) },
     }
 end
 
@@ -1858,6 +1882,23 @@ local function enforce_held()
             local max = stat_value(pawn, "GetMaxHP")
             if hp and max and max > 0 and hp < max then
                 apply_stat(pawn, "hp", max)
+            end
+
+            -- Nobody in god mode should be starving or winded either.
+            local fed = stat_value(pawn, "GetFullStomach")
+            local fed_max = stat_value(pawn, "GetMaxFullStomach")
+            if fed and fed_max and fed_max > 0 and fed < fed_max * 0.9 then
+                apply_stat(pawn, "hunger", fed_max)
+            end
+
+            local component = member(pawn, "CharacterParameterComponent")
+            if valid(component) then
+                local sp, sp_max = nil, nil
+                pcall(function() sp = as_number(component:GetSP()) end)
+                pcall(function() sp_max = as_number(component:GetMaxSP()) end)
+                if sp and sp_max and sp_max > 0 and sp < sp_max * 0.9 then
+                    pcall(function() component:SetSP(sp_max) end)
+                end
             end
         end
     end
