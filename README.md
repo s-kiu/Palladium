@@ -53,9 +53,12 @@ What each delivers — and what only the combination can:
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: live server status, one-click game updates, online players with kick/ban/unban, mod toggles, backups with one-click create and rollback, server controls with the live log, and a grouped, searchable settings editor with diff-before-apply. It needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
 - **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform, and the panel gives it a face: every capability rendered as a form, with searchable pickers (2,400+ items, 750+ pal species), a live event stream, a stats editor, and the permissions page pictured below. Mods that need the network run in the panel instead, in JavaScript or TypeScript.
 - **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
+
+  <img src="docs/img/permissions.png" alt="The panel's permissions page: the five shipped tiers as editable groups, and per-player grants with node, allow/deny, an optional where-constraint and an until-expiry — the same state that lives in permissions.config." width="700">
+
 - **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
 
-![The panel's permissions page: the five shipped tiers as editable groups with tag, weight, members and entries, and per-player grants with node, allow/deny, an optional where-constraint and an until-expiry — the same state that lives in permissions.config.](docs/img/permissions.png)
+  <img src="docs/img/leaderboard.png" alt="In-game chat: a join announcement, !commands and !heal, an hour-mark reward paid by TimedRewards, and !lb answering with the current level leaders." width="700">
 
 ## Quickstart
 
