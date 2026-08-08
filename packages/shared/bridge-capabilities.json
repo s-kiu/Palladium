@@ -1219,7 +1219,7 @@
       "since": "4.18.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them \u2014 the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back.",
+      "summary": "Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults \u2014 this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so.",
       "params": {
         "on": {
           "type": "bool",
@@ -1229,8 +1229,8 @@
       "returns": {
         "immortal": "bool",
         "was": "bool",
-        "damage_rate": "string",
-        "damage_rate_was": "string"
+        "can_be_damaged": "bool",
+        "can_be_damaged_was": "bool"
       }
     },
     {
@@ -1261,7 +1261,7 @@
       "since": "4.20.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Start or end flight for a player, through the controller's own server call \u2014 the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified.",
+      "summary": "Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified.",
       "params": {
         "on": {
           "type": "bool",
@@ -1270,7 +1270,8 @@
       },
       "returns": {
         "flying": "bool",
-        "verified": "bool"
+        "verified": "bool",
+        "via": "string"
       }
     },
     {

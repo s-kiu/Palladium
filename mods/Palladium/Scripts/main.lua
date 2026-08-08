@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.20.0"
+local VERSION = "4.21.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1775,24 +1775,32 @@ IMPL["player.set_immortal"] = function(state, p)
         return false, "not_supported: IsImmortality is not writable on this build"
     end
 
-    -- IsImmortality holds — a second call reports it still set — but this
-    -- build's damage path does not consult it for a player, so the flag alone
-    -- changes nothing. The rate at which enemies inflict damage is the other
-    -- knob the component carries, and zero is the same answer by arithmetic.
+    -- Two of this build's own flags hold when written and change nothing:
+    -- IsImmortality and AdditionalEnemyInflictDamageRate were both verified
+    -- set, twice, while the player went on dying. The one that governs damage
+    -- is Unreal's own, on the actor rather than on Palworld's component:
+    -- bCanBeDamaged is what TakeDamage consults before anything else.
     local rate_field = "AdditionalEnemyInflictDamageRate"
-    local rate_was = member(component, rate_field)
-    local rate_ok = pcall(function() component[rate_field] = want and 0.0 or 1.0 end)
+    pcall(function() component[rate_field] = want and 0.0 or 1.0 end)
+
+    local damageable_was = member(pawn, "bCanBeDamaged")
+    local gate_ok = pcall(function() pawn.bCanBeDamaged = not want end)
+    local damageable_now = member(pawn, "bCanBeDamaged")
 
     local now = member(component, "IsImmortality")
     if now ~= nil and now ~= want then
         return false, "unverified: the flag did not hold",
             { { "immortal", tostring(now) }, { "was", tostring(was) } }
     end
+    if not gate_ok then
+        return false, "not_supported: bCanBeDamaged is not writable on this build",
+            { { "immortal", tostring(want) } }
+    end
     return true, nil, {
         { "immortal", tostring(want) },
         { "was", tostring(was) },
-        { "damage_rate", rate_ok and tostring(member(component, rate_field)) or "unwritable" },
-        { "damage_rate_was", tostring(rate_was) },
+        { "can_be_damaged", tostring(damageable_now) },
+        { "can_be_damaged_was", tostring(damageable_was) },
     }
 end
 
@@ -1829,16 +1837,31 @@ IMPL["player.set_flying"] = function(state, p)
     local controller = pawn_of(state)
     if not valid(controller) then return false, "player_offline" end
 
+    local _, pawn = pawn_of(state)
     local want = p.on ~= false
-    local ok = pcall(function()
-        if want then controller:StartFlyToServer() else controller:EndFlyToServer() end
-    end)
-    if not ok then
-        return false, "not_supported: this build does not take the flight call"
+
+    -- StartFlyToServer is the ride take-off call — it wants a flying pal under
+    -- the player and does nothing without one. ClientCheatFly is Unreal's own,
+    -- and it is a Client RPC: called here on the server it is sent to the
+    -- player's own machine, which is where flight has to be switched on.
+    local how = nil
+    if valid(pawn) and member(pawn, "ClientCheatFly") ~= nil then
+        if pcall(function() pawn:ClientCheatFly() end) then how = "ClientCheatFly" end
     end
-    -- Nothing reports flight back, so this says what was asked for rather than
-    -- what happened: the honest limit of a call with no answer.
-    return true, nil, { { "flying", tostring(want) }, { "verified", "false" } }
+    if not how and member(controller, "ClientCheatFly") ~= nil then
+        if pcall(function() controller:ClientCheatFly() end) then how = "ClientCheatFly" end
+    end
+    if not how then
+        local ok = pcall(function()
+            if want then controller:StartFlyToServer() else controller:EndFlyToServer() end
+        end)
+        if not ok then return false, "not_supported: this build takes no flight call" end
+        how = want and "StartFlyToServer" or "EndFlyToServer"
+    end
+
+    -- Nothing reports flight back, so this says what was asked for and which
+    -- call carried it — an answer that names its own uncertainty.
+    return true, nil, { { "flying", tostring(want) }, { "verified", "false" }, { "via", how } }
 end
 
 IMPL["player.count_item"] = function(state, p)

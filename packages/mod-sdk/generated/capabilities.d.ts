@@ -352,15 +352,15 @@ export interface PlayerSetStatsResult {
   stats: unknown;
 }
 
-/** Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them — the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back. */
+/** Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults — this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so. */
 export interface PlayerSetImmortalParams {
   on?: boolean;
 }
 export interface PlayerSetImmortalResult {
   immortal: boolean;
   was: boolean;
-  damage_rate: string;
-  damage_rate_was: string;
+  can_be_damaged: boolean;
+  can_be_damaged_was: boolean;
 }
 
 /** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. */
@@ -372,13 +372,14 @@ export interface PlayerSetFrozenResult {
   multiplier: number;
 }
 
-/** Start or end flight for a player, through the controller's own server call — the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified. */
+/** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. */
 export interface PlayerSetFlyingParams {
   on?: boolean;
 }
 export interface PlayerSetFlyingResult {
   flying: boolean;
   verified: boolean;
+  via: string;
 }
 
 /** An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. */
@@ -597,11 +598,11 @@ export interface Capabilities {
     stats(target: string, params?: PlayerStatsParams): Promise<Envelope<PlayerStatsResult>>;
     /** Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused. _(experimental)_ */
     set_stats(target: string, params?: PlayerSetStatsParams): Promise<Envelope<PlayerSetStatsResult>>;
-    /** Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them — the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back. _(experimental)_ */
+    /** Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults — this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so. _(experimental)_ */
     set_immortal(target: string, params?: PlayerSetImmortalParams): Promise<Envelope<PlayerSetImmortalResult>>;
     /** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. _(experimental)_ */
     set_frozen(target: string, params?: PlayerSetFrozenParams): Promise<Envelope<PlayerSetFrozenResult>>;
-    /** Start or end flight for a player, through the controller's own server call — the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified. _(experimental)_ */
+    /** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. _(experimental)_ */
     set_flying(target: string, params?: PlayerSetFlyingParams): Promise<Envelope<PlayerSetFlyingResult>>;
     /** An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. _(experimental)_ */
     status_points(target: string, params?: PlayerStatusPointsParams): Promise<Envelope<PlayerStatusPointsResult>>;

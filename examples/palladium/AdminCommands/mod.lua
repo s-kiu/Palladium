@@ -240,7 +240,9 @@ return {
 
         ["!freeze"] = {
             node = "admincommands.freeze",
-            help = "!freeze @Name [off] — hold them still, or let them go.",
+            -- Freezing yourself is allowed: it stops movement, not chat, so
+            -- !freeze @me off is always still reachable.
+            help = "!freeze @Name [off] — hold them still, or let them go. @me works.",
             run = function(event, args, pal)
                 local caller = event.subject.id
                 if is_muted(pal, caller) then return end
@@ -250,10 +252,6 @@ return {
                 local off = (parts[1] or ""):lower() == "off"
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
-                if target == caller and not off then
-                    return say(pal, caller, "Freeze somebody else — you would not be able to undo it.")
-                end
-
                 pal.player.set_frozen(target, { on = not off }, function(ok, err)
                     if not ok then return say(pal, caller, "Could not do that: " .. tostring(err)) end
                     say(pal, caller, off and "Released." or "Frozen.")
