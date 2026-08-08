@@ -206,7 +206,7 @@ return {
     ["player.join"] = function(event, pal)
       local who, name = event.subject.id, event.subject.name
       if not event.data.firstEver or pal.tag(who, "claimed") then
-        return pal.message(who, "Welcome back, " .. name .. ".")
+        return pal.player.message(who, "Welcome back, " .. name .. ".")
       end
       if not pal.can(who, "welcomekit.kit") then return end
 
@@ -214,9 +214,9 @@ return {
         pal.give(who, entry.item, entry.count)
       end
       pal.set_tag(who, "claimed", os.time())      -- survives restarts
-      pal.message(who, "Welcome, " .. name .. "! Here is a starter kit to get you going.")
+      pal.player.message(who, "Welcome, " .. name .. "! Here is a starter kit to get you going.")
       if pal.settings.announce then
-        pal.announce(name .. " just joined for the first time — say hi!")
+        pal.server.announce(name .. " just joined for the first time — say hi!")
       end
     end,
   },
@@ -226,7 +226,7 @@ return {
       node = "welcomekit.kit",
       help = "!kit — whether your starter kit has been delivered.",
       run = function(event, args, pal)
-        pal.message(event.subject.id, pal.tag(event.subject.id, "claimed")
+        pal.player.message(event.subject.id, pal.tag(event.subject.id, "claimed")
           and "Your starter kit was delivered."
           or "No kit claimed yet — it arrives on your first-ever join.")
       end,
@@ -246,12 +246,6 @@ rate-limited for it).
 Drop the folder into `./mods`, restart, and Palladium finds it, registers its
 nodes, declares its storage, routes its command and calls its handlers. There is
 nothing to connect to, no token to create and no process to run.
-
-<details><summary>Screenshot: the mods page — what each mod handles, owns and answers</summary>
-
-<img src="docs/img/mods.png" alt="The panel's mods page: every Palladium mod with the events it handles, the permission nodes it owns and the chat commands it answers — and below it, every declared data collection with its field shape and record count." width="700">
-
-</details>
 
 `pal` carries `call` (every capability), `give`, `message`, `heal`, `can`, `tag`,
 `set_tag`, `data`, `settings` and `log`.

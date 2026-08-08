@@ -35,12 +35,12 @@ return {
                 pal.give(who, entry.item, entry.count)
             end
             pal.set_tag(who, "claimed", os.time())
-            pal.message(who, "Welcome! Here is a starter kit to get you going.")
+            pal.player.message(who, "Welcome! Here is a starter kit to get you going.")
         end,
     },
     commands = {
         ["!kit"] = { node = "welcomekit.kit", run = function(event, args, pal)
-            pal.message(event.subject.id, pal.tag(event.subject.id, "claimed")
+            pal.player.message(event.subject.id, pal.tag(event.subject.id, "claimed")
                 and "Delivered." or "Arrives on your first-ever join.")
         end },
     },
@@ -48,10 +48,16 @@ return {
 ```
 
 The manifest is a Lua table because there is no JSON parser in this runtime —
-the call that loads the file is the call that reads the manifest. `pal` carries
-`call`, `give`, `message`, `announce`, `heal`, `can`, `tag`, `set_tag`,
-`delete_tag`, `data`, `settings` and `log`; `call` reaches every capability
-the mod declares below, and `data` opens any collection the mod declares.
+the call that loads the file is the call that reads the manifest.
+
+`pal` carries every capability under the name the manifest gives it —
+`pal.player.give_item`, `pal.pal.spawn_wild`, `pal.server.announce` — built
+from the generated table at load time, so what chat calls `!give_item` and
+HTTP calls `player.give_item` can never be something else here. Alongside them
+sit the framework's own services, which are not capabilities: `pal.call` (any
+capability by full name), `pal.give` (give *and* read the inventory back),
+`pal.can`, `pal.tag`/`set_tag`/`delete_tag` (namespaced to your mod),
+`pal.data` (your declared collections), `pal.settings` and `pal.log`.
 
 Palladium loads the names in `Mods/Palladium/mods.list`, one per line, and
 falls back to a directory listing when that file is absent. Each mod gets its

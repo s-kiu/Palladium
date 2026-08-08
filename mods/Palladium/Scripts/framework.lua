@@ -426,10 +426,60 @@ local function api_for(name, mod)
 
     -- The mod's own declared collections, by the short name it used. Only its
     -- own: the namespace rule that keeps permissions honest applies here too.
-    function pal.data(collection)
+    local function open_collection(collection)
         if not host.collections then return nil end
         return host.collections.open(name:lower() .. "." .. tostring(collection):lower())
     end
+    pal.data = open_collection
+
+    -- Every capability under the name the manifest gives it: what chat calls
+    -- `!give_item` and HTTP calls `player.give_item` is `pal.player.give_item`
+    -- here, with the same parameters. Built from the generated table rather
+    -- than written out, so a capability cannot exist under one name in one
+    -- place and another name here, and a new one needs no code at all.
+    --
+    -- A capability that names someone takes the id first, one that names
+    -- nobody starts at the parameters. Which is which is read from the call
+    -- itself rather than from the manifest's target field: an id is always a
+    -- string and parameters are always a table, so both shapes are safe, and
+    -- a capability whose target is the world or the server needs no special
+    -- case here to be callable the obvious way.
+    for full in pairs(host.capabilities or {}) do
+        local ns, verb = tostring(full):match("^([%w_]+)%.([%w_]+)$")
+        if ns and verb then
+            local group = pal[ns]
+            if type(group) ~= "table" then group = {} end
+            group[verb] = function(a, b, c)
+                if type(a) == "table" then return pal.call(full, nil, a, b) end
+                return pal.call(full, a, b, c)
+            end
+            pal[ns] = group
+        end
+    end
+
+    -- `data` is both a capability namespace and this mod's own storage handle.
+    -- One name, two meanings, so the table answers to a call as well as to an
+    -- index: pal.data("homes") opens a collection, pal.data.list reads any.
+    if type(pal.data) == "table" then
+        setmetatable(pal.data, { __call = function(_, collection) return open_collection(collection) end })
+    end
+
+    -- Named once, warned once: these said the same thing as a capability under
+    -- a different word, which is the drift this framework exists to prevent.
+    local warned = {}
+    local function moved(old, replacement, fn)
+        return function(...)
+            if not warned[old] then
+                warned[old] = true
+                host.info(string.format("%s: pal.%s is deprecated — use pal.%s (same call, the manifest's name)",
+                    name, old, replacement))
+            end
+            return fn(...)
+        end
+    end
+    pal.message = moved("message", "player.message", pal.message)
+    pal.heal = moved("heal", "player.heal", pal.heal)
+    pal.announce = moved("announce", "server.announce", pal.announce)
 
     return pal
 end

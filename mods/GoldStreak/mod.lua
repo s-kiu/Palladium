@@ -40,7 +40,7 @@ return {
                         event.subject.name, pal.settings.item, pal.settings.count, tostring(err)))
                     return
                 end
-                pal.message(who, string.format(
+                pal.player.message(who, string.format(
                     "Respawn %d — here is %d gold for your trouble.", streak, pal.settings.count))
             end)
         end,
@@ -53,7 +53,7 @@ return {
             run = function(event, _args, pal)
                 local streak = tonumber(pal.tag(event.subject.id, "respawns")) or 0
                 local togo = pal.settings.every - (streak % pal.settings.every)
-                pal.message(event.subject.id, string.format(
+                pal.player.message(event.subject.id, string.format(
                     "Respawns: %d. Next payout in %d.", streak, togo))
             end,
         },

@@ -40,19 +40,19 @@ return {
 
             local claimed = pal.tag(who, "claimed")
             if not event.data.firstEver or claimed ~= nil then
-                pal.message(who, "Welcome back, " .. name .. ".")
+                pal.player.message(who, "Welcome back, " .. name .. ".")
                 pal.log(string.format("%s: greeted (%s)", name,
                     claimed ~= nil and "kit already claimed" or ("join #" .. tostring(event.data.joins or "?"))))
                 return
             end
 
             local allowed = pal.can(who, "welcomekit.kit")
-            pal.message(who, allowed
+            pal.player.message(who, allowed
                 and ("Welcome to the server, " .. name .. "! Here is a starter kit to get you going.")
                 or ("Welcome to the server, " .. name .. "!"))
 
             if pal.settings.announce ~= false then
-                pal.announce(name .. " just joined for the first time — say hi!")
+                pal.server.announce(name .. " just joined for the first time — say hi!")
             end
 
             if not allowed then
@@ -77,7 +77,7 @@ return {
                     if outstanding > 0 then return end
 
                     if missed then
-                        pal.message(who, "Part of your starter kit could not be handed over — ask an admin for it.")
+                        pal.player.message(who, "Part of your starter kit could not be handed over — ask an admin for it.")
                         return
                     end
                     pal.set_tag(who, "claimed", os.time())
@@ -94,7 +94,7 @@ return {
             run = function(event, _args, pal)
                 local who = event.subject and event.subject.id
                 if not who or who == "" then return end
-                pal.message(who, pal.tag(who, "claimed")
+                pal.player.message(who, pal.tag(who, "claimed")
                     and "Your starter kit was delivered."
                     or "No kit claimed yet — it arrives on your first-ever join.")
             end,

@@ -79,34 +79,53 @@ call that loads the file is the call that reads the manifest.
 | `name` | Must match the folder name |
 | `permissions` | Nodes the mod owns, each with a description and a default. They must start with the mod's own lowercased name |
 | `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
-| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental) |
+| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental). Each event's `subject` and `data` fields, with their types, are in [bridge-reference.md](bridge-reference.md) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
 
 ![Time arrives as events: the wall clock fires clock.minute and clock.day, counted playtime fires player.hour — Leaderboards and TimedRewards react instead of owning timers.](img/time-events.svg)
 
 ### What `pal` offers
 
-| Call | Does |
-|---|---|
-| `pal.call(type, userid, params, done)` | Any capability in [bridge-reference.md](bridge-reference.md). `done` receives `(ok, err, data)` |
-| `pal.give(userid, item, count, done)` | Hand over items. Reads the inventory back, so `done` is told whether they arrived, not merely whether the call returned |
-| `pal.message(userid, text, done)` | Private system-chat line |
-| `pal.heal(userid, done)` | Sugar for `player.heal` |
-| `pal.announce(text, done)` | Tell everyone online, as system chat |
-| `pal.can(userid, node)` | May this player? |
-| `pal.tag(userid, key)` | A stored value, or nil. Survives restarts |
-| `pal.set_tag` / `pal.delete_tag` | Write and remove one. Namespaced per mod, so two mods can both keep a `count` |
-| `pal.data(name)` | A handle on one of the mod's own declared collections |
-| `pal.settings` | The mod's own settings table, with the operator's overlay applied |
-| `pal.log(text)` | A line in the server log, prefixed with the mod's name |
+Two layers, and the difference matters.
 
-Chat text is UTF-8, with one caveat: the loader cannot carry non-ASCII from
-Lua into the engine, so Palladium repairs outgoing chat at that boundary.
-One online player's name per message goes out through the engine's own copy
-of the name and renders exactly (the name covering the most of the text, if
-several qualify); every other non-ASCII character is transliterated to plain
-ASCII (`ö` → `o`). Names in events, collections and the store are untouched —
-the substitution happens only on the way into the game's chat.
+**Every capability, under the manifest's own name.** What chat calls
+`!give_item` and HTTP calls `player.give_item` is `pal.player.give_item` here,
+with the same parameters and the same permission node. The table is built from
+the generated manifest at load time, so a capability cannot answer to one name
+in one place and another name here, and a capability added to the manifest
+needs no framework code to reach mods:
+
+```lua
+pal.player.give_item(who, { item = "PalSphere", count = 5 }, function(ok, err, data) … end)
+pal.player.teleport(who, { to = other })
+pal.pal.spawn_wild({ species = "BlueDragon_Ice", level = 20, aggressive = true })
+pal.server.announce({ message = "the world boss is up" })
+pal.permission.check(who, { node = "kits.daily" }, function(ok, err, data) … end)
+```
+
+An id comes first when the call names someone, and is simply left out when it
+does not — `pal.server.announce({ … })`. `done` is optional and receives
+`(ok, err, data)`; actions reach the engine on the game thread, so an answer is
+never available on return. Every name and parameter is in
+[bridge-reference.md](bridge-reference.md), including the payload of each event
+your `on` handlers receive.
+
+**And the framework's own services**, which are not capabilities and so keep
+their own names:
+
+| Call | Does | Why it is not a capability |
+|---|---|---|
+| `pal.call(type, userid, params, done)` | Any capability by its full name | The generic form of the table above |
+| `pal.give(userid, item, count, done)` | Hands over items **and reads the inventory back**, so `done` learns whether they arrived | A composition of `player.count_item`, `player.give_item` and `player.count_item` — the engine reports success for an unknown item id having added nothing |
+| `pal.can(userid, node)` | May this player? | Resolves in-process and answers immediately; `permission.check` is a queued call |
+| `pal.tag(userid, key)` · `pal.set_tag` · `pal.delete_tag` | A stored value per player, surviving restarts | Namespaced to your mod, so two mods can both keep a `count`. `player.get_tag` reads the raw, shared key instead |
+| `pal.data(name)` | A handle on one of your declared collections | Scoped to your mod. `pal.data.list` and friends are the capabilities, over any collection |
+| `pal.settings` · `pal.log` · `pal.name` | Your settings, your log line, your name | Framework state, not engine calls |
+
+`pal.message`, `pal.heal` and `pal.announce` still work and say once in the log
+that they have moved — they were `player.message`, `player.heal` and
+`server.announce` under invented names, which is exactly the drift the one
+manifest exists to prevent.
 
 ### The operator's settings.config
 

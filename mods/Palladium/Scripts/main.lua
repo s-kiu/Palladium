@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.12.0"
+local VERSION = "4.13.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
