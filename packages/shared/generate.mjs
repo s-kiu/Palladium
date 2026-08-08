@@ -194,10 +194,28 @@ for (const [ns, list] of byNamespace) {
 }
 
 // ── write ────────────────────────────────────────────────────────────────────
+// The script-mod SDK gets the same list, so `pal.player.give_item(…)` in a
+// script mod is the same name as in a Lua mod, in chat and over HTTP — and a
+// verb that is not a capability is a TypeError there rather than a round trip.
+const sdk = `// ${HEADER}
+export const capabilities = ${JSON.stringify(
+  Object.fromEntries(
+    caps
+      .filter((c) => c.kind !== 'event')
+      .map((c) => [c.type, { target: c.target ?? null, scope: c.scope ?? 'read' }]),
+  ),
+  null,
+  2,
+)};
+
+export const events = ${JSON.stringify(caps.filter((c) => c.kind === 'event').map((c) => c.type), null, 2)};
+`;
+
 const outputs = [
   [join(ROOT, 'mods/Palladium/Scripts/generated/capabilities.lua'), lua],
   [join(ROOT, 'packages/daemon/src/generated/capabilities.ts'), ts],
   [join(ROOT, 'docs/bridge-reference.md'), md],
+  [join(ROOT, 'packages/mod-sdk/generated/capabilities.mjs'), sdk],
 ];
 for (const [path, content] of outputs) {
   mkdirSync(dirname(path), { recursive: true });

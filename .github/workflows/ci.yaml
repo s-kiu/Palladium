@@ -21,6 +21,14 @@ jobs:
             echo "::error::generated files drifted — run node packages/shared/generate.mjs and commit"
             exit 1
           }
+          # A brand-new output is untracked rather than modified, which a diff
+          # cannot see: a generator that grew a target would pass silently.
+          untracked="$(git ls-files --others --exclude-standard)"
+          if [ -n "$untracked" ]; then
+            echo "::error::the generator wrote files nobody committed:"
+            echo "$untracked"
+            exit 1
+          fi
 
   test-agent:
     runs-on: ubuntu-latest

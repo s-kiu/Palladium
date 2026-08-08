@@ -48,7 +48,7 @@ this one is `goldstreak.respawns`, and no other mod can collide with it.
 ## Notes
 
 - The payout is only announced once the gold is verifiably in the inventory —
-  `pal.give` counts before and after, because the engine accepts an unknown
+  `player.give_item` counts before and after, because the engine accepts an unknown
   item id and silently adds nothing. A payout that did not arrive is logged.
 - Handlers run off the engine thread, from a queue Palladium drains, so a slow
   handler here delays other mods and never a game hook.

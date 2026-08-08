@@ -2,12 +2,27 @@
 // the same HTTP API in docs/bridge.md, with the envelope unwrapped and the
 // mistakes that matter made hard to write.
 //
-// Two of those mistakes are worth naming. `give` reads the inventory back,
-// because the engine accepts a grant of an unknown item id and silently adds
-// nothing. `can` answers false when the check itself fails, because a
-// permission question that could not be answered is not a yes.
+// Every capability hangs off this object under the name the manifest gives it
+// — `pal.player.give_item(id, { item, count })` is the same call as
+// `!give_item` in chat, `player.give_item` over HTTP and `pal.player.give_item`
+// in a Lua mod. The tree is built from the generated list, so a name cannot
+// mean one thing here and another there, and a verb that is not a capability
+// throws rather than making a pointless round trip.
+//
+// `can` is the one deliberate exception: it answers false when the check
+// itself fails, because a permission question that could not be answered is
+// not a yes.
+
+import { capabilities } from './generated/capabilities.mjs';
 
 const PANEL = process.env.PANEL_URL ?? 'http://localhost:3000';
+
+const NAMESPACES = new Map();
+for (const [type, spec] of Object.entries(capabilities)) {
+  const [ns, verb] = type.split('.');
+  if (!NAMESPACES.has(ns)) NAMESPACES.set(ns, new Map());
+  NAMESPACES.get(ns).set(verb, { type, ...spec });
+}
 
 export class Pal {
   #headers;
@@ -18,6 +33,21 @@ export class Pal {
     this.#headers = { authorization: `Bearer ${token}` };
     this.#name = name;
     this.settings = JSON.parse(process.env.PALUP_MOD_SETTINGS ?? '{}');
+
+    // An id comes first when the call names someone and is left out when it
+    // does not — pal.server.announce({ message }). Read from the arguments
+    // rather than the manifest's target field, since a call may target the
+    // world or the server and still take no id.
+    for (const [ns, verbs] of NAMESPACES) {
+      const group = {};
+      for (const [verb, spec] of verbs) {
+        group[verb] = (a, b) =>
+          typeof a === 'object' && a !== null
+            ? this.call(spec.type, null, a)
+            : this.call(spec.type, a ?? null, b ?? {});
+      }
+      this[ns] = Object.freeze(group);
+    }
   }
 
   get name() {
@@ -79,31 +109,40 @@ export class Pal {
     return r.ok === true;
   }
 
-  // null when the query did not answer — item counts are experimental, and a
-  // build that cannot answer must not read as "carries none".
+  // ── moved, and saying so once ──────────────────────────────────────────────
+  // These were capabilities under invented names. The read-back `give` used to
+  // do itself now lives in player.give_item, so every surface — chat, HTTP, a
+  // Lua mod, this one — learns whether the items actually arrived.
+
+  #warn(old, replacement) {
+    Pal.#warned ??= new Set();
+    if (Pal.#warned.has(old)) return;
+    Pal.#warned.add(old);
+    console.error(`pal.${old}() is deprecated — use pal.${replacement}() (the manifest's name)`);
+  }
+  static #warned;
+
   async count(playerId, item) {
-    const r = await this.call('player.count_item', playerId, { item });
+    this.#warn('count', 'player.count_item');
+    const r = await this.player.count_item(playerId, { item });
     return r.ok ? r.data.count : null;
   }
 
-  // True only once the inventory agrees. An unknown item id, or an inventory
-  // with no room, both land here as false rather than as a cheerful lie.
   async give(playerId, item, count = 1) {
-    const before = await this.count(playerId, item);
-    const given = await this.call('player.give_item', playerId, { item, count });
-    if (!given.ok) return false;
-    const after = await this.count(playerId, item);
-    if (before !== null && after !== null && after < before + count) return false;
-    return true;
+    this.#warn('give', 'player.give_item');
+    const r = await this.player.give_item(playerId, { item, count });
+    return r.ok === true;
   }
 
   async message(playerId, text) {
-    const r = await this.call('player.message', playerId, { text });
+    this.#warn('message', 'player.message');
+    const r = await this.player.message(playerId, { text });
     return r.ok === true;
   }
 
   async announce(message) {
-    const r = await this.call('server.announce', null, { message });
+    this.#warn('announce', 'server.announce');
+    const r = await this.server.announce({ message });
     return r.ok === true;
   }
 
