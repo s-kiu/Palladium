@@ -1,5 +1,5 @@
 {
-  "//": "Editor support for mods written inside this repository. TypeScript's language server picks the nearest config, so packages/ with their own tsconfig are unaffected — this exists so that a mod in ./mods or ./examples resolves @pal-up/mod-sdk without npm install, and offers the real capabilities.",
+  "//": "Editor support for mods written inside this repository. TypeScript's language server picks the nearest config, so packages/ with their own tsconfig are unaffected — this exists so a mod in ./mods or ./examples resolves @pal-up/mod-sdk without npm install, and offers the real capabilities. No baseUrl: since TypeScript 4.4 a path maps relative to this file, and baseUrl is on its way out in 7.0.",
   "compilerOptions": {
     "target": "es2022",
     "module": "esnext",
@@ -8,11 +8,17 @@
     "checkJs": false,
     "strict": true,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
-      "@pal-up/mod-sdk": ["packages/mod-sdk/index.d.ts"]
+      "@pal-up/mod-sdk": ["./packages/mod-sdk/index.d.ts"]
     }
   },
-  "include": ["mods/**/*.mjs", "mods/**/*.js", "mods/**/*.ts", "examples/**/*.mjs", "examples/**/*.js", "examples/**/*.ts"],
+  "include": [
+    "mods/**/*.mjs",
+    "mods/**/*.js",
+    "mods/**/*.ts",
+    "examples/**/*.mjs",
+    "examples/**/*.js",
+    "examples/**/*.ts"
+  ],
   "exclude": ["node_modules", "site"]
 }
