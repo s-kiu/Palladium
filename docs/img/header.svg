@@ -1,0 +1,31 @@
+<svg viewBox="0 0 1300 372" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Palladium header</title>
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="372" fill="#1A2028"/>
+
+  <!-- wordmark, left -->
+  <text x="90" y="185" fill="#C7D0DA" font-size="86" font-weight="700" letter-spacing="1">Palladium</text>
+  <rect x="93" y="210" width="418" height="8" rx="4" fill="#FFB74D"/>
+  <text x="93" y="265" fill="#8CA0B3" font-size="27">server-side Palworld modding — a mod is one file</text>
+
+  <!-- bridge motif, right -->
+  <g opacity="0.85">
+    <rect x="760" y="86" width="150" height="66" rx="10" fill="#232B36" stroke="#FFB74D" stroke-width="2"/>
+    <text x="835" y="126" text-anchor="middle" fill="#FFB74D" font-size="22" font-weight="600">mod.lua</text>
+
+    <rect x="990" y="86" width="220" height="66" rx="10" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+    <text x="1100" y="126" text-anchor="middle" fill="#C7D0DA" font-size="21">events + actions</text>
+    <line x1="910" y1="119" x2="982" y2="119" stroke="#64748B" stroke-width="2" marker-end="url(#ah)"/>
+
+    <rect x="760" y="220" width="150" height="66" rx="10" fill="#232B36" stroke="#4FC3F7" stroke-width="2"/>
+    <text x="835" y="260" text-anchor="middle" fill="#4FC3F7" font-size="22" font-weight="600">!spawn</text>
+
+    <rect x="990" y="220" width="220" height="66" rx="10" fill="#232B36" stroke="#4FC3F7" stroke-width="2"/>
+    <text x="1100" y="260" text-anchor="middle" fill="#4FC3F7" font-size="21" font-family="ui-monospace, Menlo, Consolas, monospace">HTTP + token</text>
+    <line x1="910" y1="253" x2="982" y2="253" stroke="#64748B" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+</svg>
