@@ -198,6 +198,15 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
         of a player needs an explicit grant). Mods register their own via
         <code>permission.register</code>, namespaced by their name, and appear here once loaded.
       </p>
+      @if (orphans().length > 0) {
+        <p class="muted small-note">
+          <b class="warn">{{ orphans().length }}</b> node(s) are marked <b>left over</b>: the mod
+          that registered them is no longer installed. They are kept rather than deleted, because
+          a grant that refers to one would otherwise dangle and a mod you have only disabled would
+          lose its permissions. Reinstall the mod to adopt them again, or delete the lines from
+          <code>mods/Palladium/permissions.config</code> once you are sure.
+        </p>
+      }
       <datalist id="perm-nodes">
         @for (n of nodes(); track n.node) { <option [value]="n.node">{{ n.description }}</option> }
       </datalist>
@@ -207,7 +216,10 @@ import { Api, BridgePlayer, PermGroup, PermNode } from './api.service';
           @for (n of nodes(); track n.node) {
             <tr>
               <td class="mono">{{ n.node }}</td>
-              <td>{{ n.mod }}</td>
+              <td>
+                {{ n.mod }}
+                @if (isOrphan(n)) { <span class="tag warn-tag" title="No installed mod declares this node">left over</span> }
+              </td>
               <td><span class="tag" [class.warn-tag]="n.default === 'deny'">{{ n.default }}</span></td>
               <td class="muted">{{ n.description }}</td>
             </tr>
@@ -245,6 +257,20 @@ export class PermissionsComponent implements OnInit {
   feedback = signal('');
   failed = signal(false);
 
+  // Nodes outlive the mod that registered them on purpose — deleting one would
+  // dangle every grant naming it, and a disabled mod would lose its
+  // permissions. Saying which are left over costs nothing and answers the
+  // question an operator actually has: "why is this mod still listed?"
+  installed = signal<Set<string>>(new Set());
+  // Read from the live schema rather than a list kept here: a capability's
+  // namespace is never an orphan however the mods folder looks.
+  capabilityNamespaces = signal<Set<string>>(new Set());
+  orphans = computed(() => {
+    const here = this.installed();
+    if (here.size === 0) return [];
+    return this.nodes().filter((n) => this.isOrphanFor(n, here));
+  });
+
   newGroup = '';
   newTag = '';
   newWeight: number | null = null;
@@ -265,8 +291,35 @@ export class PermissionsComponent implements OnInit {
 
   ngOnInit(): void {
     this.refresh();
+    this.api.bridgeSchema().subscribe({
+      next: (s) => this.capabilityNamespaces.set(
+        new Set((s.capabilities ?? []).map((c) => String(c.type).split('.')[0].toLowerCase())),
+      ),
+      error: () => {},
+    });
+    this.api.mods().subscribe({
+      next: (r) => this.installed.set(new Set([
+        ...r.framework.mods.map((m) => m.name.toLowerCase()),
+        ...r.script.map((m) => m.name.toLowerCase()),
+      ])),
+      error: () => {},
+    });
     this.api.bridgePlayers().subscribe({ next: (r) => this.players.set(r.players), error: () => {} });
     this.api.bridgeOptions().subscribe({ next: (o) => this.chatRoles.set(o.chatRoles), error: () => {} });
+  }
+
+  isOrphan(n: PermNode): boolean {
+    return this.isOrphanFor(n, this.installed());
+  }
+
+  // A node's namespace is its mod's name. Capability nodes belong to the agent
+  // itself, so they are never orphans however the mod folder looks.
+  private isOrphanFor(n: PermNode, here: Set<string>): boolean {
+    if (here.size === 0) return false;
+    const ns = String(n.node).split('.')[0]?.toLowerCase() ?? '';
+    if (!ns || ns === 'bridge') return false;
+    if (this.capabilityNamespaces().has(ns)) return false;
+    return !here.has(ns);
   }
 
   refresh(): void {

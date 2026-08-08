@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, ScriptModEntry, fmtBytes } from './api.service';
 
 @Component({
@@ -160,6 +160,15 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
         Loaded according to <code>mods.txt</code>. Toggles take effect on the next server restart.
         Add mods by dropping folders into <code>./mods</code> and restarting.
       </p>
+      @if (framework().length > 0) {
+        <p class="muted small-note">
+          Palladium mods are not listed here and that is not a fault: a folder with a
+          <code>mod.lua</code> is loaded by Palladium rather than by UE4SS, so it never enters
+          <code>mods.txt</code>. {{ frameworkNames() }} {{ framework().length === 1 ? 'is' : 'are' }}
+          under <b>Palladium mods</b> above. Only Palladium itself appears in both, because it is
+          the UE4SS mod that loads the others.
+        </p>
+      }
       @if (mods().length === 0) {
         <p class="muted">No entries yet — the list appears after the first modded server start.</p>
       } @else {
@@ -233,6 +242,13 @@ export class ModsComponent implements OnInit, OnDestroy {
   private api = inject(Api);
   mods = signal<ModEntry[]>([]);
   framework = signal<FrameworkMod[]>([]);
+  // Named rather than counted: an operator looking for a mod wants to see its
+  // name in the sentence that explains where it went.
+  frameworkNames = computed(() => {
+    const names = this.framework().map((m) => m.name);
+    if (names.length <= 2) return names.join(' and ');
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  });
   collections = signal<CollectionEntry[]>([]);
   recordsFor = signal('');
   recordRows = signal<[string, Record<string, unknown>][]>([]);

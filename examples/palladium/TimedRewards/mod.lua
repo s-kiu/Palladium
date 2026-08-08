@@ -42,9 +42,9 @@ local function settle(who, name, pal, always_tell)
 
         if #owed == 0 then
             if always_tell then
-                pal.player.message(who, next_mark
+                pal.player.message(who, { text = next_mark
                     and string.format("%d hour(s) played; the next reward waits at %d.", played, next_mark)
-                    or string.format("%d hour(s) played; every reward is already yours.", played))
+                    or string.format("%d hour(s) played; every reward is already yours.", played) })
             end
             return
         end
@@ -53,8 +53,8 @@ local function settle(who, name, pal, always_tell)
         for _, reward in ipairs(owed) do
             pal.player.give_item(who, { item = reward.item, count = tonumber(reward.count) or 1 })
             set[tostring(tonumber(reward.hours) or 0)] = true
-            pal.player.message(who, string.format("%d hour(s) on the server: %s x%d is yours.",
-                reward.hours, reward.item, tonumber(reward.count) or 1))
+            pal.player.message(who, { text = string.format("%d hour(s) on the server: %s x%d is yours.",
+                reward.hours, reward.item, tonumber(reward.count) or 1) })
         end
         local marks = {}
         for mark in pairs(set) do marks[#marks + 1] = mark end

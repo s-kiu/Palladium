@@ -432,6 +432,17 @@ local function api_for(name, mod)
     -- receives (ok, err, data) — actions reach the engine on the game thread,
     -- so an answer is not available on return.
     function pal.call(action_type, userid, params, done)
+        -- Parameters are a table. Handing a bare value — the shape a helper
+        -- like pal.message(who, "hi") used to take — would otherwise reach the
+        -- engine as nothing at all and fail without a word, which is the worst
+        -- way to learn the call changed shape.
+        if params ~= nil and type(params) ~= "table" then
+            host.info(string.format(
+                '%s: %s was given %s instead of a table of parameters — write { … } (e.g. pal.player.message(who, { text = "hi" }))',
+                name, action_type, type(params)))
+            if done then pcall(done, false, "invalid_params: parameters must be a table", {}) end
+            return
+        end
         audit("mod:" .. name, nil, action_type, userid, params)
         host.call(action_type, userid or "", params or {}, function(ok, err, data)
             if not done then return end

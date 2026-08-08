@@ -99,7 +99,7 @@ return {
                     }
                 end
                 if #rows == 0 then
-                    pal.player.message(who, "Nobody on the board yet — standings fill as players are seen.")
+                    pal.player.message(who, { text = "Nobody on the board yet — standings fill as players are seen." })
                     return
                 end
                 table.sort(rows, function(a, b) return a.level > b.level end)
@@ -108,7 +108,7 @@ return {
                 for i = 1, math.min(top, #rows) do
                     parts[#parts + 1] = string.format("%d. %s (Lv %d)", i, rows[i].name, rows[i].level)
                 end
-                pal.player.message(who, "Level leaders: " .. table.concat(parts, "  "))
+                pal.player.message(who, { text = "Level leaders: " .. table.concat(parts, "  ") })
             end,
         },
     },
