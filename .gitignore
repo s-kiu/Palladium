@@ -22,10 +22,6 @@ dist/
 !/mods/.gitkeep
 # This project's own mods are source, not user content — they ship here.
 !/mods/Palladium/
-!/mods/GoldStreak/
-!/mods/WelcomeKit/
-!/mods/TimedRewards/
-!/mods/Leaderboards/
 # …but what a mod writes beside itself is runtime state, not source.
 /mods/*/*.config
 /mods/*/*.data
@@ -35,6 +31,13 @@ dist/
 # The same for a mod that keeps its permission nodes in a file rather than in
 # mod.lua — shipped as an example, seeded to permissions.config on first load.
 !/mods/*/permissions.example.config
+
+# The example mods are source only. If you copy one into ./mods to run it, the
+# live settings.config and .data it grows there are ignored by the rules above;
+# nothing runtime belongs beside the examples themselves.
+/examples/palladium/*/*.data
+/examples/palladium/*/settings.config
+/examples/palladium/*/permissions.config
 # The commented tour of the permission system is documentation, not state.
 !/mods/Palladium/example.permissions.config
 !/paks/.gitkeep

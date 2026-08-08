@@ -48,7 +48,7 @@ What each delivers — and what only the combination can:
 
 Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
 
-- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the six mods shipped beside it ([WelcomeKit](mods/WelcomeKit), [Leaderboards](mods/Leaderboards), [TimedRewards](mods/TimedRewards), [DailyBonus](mods/DailyBonus), [GoldStreak](mods/GoldStreak), [MimogRide](mods/MimogRide)) are each that one file, doubling as the tutorial.
+- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the six mods shipped beside it ([WelcomeKit](examples/palladium/WelcomeKit), [Leaderboards](examples/palladium/Leaderboards), [TimedRewards](examples/palladium/TimedRewards), [DailyBonus](mods/DailyBonus), [GoldStreak](examples/palladium/GoldStreak), [MimogRide](mods/MimogRide)) are each that one file, doubling as the tutorial.
 
 - **The game surface as capabilities** — over forty actions behind one call: give items, heal, teleport, spawn pals up to bosses, read and write stats and status points, tags, saved locations, announcements. Every parameter is validated against a generated manifest, and every action is also a chat command — and, on Pal-Up, a panel form.
 
@@ -56,7 +56,7 @@ Everything in this group is Palladium itself, identical on Pal-Up and on a stand
 
 - **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
 
-- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
+- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](examples/palladium/TimedRewards) mod pays it out at the hour marks you define.
 
 - **Storage an operator can open** — mods declare collections instead of inventing files: `data` records ride an append-only, crash-safe log; `config` records are INI files meant for hand-editing, re-read within seconds of a change, mistakes reported line by line with a did-you-mean. A mod's settings overlay the author's defaults the same live way — tuning a reward needs no restart.
 
@@ -235,7 +235,7 @@ return {
 }
 ```
 
-The shipped [WelcomeKit](mods/WelcomeKit) is this plus delivery verification —
+The shipped [WelcomeKit](examples/palladium/WelcomeKit) is this plus delivery verification —
 the kit is only marked claimed once the items verifiably arrived, because the
 engine accepts an unknown item id and reports success having added nothing.
 Notice what the mod never does: it doesn't track who joined before
@@ -340,9 +340,9 @@ one auth header and JSON.
 - Writing a mod, both kinds: [docs/mods.md](docs/mods.md)
 - Protocol and endpoints: [docs/bridge.md](docs/bridge.md)
 - Every capability, generated from one manifest: [docs/bridge-reference.md](docs/bridge-reference.md)
-- A worked Palladium mod: [GoldStreak](mods/GoldStreak)
-- Another: [WelcomeKit](mods/WelcomeKit) — a starter kit on a player's first ever join
-- Another: [TimedRewards](mods/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
+- A worked Palladium mod: [GoldStreak](examples/palladium/GoldStreak)
+- Another: [WelcomeKit](examples/palladium/WelcomeKit) — a starter kit on a player's first ever join
+- Another: [TimedRewards](examples/palladium/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
 - The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
 - All three kinds, with a worked example of each: [examples/](examples)
 - The framework on its own, for servers not running Pal-Up: [mods/Palladium](mods/Palladium)
@@ -376,7 +376,7 @@ palladium/
 │   ├── GoldStreak/           # a Palladium mod: gold on every fifth respawn
 │   ├── TimedRewards/         # a Palladium mod: rewards at the hour marks you set
 │   └── WelcomeKit/           # a Palladium mod: starter kit for first-time players
-├── examples/external/          # runnable consumers of the event/action API
+├── examples/palladium+pal-up+token/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here
 ├── backups/                  # world snapshots appear here

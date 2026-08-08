@@ -2,10 +2,11 @@
 
 Posts joins, deaths and chat into a Discord channel.
 
-A **script mod**: it runs beside the game as a child process of the panel,
-because it has to reach the network and UE4SS Lua has no sockets. That is the
-only reason to write one — anything that stays inside the game should be a
-[Palladium mod](../../palladium), which needs no panel and no token.
+Needs **Palladium and Pal-Up**: it runs beside the game as a child process of
+the panel, because it has to reach the network and UE4SS Lua has no sockets.
+That is the only reason to leave the game process — anything that stays inside
+it should be a [Palladium mod](../../palladium), which needs no panel and no
+token.
 
 ## Install
 
@@ -13,12 +14,31 @@ Copy the folder into `./mods` and it starts within about ten seconds — no
 restart, because the panel owns the process, not the game.
 
 ```bash
-cp -r examples/script/DiscordRelay mods/
+cp -r examples/palladium+pal-up/DiscordRelay mods/
 ```
 
 It runs immediately with no webhook set, logging what it *would* have posted,
 so you can watch it work before handing it a secret. The panel's **mods** page
 shows that log.
+
+## Autocompletion
+
+Written inside a clone of this repository, `pal.` completes with the real
+capabilities and their parameters: the root
+[`jsconfig.json`](../../../jsconfig.json) maps `@pal-up/mod-sdk` to
+[the types](../../../packages/mod-sdk), which are generated from the same
+manifest as the runtimes. No `npm install` and no build step — VS Code,
+VSCodium and anything else running the TypeScript language server pick it up.
+
+The JSDoc lines in `mod.mjs` are what connect a handler to those types:
+
+```js
+/** @type {import('@pal-up/mod-sdk').ScriptMod['on']} */
+export const on = { ... };
+```
+
+Working outside a clone, copy `packages/mod-sdk` next to your mod and point
+`paths` at it, or drop the JSDoc and lose only the completions.
 
 ## Settings
 

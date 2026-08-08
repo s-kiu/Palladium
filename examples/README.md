@@ -4,21 +4,28 @@ Three ways to build on a Palworld server, and a worked example of each. They
 differ in one thing — where the code runs — and everything else follows from
 that.
 
-| | Runs | Needs | Reaches the network | Start here |
-|---|---|---|---|---|
-| **[Palladium mod](palladium)** | inside the game | Palladium | no | [mods/WelcomeKit](../mods/WelcomeKit) |
-| **[Script mod](script)** | beside the game, started by the panel | Pal-Up | yes | [DiscordRelay](script/DiscordRelay) |
-| **[External program](external)** | wherever you like | Pal-Up + an API token | yes | [death-feed.mjs](external/death-feed.mjs) |
+Each folder is named for what you need to run what is inside it, so the ladder
+is the directory listing:
+
+| Folder | Needs | Runs | Reaches the network |
+|---|---|---|---|
+| **[palladium](palladium)** | Palladium, on any UE4SS server | inside the game | no |
+| **[palladium+pal-up](palladium+pal-up)** | Palladium **and** Pal-Up | beside the game, started by the panel | yes |
+| **[palladium+pal-up+token](palladium+pal-up+token)** | Palladium, Pal-Up **and** an API token | wherever you like | yes |
+
+Start with [WelcomeKit](palladium/WelcomeKit), then
+[DiscordRelay](palladium+pal-up/DiscordRelay), then
+[death-feed.mjs](palladium+pal-up+token/death-feed.mjs).
 
 **Write a Palladium mod by default.** It is one `mod.lua`, it reaches the
 engine directly, it needs nothing running outside the game, and it works on a
 server that has Palladium and nothing else.
 
-**Write a script mod when it has to call out** — a Discord relay, anything
+**Add Pal-Up when it has to call out** — a Discord relay, anything
 speaking HTTP to somebody else's API. This is the only reason to leave the
 game process: UE4SS Lua has no sockets.
 
-**Write an external program when it lives somewhere else entirely** — a bot on
+**Add a token when it lives somewhere else entirely** — a bot on
 another host, a dashboard, a CLI on your laptop. Same capabilities, reached
 over HTTP with a token.
 

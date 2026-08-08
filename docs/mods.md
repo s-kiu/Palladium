@@ -27,7 +27,7 @@ Rules of thumb when a download page doesn't say which type it is:
 
 ## Writing a Palladium mod
 
-One file. `mods/GoldStreak/mod.lua` returns a table, and that table is the
+One file. `examples/palladium/GoldStreak/mod.lua` returns a table, and that table is the
 whole mod — what it is, what it owns, and what it does:
 
 ![A mod is one file: mod.lua declares permissions, settings, data and commands, and Palladium registers all of it on restart.](img/mod-lifecycle.svg)
@@ -187,7 +187,7 @@ copy. Plain `key = value` lines; dotted keys reach into tables and numeric
 segments make list positions:
 
 ```ini
-; mods/TimedRewards/settings.config
+; examples/palladium/TimedRewards/settings.config
 rewards.1.hours = 1
 rewards.1.item = Money
 rewards.1.count = 250
@@ -249,7 +249,7 @@ mod loads, so an edit here applies at the next server restart.
 A mod's config and its records live **in its own folder**, beside the code:
 
 ```
-mods/GoldStreak/
+examples/palladium/GoldStreak/
 ├── mod.lua                 the mod — replaced when you update it
 ├── settings.config         your settings for it, if it ships an example
 ├── permissions.config      its nodes, if it keeps them in a file

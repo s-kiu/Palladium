@@ -35,13 +35,13 @@ Two products, one project. Pick your door:
 
 Read them before writing your own — each is one file:
 
-- [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/mods/GoldStreak) —
+- [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/GoldStreak) —
   gold on a respawn streak
-- [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/mods/WelcomeKit) —
+- [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/WelcomeKit) —
   a starter kit on a first-ever join, delivery-verified
-- [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/mods/TimedRewards)
+- [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/TimedRewards)
   — rewards at the playtime hour marks the operator defines
-- [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/mods/Leaderboards)
+- [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/Leaderboards)
   — who leads the server, refreshed on the clock's cadence
 
 ## Downloads

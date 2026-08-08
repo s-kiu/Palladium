@@ -17,7 +17,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'mods/**'
+      - 'mods/Palladium/**'
+      - 'examples/palladium/**'
+      - 'examples/palladium+pal-up/**'
       - '.github/workflows/mod-release.yaml'
   # Run it by hand from the Actions tab: useful for re-cutting a release
   # without a dummy commit, and the quickest way to tell whether Actions is
@@ -41,7 +43,17 @@ jobs:
       - name: read the mod version
         id: mod
         run: |
-          dir="mods/${{ matrix.mod }}"
+          # Palladium is the framework and ships from mods/; the mods built on
+          # it are examples first, and live where they are read.
+          if [ -d "mods/${{ matrix.mod }}" ]; then
+            dir="mods/${{ matrix.mod }}"
+          elif [ -d "examples/palladium/${{ matrix.mod }}" ]; then
+            dir="examples/palladium/${{ matrix.mod }}"
+          elif [ -d "examples/palladium+pal-up/${{ matrix.mod }}" ]; then
+            dir="examples/palladium+pal-up/${{ matrix.mod }}"
+          else
+            echo "no folder for ${{ matrix.mod }}" >&2; exit 1
+          fi
           slug="$(echo "${{ matrix.mod }}" | tr '[:upper:]' '[:lower:]')"
           if [ -f "$dir/Info.json" ]; then
             version="$(jq -er '.Version' "$dir/Info.json")"
@@ -85,13 +97,16 @@ jobs:
       - name: package
         if: steps.check.outputs.exists == 'false'
         run: |
-          # Archive root is the mod folder itself, so unzipping into ./mods (or
-          # a server's Mods directory) lands it at the path the loader expects.
-          # Tests are not part of what a server runs.
-          zip -r "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip" "${{ steps.mod.outputs.dir }}" \
-            -x '*/.disabled' '*/test/*'
-          sha256sum "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip" \
-            > "${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip.sha256"
+          # Archive root is the mod folder itself and nothing above it, so
+          # unzipping into ./mods (or a server's Mods directory) lands it at
+          # the path the loader expects — zipping from the parent is what keeps
+          # the folder's own home out of the archive. Tests are not part of
+          # what a server runs.
+          name="${{ matrix.mod }}-${{ steps.mod.outputs.version }}.zip"
+          ( cd "$(dirname "${{ steps.mod.outputs.dir }}")" \
+            && zip -r "$GITHUB_WORKSPACE/$name" "$(basename "${{ steps.mod.outputs.dir }}")" \
+                 -x '*/.disabled' '*/test/*' )
+          sha256sum "$name" > "$name.sha256"
 
       - name: notes
         if: steps.check.outputs.exists == 'false'

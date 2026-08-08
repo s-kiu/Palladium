@@ -1,0 +1,18 @@
+{
+  "//": "Editor support for mods written inside this repository. TypeScript's language server picks the nearest config, so packages/ with their own tsconfig are unaffected — this exists so that a mod in ./mods or ./examples resolves @pal-up/mod-sdk without npm install, and offers the real capabilities.",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@pal-up/mod-sdk": ["packages/mod-sdk/index.d.ts"]
+    }
+  },
+  "include": ["mods/**/*.mjs", "mods/**/*.js", "mods/**/*.ts", "examples/**/*.mjs", "examples/**/*.js", "examples/**/*.ts"],
+  "exclude": ["node_modules", "site"]
+}

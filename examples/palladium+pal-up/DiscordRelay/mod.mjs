@@ -6,7 +6,10 @@
 // read your settings, and answer. The panel starts it, restarts it if it
 // falls over, and shows its log.
 
-/** @type {(event: import('@pal-up/mod-sdk').PalEvent, pal: import('@pal-up/mod-sdk').Pal) => Promise<void>} */
+/**
+ * @param {import('@pal-up/mod-sdk').Pal} pal
+ * @param {string} text
+ */
 async function post(pal, text) {
   const webhook = pal.settings.webhook;
 
@@ -33,6 +36,7 @@ async function post(pal, text) {
   if (!res.ok) console.error(`discord refused it: HTTP ${res.status}`);
 }
 
+/** @param {import('@pal-up/mod-sdk').Pal} pal */
 export async function start(pal) {
   const events = pal.settings.events ?? [];
   console.log(
@@ -42,6 +46,7 @@ export async function start(pal) {
   );
 }
 
+/** @type {import('@pal-up/mod-sdk').ScriptMod['on']} */
 export const on = {
   'player.join': async (event, pal) => {
     if (!(pal.settings.events ?? []).includes('player.join')) return;

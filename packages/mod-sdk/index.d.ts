@@ -36,8 +36,18 @@ declare class PalClient {
   /** The mod's own name, from its mod.json. */
   readonly name: string;
 
-  /** The `settings` object from the mod's mod.json, already parsed. */
-  settings: Record<string, unknown>;
+  /**
+   * The `settings` object from the mod's mod.json, already parsed. Free-form
+   * by design — an operator edits it — so the values are `any` rather than
+   * something every mod would have to cast its way out of. Narrow it when you
+   * want the checking:
+   *
+   * ```js
+   * /** @type {{ webhook: string, events: string[] }} *\/
+   * const settings = pal.settings;
+   * ```
+   */
+  settings: Record<string, any>;
 
   /** Any capability by full name — the escape hatch the namespaces are built on. */
   call<T = Record<string, unknown>>(

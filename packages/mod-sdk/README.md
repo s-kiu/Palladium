@@ -92,6 +92,6 @@ panel:
 
 ```bash
 PALUP_TOKEN=palup_... PALUP_MOD_NAME=GoldStreak \
-  PALUP_MOD_ENTRY=$PWD/mods/GoldStreak/main.ts \
+  PALUP_MOD_ENTRY=$PWD/mods/MyMod/mod.mjs \
   node packages/mod-sdk/host.mjs
 ```
