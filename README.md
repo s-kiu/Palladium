@@ -1,20 +1,20 @@
 # Palladium
 
-[![CI](https://github.com/s-kiu/palladium/actions/workflows/ci.yaml/badge.svg)](https://github.com/s-kiu/palladium/actions/workflows/ci.yaml)
-[![docs](https://github.com/s-kiu/palladium/actions/workflows/docs.yaml/badge.svg)](https://s-kiu.github.io/palladium/)
-[![release](https://img.shields.io/github/v/release/s-kiu/palladium?display_name=release&label=release)](https://github.com/s-kiu/palladium/releases)
-[![license](https://img.shields.io/github/license/s-kiu/palladium)](LICENSE)
+[![CI](https://github.com/s-kiu/Palladium/actions/workflows/ci.yaml/badge.svg)](https://github.com/s-kiu/Palladium/actions/workflows/ci.yaml)
+[![docs](https://github.com/s-kiu/Palladium/actions/workflows/docs.yaml/badge.svg)](https://s-kiu.github.io/Palladium/)
+[![release](https://img.shields.io/github/v/release/s-kiu/Palladium?display_name=release&label=release)](https://github.com/s-kiu/Palladium/releases)
+[![license](https://img.shields.io/github/license/s-kiu/Palladium)](LICENSE)
 
 **A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
 ![Architecture: players reach the Palworld dedicated server directly, admins and external apps go through the web panel, and Palladium — running inside the game via UE4SS — exchanges events and actions with the panel. Palladium also drops into any UE4SS server on its own.](docs/img/architecture.png)
 
-- **[Palladium](mods/Palladium)** is the framework: one UE4SS Lua mod, on any UE4SS dedicated server. A mod built on it is a single `mod.lua` — permissions, settings, storage, chat commands and in-game events all handled for it. [Download from releases](https://github.com/s-kiu/palladium/releases).
+- **[Palladium](mods/Palladium)** is the framework: one UE4SS Lua mod, on any UE4SS dedicated server. A mod built on it is a single `mod.lua` — permissions, settings, storage, chat commands and in-game events all handled for it. [Download from releases](https://github.com/s-kiu/Palladium/releases).
 - **Pal-Up** — *Palladium, up* — is the server: a modded Palworld dedicated server for Linux — which the official mod system doesn't support — in one `docker compose up`, with Palladium preinstalled, drop-in mod folders, a web panel, backups and safe updates. Clone this repo.
 
 What each delivers — and what only the combination can:
 
-| | **Palladium**<br>[release zip](https://github.com/s-kiu/palladium/releases) on any UE4SS server | **Pal-Up**<br>this repo, Docker on Linux | **Both**<br>clone, `compose up` — done |
+| | **Palladium**<br>[release zip](https://github.com/s-kiu/Palladium/releases) on any UE4SS server | **Pal-Up**<br>this repo, Docker on Linux | **Both**<br>clone, `compose up` — done |
 |---|:---:|:---:|:---:|
 | ***The framework*** | | | |
 | Lua modding — a mod is one `mod.lua` file | ✓ | | ✓ |
@@ -86,7 +86,7 @@ What each delivers — and what only the combination can:
 ### Just the mod — Palladium on a server you already run
 
 No clone, no Docker. Download the latest `Palladium` zip from the
-[releases page](https://github.com/s-kiu/palladium/releases), drop the
+[releases page](https://github.com/s-kiu/Palladium/releases), drop the
 `Palladium` folder into your server's UE4SS `Mods` directory, enable it, and
 restart. Mods built on it go in folders right beside it. Full steps, including
 where permissions and mod data land: [mods/Palladium](mods/Palladium).
@@ -96,7 +96,7 @@ where permissions and mod data land: [mods/Palladium](mods/Palladium).
 Requirements: Linux x86_64, Docker with the compose plugin, ~25 GB free disk, 16 GB RAM recommended.
 
 ```bash
-git clone https://github.com/s-kiu/palladium.git && cd palladium
+git clone https://github.com/s-kiu/Palladium.git && cd Palladium
 cp .env.example .env
 # edit .env — at minimum set ADMIN_PASSWORD
 

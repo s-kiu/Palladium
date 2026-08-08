@@ -3,8 +3,8 @@
 This is the **Pal-Up** walkthrough: the full server, cloned and composed. If
 you already run a UE4SS dedicated server and only want the modding framework,
 skip all of this — download the `Palladium` zip from the
-[releases page](https://github.com/s-kiu/palladium/releases) and follow
-[its README](https://github.com/s-kiu/palladium/tree/main/mods/Palladium).
+[releases page](https://github.com/s-kiu/Palladium/releases) and follow
+[its README](https://github.com/s-kiu/Palladium/tree/main/mods/Palladium).
 
 Tested target: Ubuntu 24.04, x86_64. Any Linux with Docker ≥ 24 and the
 compose plugin works the same way. **Not** supported: ARM (Raspberry Pi) — the
@@ -12,7 +12,7 @@ UE4SS Linux build is x86_64 only.
 
 **Windows host?** Works through Docker Desktop (the containers run in its
 WSL2 Linux VM). Three rules for a good time: clone the repo *inside* the WSL
-filesystem (e.g. `~/palladium` in your Ubuntu distro, not `C:\...` — bind-mounted
+filesystem (e.g. `~/Palladium` in your Ubuntu distro, not `C:\...` — bind-mounted
 folders are slow and permission-quirky otherwise); give WSL enough memory for
 the 16 GB recommendation (`.wslconfig` → `memory=16GB`, then `wsl --shutdown`);
 and allow `8211/udp` through Windows Defender Firewall when it asks. The
@@ -44,7 +44,7 @@ sudo usermod -aG docker "$USER" && newgrp docker
 ## 1. Get the project
 
 ```bash
-git clone https://github.com/s-kiu/palladium.git && cd palladium
+git clone https://github.com/s-kiu/Palladium.git && cd Palladium
 cp .env.example .env
 ```
 
@@ -66,7 +66,7 @@ docker compose logs -f palworld
 
 The image build fetches the UE4SS mod loader from its pinned release and
 verifies it against the checksum recorded in
-[`ue4ss.lock`](https://github.com/s-kiu/palladium/tree/main/packages/server-image/ue4ss/ue4ss.lock) — the running
+[`ue4ss.lock`](https://github.com/s-kiu/Palladium/tree/main/packages/server-image/ue4ss/ue4ss.lock) — the running
 container never downloads anything from mod-loader upstreams. Prefer a fully
 offline build (or want to inspect the artifact first)? Run
 `./packages/server-image/ue4ss/vendor.sh` beforehand and the build uses the
@@ -111,10 +111,12 @@ unzip CoolMod.zip -d mods/          # → mods/CoolMod/mod.lua
 docker compose restart palworld     # syncs mods, regenerates mods.txt + mods.list
 ```
 
-Two Palladium mods ship with the project, so you can read a working one before
-writing your own: [GoldStreak](https://github.com/s-kiu/palladium/tree/main/mods/GoldStreak) (50 gold on every fifth
-respawn) and [WelcomeKit](https://github.com/s-kiu/palladium/tree/main/mods/WelcomeKit) (a starter kit on a player's first
-ever join). Both are enabled out of the box.
+Four Palladium mods ship with the project, so you can read a working one
+before writing your own: [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/mods/WelcomeKit)
+(a starter kit on a player's first ever join), [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/mods/GoldStreak)
+(gold on a respawn streak), [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/mods/TimedRewards)
+(rewards at configurable hour marks) and [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/mods/Leaderboards)
+(`!lb`, refreshed on a clock cadence). All are enabled out of the box.
 
 Disable without deleting: `touch mods/CoolMod/.disabled`. A script mod stops
 immediately; the other kinds need a restart. The panel's mods page has a button

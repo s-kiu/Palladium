@@ -5,9 +5,9 @@
 
 site_name: Palladium & Pal-Up
 site_description: Server-side Palworld modding on Linux — a framework, a server, and one contract between them.
-site_url: https://s-kiu.github.io/palladium/
-repo_url: https://github.com/s-kiu/palladium
-repo_name: s-kiu/palladium
+site_url: https://s-kiu.github.io/Palladium/
+repo_url: https://github.com/s-kiu/Palladium
+repo_name: s-kiu/Palladium
 edit_uri: edit/main/docs/
 
 theme:
