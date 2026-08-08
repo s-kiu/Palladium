@@ -79,6 +79,14 @@ Settings ride the same folder. A mod may ship a commented
 overrides the manifest defaults key by key, edits are picked up within seconds
 without a restart, and updating the mod never touches it.
 
+Permission nodes work the same way for mods too big to keep them in `mod.lua`:
+a `permissions.config` beside the mod declares them, one `[node]` section each
+with `default` and `description`, seeded from a shipped
+`permissions.example.config` on first load. When that file is present it is the
+whole truth — the `permissions` table in `mod.lua` is not read — so an operator
+has one place to look. Nodes register as a mod loads, so edits apply on the
+next restart.
+
 Permissions are one file rather than one per mod: a group spans every mod, so
 splitting membership across them would leave no answer for which copy wins.
 

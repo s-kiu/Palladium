@@ -32,6 +32,9 @@ dist/
 # A shipped, commented settings example is source: the framework copies it
 # to settings.config on the first load that finds none.
 !/mods/*/settings.example.config
+# The same for a mod that keeps its permission nodes in a file rather than in
+# mod.lua — shipped as an example, seeded to permissions.config on first load.
+!/mods/*/permissions.example.config
 # The commented tour of the permission system is documentation, not state.
 !/mods/Palladium/example.permissions.config
 !/paks/.gitkeep

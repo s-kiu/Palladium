@@ -276,10 +276,9 @@ end
 -- so a fresh install has a real file to open, already explaining itself.
 -- Never re-copied: the moment an operator has a settings.config, updates
 -- to the example are reference material, not overwrites.
-local function seed_settings(name)
-    local live = settings_path(name)
+local function seed_from_example(name, live, which)
     if exists(live) then return end
-    local example = io.open(host.mods_dir .. "/" .. name .. "/settings.example.config", "r")
+    local example = io.open(host.mods_dir .. "/" .. name .. "/" .. which .. ".example.config", "r")
     if not example then return end
     local content = example:read("a")
     example:close()
@@ -287,7 +286,98 @@ local function seed_settings(name)
     if not out then return end
     out:write(content)
     out:close()
-    log(name .. ": settings.config created from the shipped example")
+    log(name .. ": " .. which .. ".config created from the shipped example")
+end
+
+local function seed_settings(name)
+    seed_from_example(name, settings_path(name), "settings")
+end
+
+-- A mod declares its permission nodes in mod.lua, which keeps a small mod one
+-- file. A large one can move them out instead: a permissions.config beside the
+-- mod declares the same nodes, and when that file is present it is the whole
+-- truth — the table in mod.lua is not merged with it, so what an operator
+-- reads in the file is what the mod owns. One section per node:
+--
+--   [bigmod.reward]
+--   default = allow
+--   description = earn the reward on a streak
+--
+-- Same shape as settings.config beside it: a shipped permissions.example.config
+-- becomes the live file on first load, full-line `;` and `#` comments only,
+-- and a line that makes no sense is named with its number rather than dropped
+-- in silence.
+local function parse_permissions(content)
+    local list, problems, current = {}, {}, nil
+    local lineno = 0
+    for raw_line in (tostring(content) .. "\n"):gmatch("(.-)\n") do
+        lineno = lineno + 1
+        local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
+        if line ~= "" and line:sub(1, 1) ~= ";" and line:sub(1, 1) ~= "#" then
+            local section = line:match("^%[%s*([^%]]-)%s*%]$")
+            if section then
+                current = { node = section:lower() }
+                list[#list + 1] = current
+            else
+                local key, value = line:match("^([%w_]+)%s*=%s*(.*)$")
+                if not key then
+                    problems[#problems + 1] = string.format("line %d: not a [node] heading or key = value", lineno)
+                elseif not current then
+                    problems[#problems + 1] = string.format("line %d: %s before any [node] heading", lineno, key)
+                elseif key:lower() == "default" or key:lower() == "description" then
+                    current[key:lower()] = value:gsub("%s+$", "")
+                else
+                    problems[#problems + 1] = string.format('line %d: unknown key "%s" — expected default or description', lineno, key)
+                end
+            end
+        end
+    end
+    return list, problems
+end
+
+-- The same rules a mod.lua declaration answers to: a mod owns its own
+-- namespace and only its own, and a default is allow or deny.
+local function usable_permissions(name, list)
+    local prefix = name:lower() .. "."
+    local kept, refused = {}, {}
+    for _, entry in ipairs(list) do
+        if type(entry.node) ~= "string" or entry.node == "" then
+            refused[#refused + 1] = "a section with no node name"
+        elseif entry.node:sub(1, #prefix) ~= prefix then
+            refused[#refused + 1] = string.format('"%s" must start with "%s"', entry.node, prefix)
+        elseif entry.default ~= nil and entry.default ~= "allow" and entry.default ~= "deny" then
+            refused[#refused + 1] = string.format('"%s": default must be allow or deny', entry.node)
+        else
+            kept[#kept + 1] = entry
+        end
+    end
+    return kept, refused
+end
+
+local function permissions_path(name)
+    local home = host.home_for and host.home_for(name) or (host.mods_dir .. "/" .. name)
+    return home .. "/permissions.config"
+end
+
+-- Whichever the operator can see wins: a permissions.config beside the mod
+-- replaces the mod.lua table wholesale rather than adding to it, so there is
+-- one place to read and no half-merged answer.
+local function declared_permissions(name, mod)
+    local file = io.open(permissions_path(name), "r")
+    if not file then return mod.permissions or {}, false end
+    local content = file:read("a")
+    file:close()
+
+    local parsed, problems = parse_permissions(content)
+    for _, problem in ipairs(problems) do
+        log(name .. ": permissions.config " .. problem)
+    end
+    local kept, refused = usable_permissions(name, parsed)
+    for _, refusal in ipairs(refused) do
+        log(name .. ": permissions.config refused " .. refusal)
+    end
+    log(string.format("%s: permissions.config declares %d node(s) — the mod.lua table is not read", name, #kept))
+    return kept, true
 end
 
 local settings_seen = {} -- mod name → file content behind the current overlay
@@ -497,6 +587,8 @@ function framework.load()
                         entry.ok = true
                         entry.mod = result
                         seed_settings(name)
+                        seed_from_example(name, permissions_path(name), "permissions")
+                        entry.permissions, entry.permissions_from_file = declared_permissions(name, result)
                         entry.pal = api_for(name, result)
                         entry.warnings = unfireable(result)
                     end
@@ -508,7 +600,7 @@ function framework.load()
             -- them: the panel lists what exists, and a default of "deny" only
             -- means something once the node is known.
             if entry.ok and host.permissions then
-                host.permissions:register(name:lower(), entry.mod.permissions or {})
+                host.permissions:register(name:lower(), entry.permissions or {})
             end
             -- A mod's collections exist from the moment it loads, so the panel
             -- can list an empty one rather than nothing at all — and they live
@@ -931,7 +1023,7 @@ function framework.snapshot()
         local entry = framework.mods[name]
         local mod = entry.mod or {}
         local nodes = {}
-        for _, permission in ipairs(mod.permissions or {}) do
+        for _, permission in ipairs(entry.permissions or mod.permissions or {}) do
             nodes[#nodes + 1] = string.format('{"node":%s,"description":%s,"default":%s}',
                 host.json_string(permission.node, 128),
                 host.json_string(permission.description or "", 200),

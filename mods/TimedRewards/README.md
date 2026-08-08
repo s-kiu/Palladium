@@ -41,6 +41,14 @@ you want.
 `timedrewards.reward` for the default group and grant it to a group to make
 the ladder a perk.
 
+This mod keeps them in `permissions.config` beside the mod rather than in
+`mod.lua` — the file appears on the first load, copied from the shipped
+`permissions.example.config`, and while it is there it is the whole truth about
+what this mod owns. Change a `default` there to ship a different starting
+policy; the change applies on the next server restart. (Which players actually
+get a node is still decided in `Mods/Palladium/permissions.config`, as ever —
+this file only declares that the nodes exist and what they default to.)
+
 ## Where the claims live
 
 In the `claimed` collection, declared by the mod and held in its own folder —

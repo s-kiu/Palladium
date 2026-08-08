@@ -170,6 +170,39 @@ There is one set of permissions and one file. A mod asks in-process, the panel
 and script mods ask through `permission.check`, and an operator edits the file
 by hand. All three see the same answer.
 
+### Nodes in a file instead of in mod.lua
+
+A mod declares its permission nodes in `mod.lua`, which is what keeps a small
+mod one file. A larger one can move them out: a `permissions.config` beside the
+mod declares the same nodes, one section each.
+
+```ini
+; mods/BigMod/permissions.config
+[bigmod.reward]
+default = allow
+description = earn the reward on a streak
+
+[bigmod.admin]
+default = deny
+description = administer the mod
+```
+
+**When that file is present it is the whole truth.** The `permissions` table in
+`mod.lua` is not read at all — not merged, not used as a fallback for nodes the
+file omits — so what an operator reads in the file is exactly what the mod
+owns. Delete the file and the table in `mod.lua` takes over again.
+
+It follows the same rules the table does: every node must start with the mod's
+own lowercased name, and `default` is `allow` or `deny`. And it seeds the same
+way as settings — ship a commented `permissions.example.config` next to your
+code and the first load that finds no live `permissions.config` copies it over,
+so a fresh install has a real file to open. Updates refresh the example only.
+
+Full-line comments (`;` or `#`) only. A line that makes no sense is named with
+its number in the log and skipped; the nodes that do parse still register, so
+one typo never costs you the file. Unlike settings, nodes are registered as a
+mod loads, so an edit here applies at the next server restart.
+
 ## Every mod keeps its own files
 
 A mod's config and its records live **in its own folder**, beside the code:
@@ -177,7 +210,9 @@ A mod's config and its records live **in its own folder**, beside the code:
 ```
 mods/GoldStreak/
 ├── mod.lua                 the mod — replaced when you update it
-├── goldstreak.config       your settings for it, if it declares any
+├── settings.config         your settings for it, if it ships an example
+├── permissions.config      its nodes, if it keeps them in a file
+├── goldstreak.config       a collection it declared with storage = "config"
 └── goldstreak.data         its records
 mods/Palladium/
 ├── permissions.config      groups, grants and node defaults — central
