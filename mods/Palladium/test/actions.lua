@@ -107,8 +107,44 @@ local pawn = mock(CHARACTER_CLASS, {
     end,
 })
 
+-- The loader boundary, as the real one behaves: a Lua string crossing into
+-- the engine has every high-bit byte widened into its own UTF-16 unit at
+-- U+FF00+byte (sign extension), while an engine-side FString passes through
+-- untouched. `wide` holds the UTF-16 content, spelled as correct UTF-8.
+local function widen(value)
+    if type(value) == "table" and value.wide then return value.wide end
+    return (tostring(value):gsub("[\128-\255]", function(c)
+        local unit = 0xFF00 + c:byte()
+        return string.char(0xE0 + math.floor(unit / 4096),
+            0x80 + math.floor(unit / 64) % 64, 0x80 + unit % 64)
+    end))
+end
+
+local function fstring(wide)
+    return { wide = wide, ToString = function(self) return self.wide end }
+end
+
+local KSL_CLASS = mock_class("KismetStringLibrary", { "Concat_StrStr", "Replace" })
+local kismet = mock(KSL_CLASS, {
+    -- Faithful to the loader's defect: every parameter after a userdata
+    -- argument is dropped, so an FString first argument eats the second.
+    Concat_StrStr = function(_, a, b)
+        if type(a) == "table" then return fstring(widen(a)) end
+        return fstring(widen(a) .. widen(b))
+    end,
+    Replace = function(_, source, from, to, case)
+        assert(type(source) == "string", "Replace with an FString source loses its arguments")
+        assert(case ~= nil, "Replace requires the SearchCase argument")
+        return fstring((widen(source):gsub(from, (widen(to):gsub("%%", "%%%%")))))
+    end,
+})
+
+local chat_sent = {} -- what each system chat actually held, engine-side
+
 local utility = mock(UTILITY_CLASS, {
-    SendSystemToPlayerChat = function() end,
+    SendSystemToPlayerChat = function(_, _world, message)
+        chat_sent[#chat_sent + 1] = widen(message)
+    end,
     GetNPCManager = function() return world.manager end,
     -- The game's placement call, which here only knows how to move a player:
     -- a pal passed to it comes back where it was, the way an engine call that
@@ -211,6 +247,7 @@ _G.print = function() end
 _G.FName = function(value) return value end
 _G.StaticFindObject = function(path)
     if path:find("PalUtility", 1, true) then return utility end
+    if path:find("KismetStringLibrary", 1, true) then return kismet end
     if path:find("GameplayStatics", 1, true) then return mock(STATICS_CLASS, { ApplyDamage = function() end }) end
     return nil
 end
@@ -605,6 +642,63 @@ send("id=a1\taction=server.announce\tmessage=the server is about to restart")
 check("announcing reaches the players who are online",
     last_result():find('"players":1', 1, true) ~= nil, last_result())
 check("and reports ok", last_result():find('"ok":true', 1, true) ~= nil, last_result())
+
+-- ── UTF-8 out through the loader boundary ───────────────────────────────────
+-- The boundary sign-extends every high byte (the widen() above is faithful to
+-- it), so what these checks assert is the repair: ASCII untouched, an online
+-- player's name spliced in from the engine's own FString, everything else
+-- transliterated rather than left to turn into Hangul glyphs.
+
+send("id=u1\taction=player.message\tuserid=" .. USERID .. "\ttext=plain ascii stays")
+check("ascii chat crosses the boundary untouched",
+    chat_sent[#chat_sent] == "plain ascii stays", chat_sent[#chat_sent])
+
+send("id=u2\taction=player.message\tuserid=" .. USERID .. "\ttext=Zo\195\171 says h\195\170llo")
+check("non-ascii with nobody to splice from is transliterated",
+    chat_sent[#chat_sent] == "Zoe says hello", chat_sent[#chat_sent])
+
+-- Löyly comes online: the scan sees the state, the splice can reach the name.
+local LOYLY_ID = "F8EAA197000000000000000000000000"
+local loyly_state = mock(STATE_CLASS, {
+    PlayerUId = { A = 0xF8EAA197, B = 0, C = 0, D = 0 },
+    PlayerNamePrivate = fstring("L\195\182yly"),
+    GetPlayerController = function() return nil end,
+})
+_G.FindAllOf = function(class)
+    if class == "PalPlayerState" then return { player_state, loyly_state } end
+    if class == "PalCharacter" then return loaded_pals end
+    return {}
+end
+for _ = 1, 4 do poll_fn() end -- a leave-scan tick puts Löyly on the roster
+
+send("id=u3\taction=player.message\tuserid=" .. LOYLY_ID
+    .. "\ttext=Level leaders: 1. L\195\182yly (Lv 4)")
+check("an online player's name is spliced in engine-side, intact",
+    chat_sent[#chat_sent] == "Level leaders: 1. L\195\182yly (Lv 4)", chat_sent[#chat_sent])
+
+send("id=u4\taction=player.message\tuserid=" .. USERID
+    .. "\ttext=L\195\182yly beat Zo\195\171 \226\128\148 again")
+check("splice and transliteration mix in one message",
+    chat_sent[#chat_sent] == "L\195\182yly beat Zoe - again", chat_sent[#chat_sent])
+
+-- Two non-ASCII names online at once: one Replace is the budget, so the name
+-- covering more of the text keeps its marks and the other is transliterated.
+local zoe_state = mock(STATE_CLASS, {
+    PlayerUId = { A = 0x0A0E0001, B = 0, C = 0, D = 0 },
+    PlayerNamePrivate = fstring("Zo\195\171"),
+    GetPlayerController = function() return nil end,
+})
+_G.FindAllOf = function(class)
+    if class == "PalPlayerState" then return { player_state, loyly_state, zoe_state } end
+    if class == "PalCharacter" then return loaded_pals end
+    return {}
+end
+for _ = 1, 4 do poll_fn() end
+
+send("id=u5\taction=player.message\tuserid=" .. USERID
+    .. "\ttext=L\195\182yly beat Zo\195\171")
+check("with two names the one covering more text wins the splice",
+    chat_sent[#chat_sent] == "L\195\182yly beat Zoe", chat_sent[#chat_sent])
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)

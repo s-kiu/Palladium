@@ -9,6 +9,11 @@
 # stability fixes for Palworld build 24466863 (upstream
 # BlackBookOfficial/ue4ss-linux-palworld issues #1/#11; fixes are being
 # upstreamed, switch back to an upstream release once one ships them).
+# Known defect in this build: the Lua → FString conversion widens each byte
+# with sign extension, so non-ASCII UTF-8 reaches the engine as U+FFxx
+# garbage (engine → Lua is a correct UTF-16 → UTF-8 encode). Palladium
+# works around it at its chat boundary; drop the workaround note in
+# mods/Palladium/Scripts/main.lua when a release fixes the conversion.
 # The sha256 below is the digest GitHub publishes for the release asset.
 UE4SS_REPO=Qiiks/ue4ss-linux-palworld
 UE4SS_TAG=v1.0.3-palworld-linux

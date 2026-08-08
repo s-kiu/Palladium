@@ -100,6 +100,14 @@ call that loads the file is the call that reads the manifest.
 | `pal.settings` | The mod's own settings table, with the operator's overlay applied |
 | `pal.log(text)` | A line in the server log, prefixed with the mod's name |
 
+Chat text is UTF-8, with one caveat: the loader cannot carry non-ASCII from
+Lua into the engine, so Palladium repairs outgoing chat at that boundary.
+One online player's name per message goes out through the engine's own copy
+of the name and renders exactly (the name covering the most of the text, if
+several qualify); every other non-ASCII character is transliterated to plain
+ASCII (`ö` → `o`). Names in events, collections and the store are untouched —
+the substitution happens only on the way into the game's chat.
+
 ### The operator's settings.config
 
 The `settings` table in `mod.lua` is the author's defaults. The operator's
