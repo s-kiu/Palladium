@@ -1219,7 +1219,7 @@
       "since": "4.18.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Switch a player's immortality on or off. This is the engine's own IsImmortality flag on the character parameter component, replicated to the client, rather than a health ceiling: damage still lands and nothing takes the player below it. The flag is read back, so a build that ignores the write is reported rather than reported as success.",
+      "summary": "Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them \u2014 the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back.",
       "params": {
         "on": {
           "type": "bool",
@@ -1227,7 +1227,50 @@
         }
       },
       "returns": {
-        "immortal": "bool"
+        "immortal": "bool",
+        "was": "bool",
+        "damage_rate": "string",
+        "damage_rate_was": "string"
+      }
+    },
+    {
+      "type": "player.set_frozen",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "4.20.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back.",
+      "params": {
+        "on": {
+          "type": "bool",
+          "default": true
+        }
+      },
+      "returns": {
+        "frozen": "bool",
+        "multiplier": "number"
+      }
+    },
+    {
+      "type": "player.set_flying",
+      "kind": "action",
+      "runtime": "agent",
+      "target": "player",
+      "since": "4.20.0",
+      "stability": "experimental",
+      "scope": "write",
+      "summary": "Start or end flight for a player, through the controller's own server call \u2014 the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified.",
+      "params": {
+        "on": {
+          "type": "bool",
+          "default": true
+        }
+      },
+      "returns": {
+        "flying": "bool",
+        "verified": "bool"
       }
     },
     {

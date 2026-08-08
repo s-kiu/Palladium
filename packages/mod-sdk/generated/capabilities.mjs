@@ -132,6 +132,14 @@ export const capabilities = {
     "target": "player",
     "scope": "write"
   },
+  "player.set_frozen": {
+    "target": "player",
+    "scope": "write"
+  },
+  "player.set_flying": {
+    "target": "player",
+    "scope": "write"
+  },
   "player.status_points": {
     "target": "player",
     "scope": "read"

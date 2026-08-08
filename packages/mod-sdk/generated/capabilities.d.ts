@@ -352,12 +352,33 @@ export interface PlayerSetStatsResult {
   stats: unknown;
 }
 
-/** Switch a player's immortality on or off. This is the engine's own IsImmortality flag on the character parameter component, replicated to the client, rather than a health ceiling: damage still lands and nothing takes the player below it. The flag is read back, so a build that ignores the write is reported rather than reported as success. */
+/** Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them — the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back. */
 export interface PlayerSetImmortalParams {
   on?: boolean;
 }
 export interface PlayerSetImmortalResult {
   immortal: boolean;
+  was: boolean;
+  damage_rate: string;
+  damage_rate_was: string;
+}
+
+/** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. */
+export interface PlayerSetFrozenParams {
+  on?: boolean;
+}
+export interface PlayerSetFrozenResult {
+  frozen: boolean;
+  multiplier: number;
+}
+
+/** Start or end flight for a player, through the controller's own server call — the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified. */
+export interface PlayerSetFlyingParams {
+  on?: boolean;
+}
+export interface PlayerSetFlyingResult {
+  flying: boolean;
+  verified: boolean;
 }
 
 /** An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. */
@@ -576,8 +597,12 @@ export interface Capabilities {
     stats(target: string, params?: PlayerStatsParams): Promise<Envelope<PlayerStatsResult>>;
     /** Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused. _(experimental)_ */
     set_stats(target: string, params?: PlayerSetStatsParams): Promise<Envelope<PlayerSetStatsResult>>;
-    /** Switch a player's immortality on or off. This is the engine's own IsImmortality flag on the character parameter component, replicated to the client, rather than a health ceiling: damage still lands and nothing takes the player below it. The flag is read back, so a build that ignores the write is reported rather than reported as success. _(experimental)_ */
+    /** Make a player unkillable, or mortal again. Sets the engine's IsImmortality flag and zeroes the rate at which enemies inflict damage on them — the flag holds on this build but the damage path does not consult it, so the rate is what does the work. Both are read back. _(experimental)_ */
     set_immortal(target: string, params?: PlayerSetImmortalParams): Promise<Envelope<PlayerSetImmortalResult>>;
+    /** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. _(experimental)_ */
+    set_frozen(target: string, params?: PlayerSetFrozenParams): Promise<Envelope<PlayerSetFrozenResult>>;
+    /** Start or end flight for a player, through the controller's own server call — the one a client sends when it takes off. Nothing reports flight back, so the result says what was asked for and marks itself unverified. _(experimental)_ */
+    set_flying(target: string, params?: PlayerSetFlyingParams): Promise<Envelope<PlayerSetFlyingResult>>;
     /** An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. _(experimental)_ */
     status_points(target: string, params?: PlayerStatusPointsParams): Promise<Envelope<PlayerStatusPointsResult>>;
     /** Spend status points on one of a player's stats, the way a level-up does. This is how a player's max HP goes up: it is computed from the points, not stored, so nothing else can raise it. Additive. stat is the game's own FName for the stat and is passed through verbatim — this build spends through the player controller and exposes no way to read the allocation back, so the result reports which readable stat moved instead. player.status_points lists the names to try. _(experimental)_ */

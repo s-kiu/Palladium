@@ -923,8 +923,41 @@ end
 -- `!commands`: every chat word the caller may actually use — mod commands
 -- through their nodes, capabilities through the same permission resolve the
 -- call itself would face. Chunked to respect the chat message limit.
-local function list_commands(event)
+-- `!commands` is everything the caller may use; `!commands <mod>` narrows it
+-- to one mod, which is the question somebody actually has once a server runs
+-- more than two of them. An unknown name says so and lists the ones that exist
+-- rather than answering with an empty line.
+local function list_commands(event, only)
     local who = event.subject and event.subject.id or ""
+    only = tostring(only or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+
+    if only ~= "" then
+        local match, names = nil, {}
+        for _, name in ipairs(framework.order) do
+            names[#names + 1] = name
+            if name:lower() == only then match = framework.mods[name] end
+        end
+        if not match then
+            say(who, string.format("No mod called %s. Loaded: %s", only, table.concat(names, ", ")))
+            return
+        end
+        if not match.ok then
+            say(who, string.format("%s did not load: %s", only, tostring(match.error)))
+            return
+        end
+        local mine = {}
+        for word, command in pairs(match.mod.commands or {}) do
+            if not command.node or match.pal.can(who, command.node) then mine[#mine + 1] = word end
+        end
+        table.sort(mine)
+        if #mine == 0 then
+            say(who, string.format("%s has nothing you may use.", match.mod.name or only))
+            return
+        end
+        say(who, string.format("%s: %s", match.mod.name or only, table.concat(mine, "  ")))
+        return
+    end
+
     local words = {}
     for _, name in ipairs(framework.order) do
         local entry = framework.mods[name]
@@ -1042,7 +1075,7 @@ function framework.chat(event)
     if word == "!commands" or word == "!help" then
         if now - (last_command[who] or 0) < COMMAND_COOLDOWN_S then return true end
         last_command[who] = now
-        list_commands(event)
+        list_commands(event, rest)
         return true
     end
     if word:sub(1, 1) == "?" and #word > 1 then

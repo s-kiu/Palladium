@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.18.0"
+local VERSION = "4.20.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1765,17 +1765,80 @@ IMPL["player.set_immortal"] = function(state, p)
         return false, "not_supported: this build exposes no CharacterParameterComponent"
     end
 
+    -- What it was before the write is worth reporting: calling this twice is
+    -- how an operator finds out whether the flag stuck or something in the
+    -- game put it back.
+    local was = member(component, "IsImmortality")
     local want = p.on ~= false
     local written = pcall(function() component.IsImmortality = want end)
     if not written then
         return false, "not_supported: IsImmortality is not writable on this build"
     end
 
+    -- IsImmortality holds — a second call reports it still set — but this
+    -- build's damage path does not consult it for a player, so the flag alone
+    -- changes nothing. The rate at which enemies inflict damage is the other
+    -- knob the component carries, and zero is the same answer by arithmetic.
+    local rate_field = "AdditionalEnemyInflictDamageRate"
+    local rate_was = member(component, rate_field)
+    local rate_ok = pcall(function() component[rate_field] = want and 0.0 or 1.0 end)
+
     local now = member(component, "IsImmortality")
     if now ~= nil and now ~= want then
-        return false, "unverified: the flag did not hold", { { "immortal", tostring(now) } }
+        return false, "unverified: the flag did not hold",
+            { { "immortal", tostring(now) }, { "was", tostring(was) } }
     end
-    return true, nil, { { "immortal", tostring(want) } }
+    return true, nil, {
+        { "immortal", tostring(want) },
+        { "was", tostring(was) },
+        { "damage_rate", rate_ok and tostring(member(component, rate_field)) or "unwritable" },
+        { "damage_rate_was", tostring(rate_was) },
+    }
+end
+
+-- Freezing is a named walk-speed multiplier pinned to zero, which is the
+-- engine's own mechanism: the flag name keeps it out of the way of whatever
+-- else the game is doing to the same player's speed, so releasing it puts
+-- back exactly what was there rather than a guess at normal.
+local FREEZE_FLAG = "Palladium_Freeze"
+
+IMPL["player.set_frozen"] = function(state, p)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local movement = member(pawn, "CharacterMovement") or member(pawn, "Movement")
+    if not valid(movement) then
+        return false, "not_supported: this build exposes no movement component"
+    end
+
+    local frozen = p.on ~= false
+    local ok = pcall(function()
+        movement:SetWalkSpeedMultiplier(FName(FREEZE_FLAG), frozen and 0.0 or 1.0)
+    end)
+    if not ok then
+        return false, "not_supported: SetWalkSpeedMultiplier is not callable on this build"
+    end
+
+    local now = nil
+    pcall(function() now = movement:GetWalkSpeedMultiplier() end)
+    return true, nil, { { "frozen", tostring(frozen) }, { "multiplier", tostring(now) } }
+end
+
+-- Flight is the controller's own server RPC, the one a client sends when it
+-- wants to take off. Called here on the server, where it already runs.
+IMPL["player.set_flying"] = function(state, p)
+    local controller = pawn_of(state)
+    if not valid(controller) then return false, "player_offline" end
+
+    local want = p.on ~= false
+    local ok = pcall(function()
+        if want then controller:StartFlyToServer() else controller:EndFlyToServer() end
+    end)
+    if not ok then
+        return false, "not_supported: this build does not take the flight call"
+    end
+    -- Nothing reports flight back, so this says what was asked for rather than
+    -- what happened: the honest limit of a call with no answer.
+    return true, nil, { { "flying", tostring(want) }, { "verified", "false" } }
 end
 
 IMPL["player.count_item"] = function(state, p)

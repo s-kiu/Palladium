@@ -11,9 +11,6 @@
 --
 -- What is NOT here, and why — because a command that silently does nothing is
 -- worse than one that does not exist:
---   fly, freeze  the engine has both — StartFlyToServer on the controller, and
---                a named walk-speed multiplier on the movement component — but
---                neither is verified on this build yet, so neither is here.
 --   mute         Palladium observes chat, it cannot cancel it, so a muted
 --                player's words would still reach everyone. !mute here stops
 --                them using commands, which is the part that is real.
@@ -63,6 +60,8 @@ return {
         { node = "admincommands.give", description = "give items to a player", default = "deny" },
         { node = "admincommands.slay", description = "kill a player outright", default = "deny" },
         { node = "admincommands.god", description = "make a player unkillable", default = "deny" },
+        { node = "admincommands.fly", description = "let a player fly", default = "deny" },
+        { node = "admincommands.freeze", description = "hold a player still", default = "deny" },
         { node = "admincommands.mute", description = "stop a player using chat commands", default = "deny" },
     },
 
@@ -211,6 +210,54 @@ return {
                     if target ~= caller then
                         say(pal, target, off and "You are mortal again." or "An admin made you unkillable.")
                     end
+                end)
+            end,
+        },
+
+        -- Flight and freeze are the framework's work, not this mod's: both
+        -- are capabilities, so they are equally a chat command, an HTTP call
+        -- and something any other mod can reach.
+        ["!fly"] = {
+            node = "admincommands.fly",
+            help = "!fly @Name [off] — take off, or land.",
+            run = function(event, args, pal)
+                local caller = event.subject.id
+                if is_muted(pal, caller) then return end
+                local parts = words(args)
+                local target_token = ""
+                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
+                local off = (parts[1] or ""):lower() == "off"
+                local target, trouble = resolve(target_token, caller, pal)
+                if trouble then return say(pal, caller, trouble) end
+
+                pal.player.set_flying(target, { on = not off }, function(ok, err)
+                    if not ok then return say(pal, caller, "Could not do that: " .. tostring(err)) end
+                    -- Nothing reports flight back, so this says what was asked.
+                    say(pal, caller, off and "Asked them to land." or "Asked them to take off.")
+                end)
+            end,
+        },
+
+        ["!freeze"] = {
+            node = "admincommands.freeze",
+            help = "!freeze @Name [off] — hold them still, or let them go.",
+            run = function(event, args, pal)
+                local caller = event.subject.id
+                if is_muted(pal, caller) then return end
+                local parts = words(args)
+                local target_token = ""
+                if parts[1] and parts[1]:sub(1, 1) == "@" then target_token = table.remove(parts, 1) end
+                local off = (parts[1] or ""):lower() == "off"
+                local target, trouble = resolve(target_token, caller, pal)
+                if trouble then return say(pal, caller, trouble) end
+                if target == caller and not off then
+                    return say(pal, caller, "Freeze somebody else — you would not be able to undo it.")
+                end
+
+                pal.player.set_frozen(target, { on = not off }, function(ok, err)
+                    if not ok then return say(pal, caller, "Could not do that: " .. tostring(err)) end
+                    say(pal, caller, off and "Released." or "Frozen.")
+                    say(pal, target, off and "You can move again." or "An admin froze you.")
                 end)
             end,
         },

@@ -286,6 +286,20 @@ return {
             { name = "on", kind = "bool", default = true },
             },
         },
+        ["player.set_frozen"] = {
+            target = "player",
+            scope = "write",
+            params = {
+            { name = "on", kind = "bool", default = true },
+            },
+        },
+        ["player.set_flying"] = {
+            target = "player",
+            scope = "write",
+            params = {
+            { name = "on", kind = "bool", default = true },
+            },
+        },
         ["player.status_points"] = {
             target = "player",
             scope = "read",
