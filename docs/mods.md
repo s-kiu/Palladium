@@ -79,10 +79,51 @@ call that loads the file is the call that reads the manifest.
 | `name` | Must match the folder name |
 | `permissions` | Nodes the mod owns, each with a description and a default. They must start with the mod's own lowercased name |
 | `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
-| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental). Each event's `subject` and `data` fields, with their types, are in [bridge-reference.md](bridge-reference.md) |
+| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental). What each one carries: [what your handler receives](#what-your-handler-receives) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
 
 ![Time arrives as events: the wall clock fires clock.minute and clock.day, counted playtime fires player.hour — Leaderboards and TimedRewards react instead of owning timers.](img/time-events.svg)
+
+### What your handler receives
+
+Every handler is called with `(event, pal)`. The event is the same envelope
+that goes onto disk and over HTTP, so what you read here is what an external
+program reads:
+
+```lua
+["player.join"] = function(event, pal)
+  event.type            -- "player.join"
+  event.at              -- unix seconds
+  event.subject.id      -- "F8EAA197000000000000000000000000", the PlayerUId
+  event.subject.name    -- "Löyly"
+  event.subject.kind    -- "player"
+  event.data.firstEver  -- false: this player has been seen before
+  event.data.joins      -- 7
+end
+```
+
+`subject` is who or what the event is about — a player, a pal, the server —
+and `data` is what is specific to that event type. Both are always present;
+`data` is an empty table for events that carry nothing extra.
+
+| Event | `subject` | `data` |
+|---|---|---|
+| `player.join` | player | `firstThisRun` bool · `firstEver` bool · `firstSeen` int · `joins` int |
+| `player.chat` | player | `message` string |
+| `player.death` | player | `killer` subject |
+| `player.respawn` | player | — |
+| `player.leave` | player | `source` string |
+| `player.hour` | player | `hours` int · `minutes` int |
+| `player.item_use` | player | `count` int · `slot` string · `target` string |
+| `npc.spawn` | pal | `species` string · `level` int · `rare` bool |
+| `clock.minute` | server | `date` string · `weekday` string · `hour` int · `minute` int |
+| `clock.day` | server | `date` string · `weekday` string |
+
+That table is a convenience copy. The authority — every event and every action,
+with each field's type, its range and whether it is required — is
+[bridge-reference.md](bridge-reference.md), generated from the same manifest
+the code is built from, so it cannot describe an event the agent does not
+publish.
 
 ### What `pal` offers
 

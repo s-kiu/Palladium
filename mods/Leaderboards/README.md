@@ -17,6 +17,17 @@ server. Palladium reports it on startup and lists it in the panel's mods page.
 Needs Palladium 4.11.0 or newer (the `clock.minute` event and the plain
 `level` field on `player.stats` live there). Nothing else.
 
+## What appears in the folder
+
+```
+mods/Leaderboards/
+├── mod.lua                   the mod itself — replaced when you update it
+├── settings.example.config   shipped and commented; reference material
+├── settings.config           yours — created from the example on the first
+│                             load that finds none, never overwritten after
+└── leaderboards.data         the standings, one record per player ever seen
+```
+
 ## Settings
 
 Edit them in `settings.config` beside the mod — it appears on the first load,
@@ -35,6 +46,11 @@ seconds on a running server, no restart. Mod updates never touch it.
 ## The permission
 
 `leaderboards.check`, allowed by default.
+
+The node itself is declared in `mod.lua`, which is what keeps this mod one
+file. A mod with more nodes can move them into a `permissions.config` beside
+it instead — [TimedRewards](../TimedRewards) does, and
+[docs/mods.md](../../docs/mods.md) explains the trade.
 
 ## Where the standings live
 

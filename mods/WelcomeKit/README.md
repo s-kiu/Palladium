@@ -14,6 +14,19 @@ not running Pal-Up) and restart the server.
 
 Needs Palladium. Nothing else.
 
+## What appears in the folder
+
+```
+mods/WelcomeKit/
+├── mod.lua                   the mod itself — replaced when you update it
+├── settings.example.config   shipped and commented; reference material
+└── settings.config           yours — created from the example on the first
+                              load that finds none, never overwritten after
+```
+
+Who has claimed a kit is not here: it is a tag on the player in Palladium's
+own store, which is what makes "once ever" survive a reinstall of this mod.
+
 ## Settings
 
 Edit them in `settings.config` beside the mod — it appears on the first
@@ -40,6 +53,11 @@ deny = welcomekit.kit
 [groups regulars]
 allow = welcomekit.kit
 ```
+
+The node itself is declared in `mod.lua`, which is what keeps this mod one
+file. A mod with more nodes can move them into a `permissions.config` beside
+it instead — [TimedRewards](../TimedRewards) does, and
+[docs/mods.md](../../docs/mods.md) explains the trade.
 
 ## Behaviour
 

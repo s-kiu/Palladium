@@ -16,6 +16,24 @@ server. Palladium reports it on startup and lists it in the panel's mods page.
 Needs Palladium 4.10.0 or newer. Nothing else — no panel, no token, no
 process to run.
 
+## What appears in the folder
+
+```
+mods/TimedRewards/
+├── mod.lua                      the mod itself — replaced when you update it
+├── settings.example.config      shipped and commented; reference material
+├── settings.config              yours — the reward ladder, re-read within
+│                                seconds of a save
+├── permissions.example.config   shipped and commented; reference material
+├── permissions.config           yours — the nodes this mod owns and their
+│                                defaults; applies on the next restart
+└── timedrewards.data            which hour marks each player has claimed
+```
+
+Both `.config` files are created from their examples on the first load that
+finds none, and neither is ever overwritten again — updating the mod refreshes
+only the two `.example.` files.
+
 ## Settings
 
 Edit them in `settings.config` beside the mod — it appears on the first load,

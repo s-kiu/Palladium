@@ -14,6 +14,19 @@ lists it in the panel's mods page.
 
 Needs Palladium. Nothing else — no panel, no token, no process to run.
 
+## What appears in the folder
+
+```
+mods/GoldStreak/
+├── mod.lua                   the mod itself — replaced when you update it
+├── settings.example.config   shipped and commented; reference material
+└── settings.config           yours — created from the example on the first
+                              load that finds none, never overwritten after
+```
+
+The streak count is not here: it lives in a tag on the player in Palladium's
+own store, so deleting this folder is a clean uninstall.
+
 ## Settings
 
 Edit them in `settings.config` beside the mod — it appears on the first
@@ -38,6 +51,11 @@ payout.
 grant it to a VIP group to make the streak a perk instead of a baseline —
 Palladium resolves per-player overrides, then groups by weight, then the
 default group, then this default.
+
+The node itself is declared in `mod.lua`, which is what keeps this mod one
+file. A mod with more nodes can move them into a `permissions.config` beside
+it instead — [TimedRewards](../TimedRewards) does, and
+[docs/mods.md](../../docs/mods.md) explains the trade.
 
 ## Where the count lives
 

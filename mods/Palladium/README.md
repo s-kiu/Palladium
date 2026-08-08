@@ -59,6 +59,14 @@ capability by full name), `pal.can`, `pal.tag`/`set_tag`/`delete_tag`
 (namespaced to your mod), `pal.data` (your declared collections),
 `pal.settings` and `pal.log`.
 
+A handler is called with `(event, pal)`. The event carries `type`, `at`,
+`subject` (`id`, `name`, `kind`) and `data`, which is what is specific to that
+event — `player.join` brings `firstEver`, `firstSeen` and `joins`, for
+instance. Every event, every field and every type is listed in
+[docs/bridge-reference.md](https://github.com/s-kiu/Palladium/blob/main/docs/bridge-reference.md),
+generated from the manifest, with a worked walkthrough in
+[docs/mods.md](https://github.com/s-kiu/Palladium/blob/main/docs/mods.md).
+
 Palladium loads the names in `Mods/Palladium/mods.list`, one per line, and
 falls back to a directory listing when that file is absent. Each mod gets its
 own environment, every handler runs under `pcall`, and events are delivered
