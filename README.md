@@ -57,12 +57,6 @@ What each delivers — and what only the combination can:
 
 - **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
 
-  <details><summary>Screenshot: in-game chat answering !commands, !heal and !lb</summary>
-  
-  <img src="docs/img/leaderboard.png" alt="In-game chat: a join announcement, !commands and !heal, an hour-mark reward paid by TimedRewards, and !lb answering with the current level leaders." width="700">
-  
-  </details>
-
 The panel, page by page — click any image for full size:
 
 <table>
