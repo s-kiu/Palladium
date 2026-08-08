@@ -9,9 +9,17 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
       <h2>Palladium mods</h2>
       <p class="muted">
         Loaded by Palladium inside the game from a <code>mod.lua</code> in <code>./mods</code>.
-        Adding or removing one takes a server restart. This list is what Palladium reported when
-        it last started.
+        Adding, removing or switching one takes a server restart — Palladium reads its list once,
+        at boot. This list is what Palladium reported when it last started, plus anything on disk
+        it has not seen yet.
       </p>
+      @if (frameworkPending()) {
+        <div class="banner info">
+          Changes are waiting on a restart:
+          {{ frameworkPending() }}. Restart the server from
+          <b>Admin → Server actions</b> to apply them.
+        </div>
+      }
       @if (framework().length === 0) {
         <p class="muted">
           None — a mod folder with a <code>mod.lua</code> appears here after the next restart.
@@ -19,16 +27,23 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
       } @else {
         <table>
           <thead>
-            <tr><th>Mod</th><th>Handles</th><th>Owns</th><th>Commands</th></tr>
+            <tr><th>Mod</th><th>Handles</th><th>Owns</th><th>Commands</th><th></th></tr>
           </thead>
           <tbody>
             @for (m of framework(); track m.name) {
               <tr>
                 <td>
                   {{ m.name }} <span class="muted">{{ m.version }}</span>
+                  @if (m.disabled) { <span class="tag warn-tag">disabled</span> }
                   @if (m.description) { <div class="muted">{{ m.description }}</div> }
                   @if (m.pending) { <div class="muted">installed — loads on the next server restart</div> }
-                  @if (!m.ok && !m.pending) { <div class="error">{{ m.error }}</div> }
+                  @if (m.disabled && m.ok) {
+                    <div class="muted">still running — stops at the next server restart</div>
+                  }
+                  @if (m.disabled && !m.ok && !m.pending) {
+                    <div class="muted">not loaded, because it is switched off</div>
+                  }
+                  @if (!m.ok && !m.pending && !m.disabled) { <div class="error">{{ m.error }}</div> }
                   @for (w of m.warnings ?? []; track w) { <div class="error">{{ w }}</div> }
                 </td>
                 <td>
@@ -44,6 +59,9 @@ import { Api, CollectionEntry, FrameworkMod, ModEntry, ModLogLine, PakEntry, Scr
                 <td>
                   @for (c of m.commands; track c) { <div><code>{{ c }}</code></div> }
                   @if (m.commands.length === 0) { <span class="muted">none</span> }
+                </td>
+                <td class="actions">
+                  <button (click)="toggleFramework(m)">{{ m.disabled ? 'enable' : 'disable' }}</button>
                 </td>
               </tr>
             }
@@ -244,6 +262,15 @@ export class ModsComponent implements OnInit, OnDestroy {
   framework = signal<FrameworkMod[]>([]);
   // Named rather than counted: an operator looking for a mod wants to see its
   // name in the sentence that explains where it went.
+  // Named, not counted: an operator wants to know which mod is waiting.
+  frameworkPending = computed(() => {
+    const waiting = this.framework().filter((m) => m.pending || (m.disabled && m.ok));
+    if (waiting.length === 0) return '';
+    return waiting
+      .map((m) => `${m.name} (${m.pending ? 'will load' : 'will stop'})`)
+      .join(', ');
+  });
+
   frameworkNames = computed(() => {
     const names = this.framework().map((m) => m.name);
     if (names.length <= 2) return names.join(' and ');
@@ -340,6 +367,22 @@ export class ModsComponent implements OnInit, OnDestroy {
     this.api.modLogs(name).subscribe({
       next: (r) => this.logLines.set(r.lines),
       error: () => this.logLines.set([]),
+    });
+  }
+
+  // Palladium reads its load list once, at boot, so switching one is a
+  // request rather than an act: the marker is written now and the mod starts
+  // or stops at the next restart. Saying that in the same breath is the whole
+  // point — a toggle that looks instant and is not would be worse than none.
+  toggleFramework(m: FrameworkMod): void {
+    this.api.toggleMod(m.name, !m.disabled).subscribe({
+      next: () => {
+        this.feedback.set(
+          `${m.name} will ${m.disabled ? 'load' : 'stop'} at the next server restart.`,
+        );
+        this.refresh();
+      },
+      error: () => this.feedback.set(`could not switch ${m.name}`),
     });
   }
 

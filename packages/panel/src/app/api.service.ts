@@ -68,6 +68,7 @@ export interface FrameworkMod {
   ok: boolean;
   error: string | null;
   pending?: boolean;
+  disabled?: boolean;
   permissions: { node: string; description: string; default: string }[];
   commands: string[];
   events: string[];

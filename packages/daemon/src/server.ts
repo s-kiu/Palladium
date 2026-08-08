@@ -580,6 +580,7 @@ interface FrameworkMod {
   ok: boolean;
   error: string | null;
   pending?: boolean;
+  disabled?: boolean;
   permissions: { node: string; description: string; default: string }[];
   commands: string[];
   events: string[];
@@ -613,13 +614,24 @@ async function frameworkMods(): Promise<{ at: number; mods: FrameworkMod[]; coll
       description: '',
       ok: false,
       error: null,
-      pending: true,
+      // Disabled is not pending: one is waiting to load, the other has been
+      // told not to. Saying "pending" for a mod the operator just switched off
+      // would read as though the panel had not noticed.
+      pending: !mod.disabled,
+      disabled: mod.disabled,
       permissions: [],
       commands: [],
       events: [],
       warnings: [],
     });
   }
+
+  // A mod Palladium loaded before it was disabled is still in the snapshot,
+  // which is written at boot: mark it, so the list shows what will happen at
+  // the next restart rather than what happened at the last one.
+  const off = new Set(scanned.filter((m) => m.disabled).map((m) => m.name));
+  for (const mod of mods) if (off.has(mod.name)) mod.disabled = true;
+
   return { at, mods, collections };
 }
 
