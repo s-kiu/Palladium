@@ -44,6 +44,10 @@ What each delivers — and what only the combination can:
 
 ## Features
 
+### The server — Pal-Up, this repo
+
+Everything in this group **needs Pal-Up**: it is the server and panel built around the framework.
+
 - **Modded out of the box** — the UE4SS mod loader (native Linux build, checksum-pinned, baked into the image) is injected via `LD_PRELOAD` with headless settings applied automatically.
 - **Drop-in mod folders** — `./mods` (Palladium mods, Lua mods, and script mods the panel runs), `./paks` (loose `.pak`), `./logicmods` (Blueprint mods) are synced into the correct game paths on every start, with `mods.txt` and Palladium's load list regenerated to match. Disable any mod with a `.disabled` marker file instead of deleting it — a script mod stops on the spot, the rest on the next restart.
 - **Update safety** — `UPDATE_ON_BOOT=true|false|hold`. `hold` freezes the game version until your mods are confirmed compatible and logs a loud banner when a patch is waiting. The world is backed up automatically before every update.
@@ -53,11 +57,8 @@ What each delivers — and what only the combination can:
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: live server status, one-click game updates, online players with kick/ban/unban, mod toggles, backups with one-click create and rollback, server controls with the live log, and a grouped, searchable settings editor with diff-before-apply. It needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
 
 - **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform, and the panel gives it a face: every capability rendered as a form, with searchable pickers (2,400+ items, 750+ pal species), a live event stream, a stats editor, and the permissions page pictured below. Mods that need the network run in the panel instead, in JavaScript or TypeScript.
-- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
 
-- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
-
-The panel, page by page — click any image for full size:
+The Pal-Up panel, page by page — click any image for full size. **Standalone Palladium has no panel**; these pages are what running the full server adds:
 
 <table>
   <tr>
@@ -73,6 +74,14 @@ The panel, page by page — click any image for full size:
     <td align="center"><a href="docs/img/admin.png"><img src="docs/img/admin.png" alt="Server actions, API tokens, chat and the live log" width="215"></a><br><sub>Admin</sub></td>
   </tr>
 </table>
+### The framework — Palladium, with or without Pal-Up
+
+Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
+
+- **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
+
+- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
+
 
 ## Quickstart
 
@@ -309,7 +318,7 @@ nothing more. Grant `pal.spawn` to a moderators group and its members get it.
 
 ### From outside, in any language
 
-One verb, an API token from the panel's admin page:
+**Needs Pal-Up** — the HTTP door is the Pal-Up daemon. Standalone Palladium speaks the same contract through the two files on disk. One verb, an API token from the Pal-Up panel's admin page:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" -X POST http://localhost:3000/api/bridge/call \
