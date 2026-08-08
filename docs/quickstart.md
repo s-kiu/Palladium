@@ -60,7 +60,7 @@ docker compose logs -f palworld
 
 The image build fetches the UE4SS mod loader from its pinned release and
 verifies it against the checksum recorded in
-[`ue4ss.lock`](../packages/server-image/ue4ss/ue4ss.lock) — the running
+[`ue4ss.lock`](https://github.com/s-kiu/pal-up/tree/main/packages/server-image/ue4ss/ue4ss.lock) — the running
 container never downloads anything from mod-loader upstreams. Prefer a fully
 offline build (or want to inspect the artifact first)? Run
 `./packages/server-image/ue4ss/vendor.sh` beforehand and the build uses the
@@ -106,8 +106,8 @@ docker compose restart palworld     # syncs mods, regenerates mods.txt + mods.li
 ```
 
 Two Palladium mods ship with the project, so you can read a working one before
-writing your own: [GoldStreak](../mods/GoldStreak) (50 gold on every fifth
-respawn) and [WelcomeKit](../mods/WelcomeKit) (a starter kit on a player's first
+writing your own: [GoldStreak](https://github.com/s-kiu/pal-up/tree/main/mods/GoldStreak) (50 gold on every fifth
+respawn) and [WelcomeKit](https://github.com/s-kiu/pal-up/tree/main/mods/WelcomeKit) (a starter kit on a player's first
 ever join). Both are enabled out of the box.
 
 Disable without deleting: `touch mods/CoolMod/.disabled`. A script mod stops

@@ -48,3 +48,6 @@ packages/server-image/ue4ss/vendor/*
 *.log
 .idea/
 .vscode/
+
+# mkdocs build output — the docs workflow builds it fresh
+/site/

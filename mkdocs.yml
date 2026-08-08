@@ -1,0 +1,47 @@
+# The docs site: mkdocs-material over the docs/ folder, published to GitHub
+# Pages by .github/workflows/docs.yaml on every push that touches docs.
+# Nothing here is hand-built — the same markdown files the repo always had,
+# including the generated bridge-reference, are the site.
+
+site_name: Palladium & pal-up
+site_description: Server-side Palworld modding on Linux — a framework, a server, and one contract between them.
+site_url: https://s-kiu.github.io/pal-up/
+repo_url: https://github.com/s-kiu/pal-up
+repo_name: s-kiu/pal-up
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Writing mods: mods.md
+  - The bridge protocol: bridge.md
+  - Capability reference: bridge-reference.md
+  - Security: security.md
+  - Troubleshooting: troubleshooting.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
