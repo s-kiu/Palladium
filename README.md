@@ -48,7 +48,7 @@ What each delivers — and what only the combination can:
 
 Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
 
-- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the six mods shipped beside it ([WelcomeKit](examples/palladium/WelcomeKit), [Leaderboards](examples/palladium/Leaderboards), [TimedRewards](examples/palladium/TimedRewards), [DailyBonus](mods/DailyBonus), [GoldStreak](examples/palladium/GoldStreak), [MimogRide](mods/MimogRide)) are each that one file, doubling as the tutorial.
+- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the five mods that ship with it ([WelcomeKit](examples/palladium/WelcomeKit), [GoldStreak](examples/palladium/GoldStreak), [TimedRewards](examples/palladium/TimedRewards), [Leaderboards](examples/palladium/Leaderboards) and [AdminCommands](examples/palladium/AdminCommands)) are each that one file, doubling as the tutorial.
 
 - **The game surface as capabilities** — over forty actions behind one call: give items, heal, teleport, spawn pals up to bosses, read and write stats and status points, tags, saved locations, announcements. Every parameter is validated against a generated manifest, and every action is also a chat command — and, on Pal-Up, a panel form.
 

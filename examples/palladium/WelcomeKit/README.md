@@ -57,7 +57,7 @@ allow = welcomekit.kit
 The node itself is declared in `mod.lua`, which is what keeps this mod one
 file. A mod with more nodes can move them into a `permissions.config` beside
 it instead — [TimedRewards](../TimedRewards) does, and
-[docs/mods.md](../../docs/mods.md) explains the trade.
+[docs/mods.md](../../../docs/mods.md) explains the trade.
 
 ## Behaviour
 

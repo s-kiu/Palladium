@@ -12,6 +12,7 @@ is the directory listing:
 | **[palladium](palladium)** | Palladium, on any UE4SS server | inside the game | no |
 | **[palladium+pal-up](palladium+pal-up)** | Palladium **and** Pal-Up | beside the game, started by the panel | yes |
 | **[palladium+pal-up+token](palladium+pal-up+token)** | Palladium, Pal-Up **and** an API token | wherever you like | yes |
+| **[client](client)** | UE4SS on the **player's game** | on the player's machine | — |
 
 Start with [WelcomeKit](palladium/WelcomeKit), then
 [DiscordRelay](palladium+pal-up/DiscordRelay), then
@@ -24,6 +25,12 @@ server that has Palladium and nothing else.
 **Add Pal-Up when it has to call out** — a Discord relay, anything
 speaking HTTP to somebody else's API. This is the only reason to leave the
 game process: UE4SS Lua has no sockets.
+
+**Only reach for the client folder when the server genuinely cannot do it.**
+Palworld simulates the player on the player's machine, so flight and the
+stamina bar are theirs, not the server's. Everything else — position, health,
+items, permissions — the server owns and can change alone. Asking every player
+to install UE4SS is a community agreement, not a config change.
 
 **Add a token when it lives somewhere else entirely** — a bot on
 another host, a dashboard, a CLI on your laptop. Same capabilities, reached

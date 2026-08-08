@@ -16,10 +16,10 @@ Read them in this order — each is one file, and each adds one idea:
 | **[TimedRewards](TimedRewards)** | Settlement rather than scheduling: pay every unpaid milestone at or below what a player has earned, so a restart owes nobody double. Also the first mod to keep its permission nodes in a [`permissions.config`](TimedRewards/permissions.example.config) instead of in `mod.lua` |
 | **[Leaderboards](Leaderboards)** | Reacting to the clock: refresh standings on a cadence the operator sets, and answer `!lb` from what was already collected rather than hitting the engine on every command |
 
-Two more ship with the repository and are worth a look once those make sense:
-[DailyBonus](../../mods/DailyBonus) (a daily streak) and
-[MimogRide](../../mods/MimogRide) (engine work — mounting a pal with no saddle
-item and no client mod).
+And one that is not a tutorial so much as a tool:
+[AdminCommands](AdminCommands) — teleport, give, slay, god, freeze and mute as
+chat commands, every one denied by default. It is the best example of a mod
+that is mostly *arranging* capabilities rather than implementing anything.
 
 ## Writing your own
 
