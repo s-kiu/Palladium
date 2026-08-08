@@ -9,7 +9,7 @@ panel re-exposes both over HTTP.
 The full list of events and actions — with parameters, stability and which
 runtime serves them — is generated from one manifest and lives in
 [bridge-reference.md](bridge-reference.md). This page is the protocol; runnable
-examples live in [`examples/bridge/`](https://github.com/s-kiu/Palladium/tree/main/examples/bridge).
+examples live in [`examples/external/`](https://github.com/s-kiu/Palladium/tree/main/examples/external).
 
 ![Events out, actions in: Palladium inside the game server writes bridge-events.jsonl and consumes bridge-actions.jsonl; your program sits on the other side of both files.](img/bridge-files.svg)
 
@@ -178,7 +178,7 @@ themselves; nobody types coordinates.
 
 The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 2 s). Everything beyond that belongs outside: read `player.chat`, call actions
-— [`chat-shop.mjs`](https://github.com/s-kiu/Palladium/tree/main/examples/bridge/chat-shop.mjs) adds `!kit`, `!heal`,
+— [`chat-shop.mjs`](https://github.com/s-kiu/Palladium/tree/main/examples/external/chat-shop.mjs) adds `!kit`, `!heal`,
 `!gold` and `!deaths` without touching mod, daemon or panel.
 
 ## The two doors that are not HTTP
@@ -232,7 +232,7 @@ page and the command starts working for its members; the constraint syntax can
 narrow it further ("only Lamball", "only below level 20") without changing the
 mod. The full format is in [docs/mods.md](mods.md); a program that is a tool
 rather than a mod uses the same capabilities over plain HTTP, as in
-[`examples/bridge/`](https://github.com/s-kiu/Palladium/tree/main/examples/bridge).
+[`examples/external/`](https://github.com/s-kiu/Palladium/tree/main/examples/external).
 
 ## Placed pals and wild pals
 

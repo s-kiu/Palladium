@@ -313,7 +313,7 @@ interface PickOption {
           state. Full contract:
           <a href="https://github.com/s-kiu/Palladium/blob/main/docs/bridge.md" target="_blank" rel="noopener">docs/bridge.md</a> ·
           <a href="https://github.com/s-kiu/Palladium/blob/main/docs/bridge-reference.md" target="_blank" rel="noopener">capability reference</a> ·
-          <a href="https://github.com/s-kiu/Palladium/tree/main/examples/bridge" target="_blank" rel="noopener">runnable examples</a>
+          <a href="https://github.com/s-kiu/Palladium/tree/main/examples/external" target="_blank" rel="noopener">runnable examples</a>
         </p>
       </details>
     </div>

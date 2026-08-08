@@ -761,7 +761,23 @@ local function parse_args(action, rest, who)
         end
     end
     local any = function() return true end
-    for _, token in ipairs(tokens) do
+
+    -- A command whose only parameter is text takes all of it: "!announce hello
+    -- world" is one announcement, not the word "hello". Only when it is the
+    -- lone parameter — a trailing string elsewhere is something like grant's
+    -- `where` clause or a pal id, where swallowing the rest of the line would
+    -- be a worse guess than stopping.
+    local lone_text
+    if #declared == 1 and declared[1].kind == "string" then lone_text = declared[1] end
+
+    -- A bare @Name means "this player" only for a call that acts on one;
+    -- in "!announce @Löyly is back" it is part of what is being said.
+    local names_a_player = type(spec) == "table" and spec.target == "player"
+
+    local idx = 0
+    while idx < #tokens do
+        idx = idx + 1
+        local token = tokens[idx]
         local value = token.value
         local key, named
         if not token.bracketed then key, named = value:match("^([%w_]+)=(.*)$") end
@@ -772,7 +788,7 @@ local function parse_args(action, rest, who)
                 named = id or named
             end
             if key == "target" then target, targeted = named, true else params[key] = named end
-        elseif not token.bracketed and value:sub(1, 1) == "@" and #value > 1 then
+        elseif not token.bracketed and value:sub(1, 1) == "@" and #value > 1 and names_a_player then
             local id, trouble = resolve_at(value, who)
             if trouble then return nil, nil, trouble end
             target, targeted = id, true
@@ -788,6 +804,17 @@ local function parse_args(action, rest, who)
             else
                 slot = next_unset(function(p) return p.kind == "item_id" or p.kind == "string" end)
                     or next_unset(any)
+            end
+            if slot and lone_text and slot == lone_text and not token.bracketed then
+                local parts = { value }
+                while idx < #tokens do
+                    local next_token = tokens[idx + 1]
+                    -- key=value is an instruction, not part of the sentence.
+                    if not next_token.bracketed and next_token.value:match("^[%w_]+=") then break end
+                    parts[#parts + 1] = next_token.value
+                    idx = idx + 1
+                end
+                value = table.concat(parts, " ")
             end
             if slot then params[slot.name] = value end
         end

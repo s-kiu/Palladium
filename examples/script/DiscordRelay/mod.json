@@ -1,0 +1,10 @@
+{
+  "name": "DiscordRelay",
+  "description": "Posts joins, deaths and chat to a Discord channel.",
+  "entry": "mod.mjs",
+  "settings": {
+    "webhook": "",
+    "events": ["player.join", "player.death"],
+    "username": "Palworld"
+  }
+}

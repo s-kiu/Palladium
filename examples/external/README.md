@@ -1,4 +1,4 @@
-# Bridge examples
+# External programs
 
 Programs that talk to the server from *outside* it — a bot, a relay, a
 dashboard — over the HTTP API in [docs/bridge.md](../../docs/bridge.md). They
@@ -6,7 +6,7 @@ authenticate with an API token and run wherever you like.
 
 If what you want is a mod *for the server*, you want
 [docs/mods.md](../../docs/mods.md) instead: a folder in `./mods`, no HTTP by
-hand and no token to manage. [`mods/GoldStreak`](../../mods/GoldStreak) is one.
+hand and no token to manage. [`mods/WelcomeKit`](../../mods/WelcomeKit) is one.
 
 ## Getting a token
 
@@ -23,7 +23,7 @@ restart the server. Revoke it from the same page.
 Node 22 or newer, no dependencies, nothing to install:
 
 ```bash
-PALUP_TOKEN=palup_... node examples/bridge/death-feed.mjs
+PALUP_TOKEN=palup_... node examples/external/death-feed.mjs
 ```
 
 Set `PANEL_URL` if the panel is not on `http://localhost:3000`. Both scripts
@@ -42,7 +42,7 @@ Rewriting either in another language means one auth header and JSON.
 
 | You want | Write | Needs |
 |---|---|---|
-| Server behaviour — rewards, rules, commands | a Palladium mod ([GoldStreak](../../mods/GoldStreak)) | Palladium |
+| Server behaviour — rewards, rules, commands | a Palladium mod ([GoldStreak](../../mods/WelcomeKit)) | Palladium |
 | The same, but reaching the network | a script mod ([packages/mod-sdk](../../packages/mod-sdk)) | Pal-Up |
 | A program that lives elsewhere — Discord bot, dashboard, CLI | one of these | Pal-Up + a token |
 

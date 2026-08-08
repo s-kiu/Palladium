@@ -344,7 +344,7 @@ one auth header and JSON.
 - Another: [WelcomeKit](mods/WelcomeKit) — a starter kit on a player's first ever join
 - Another: [TimedRewards](mods/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
 - The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
-- External programs with a token: [examples/bridge/](examples/bridge)
+- All three kinds, with a worked example of each: [examples/](examples)
 - The framework on its own, for servers not running Pal-Up: [mods/Palladium](mods/Palladium)
 
 ## Everyday operations
@@ -376,7 +376,7 @@ palladium/
 │   ├── GoldStreak/           # a Palladium mod: gold on every fifth respawn
 │   ├── TimedRewards/         # a Palladium mod: rewards at the hour marks you set
 │   └── WelcomeKit/           # a Palladium mod: starter kit for first-time players
-├── examples/bridge/          # runnable consumers of the event/action API
+├── examples/external/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here
 ├── backups/                  # world snapshots appear here
