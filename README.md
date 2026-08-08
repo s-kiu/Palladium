@@ -50,6 +50,8 @@ What each delivers — and what only the combination can:
 - **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
 - **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
 
+![The panel's permissions page: the five shipped tiers as editable groups with tag, weight, members and entries, and per-player grants with node, allow/deny, an optional where-constraint and an until-expiry — the same state that lives in permissions.config.](docs/img/permissions.png)
+
 ## Quickstart
 
 ### Just the mod — Palladium on a server you already run
