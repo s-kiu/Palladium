@@ -255,33 +255,6 @@ export const CAPABILITIES: Capability[] = [
     }
   },
   {
-    "type": "pal.capture",
-    "kind": "event",
-    "runtime": "agent",
-    "subject": "player",
-    "source": {
-      "hook": "/Script/Pal.PalCaptureJudgeObject:OnCaptureSuccess"
-    },
-    "since": "4.11.0",
-    "stability": "experimental",
-    "scope": "read",
-    "summary": "A capture verdict, from the native judge object — the hook the Blueprint route could never give. Carries the judged pal's species, level and id, whether the sphere held, and the thrower as subject when the owner chain names one.",
-    "data": {
-      "species": {
-        "type": "string"
-      },
-      "level": {
-        "type": "int"
-      },
-      "pal": {
-        "type": "string"
-      },
-      "success": {
-        "type": "bool"
-      }
-    }
-  },
-  {
     "type": "player.item_use",
     "kind": "event",
     "runtime": "agent",
@@ -292,7 +265,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "4.11.0",
     "stability": "experimental",
     "scope": "read",
-    "summary": "A player used an item on a character — feeding, medicine, and their kin. The slot and count are known here; resolving which item sat in the slot is future work, so the event carries what the engine call does.",
+    "summary": "A player used an item through the use-on-character path — feeding and healing pals, and eating from their own inventory, all fire it (verified live). The slot and count are known; resolving which item sat in the slot, and the target, is future work.",
     "data": {
       "count": {
         "type": "int"

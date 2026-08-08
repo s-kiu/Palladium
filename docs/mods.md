@@ -77,7 +77,7 @@ call that loads the file is the call that reads the manifest.
 | `name` | Must match the folder name |
 | `permissions` | Nodes the mod owns, each with a description and a default. They must start with the mod's own lowercased name |
 | `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
-| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `pal.capture` and `player.item_use` (experimental) |
+| `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
 
 ### What `pal` offers
@@ -359,7 +359,7 @@ A mod that must reach the network cannot live in the game process: UE4SS Lua
 has no sockets. That is what script mods are for — a folder with a `mod.json`
 and an entry file in JavaScript or TypeScript, run by the panel, with
 permissions and tags reached through the same capabilities.
-The client one runs against is [packages/mod-sdk](../packages/mod-sdk), which
+The client one runs against is [packages/mod-sdk](https://github.com/s-kiu/pal-up/tree/main/packages/mod-sdk), which
 documents what a mod exports and everything `pal` offers on that side. Script
 mods need pal-up; Palladium mods do not.
 

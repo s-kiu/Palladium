@@ -674,40 +674,6 @@ end
 -- and the whole thing is throttled: on a busy server this is the loudest hook.
 local npc_bucket, npc_bucket_count = 0, 0
 
--- A capture verdict from the native judge object — the hook the Blueprint
--- route could never give. The character parameter is the pal that was
--- judged; the judge actor's owner chain names the thrower. Payload shapes
--- on this build are reported once if they surprise, then refined.
-local reported_capture_shape = false
-local function on_capture(context, first, second)
-    local judge = unwrap(context)
-    local character = unwrap(first)
-    local result = unwrap(second)
-    local species, level, pal_id = "", 0, ""
-    if valid(character) then
-        local parameter = pal_parameter(character)
-        local save = parameter and member(parameter, "SaveParameter")
-        species = (save and to_text(member(save, "CharacterID"))) or ""
-        level = (save and tonumber(member(save, "Level"))) or 0
-        pal_id = (parameter and pal_id_of(parameter)) or ""
-    end
-    local success = result ~= nil and member(result, "IsSuccess") == true
-    local state = state_of(member(judge, "Owner"))
-        or state_of(member(judge, "Instigator"))
-    if species == "" and not reported_capture_shape then
-        reported_capture_shape = true
-        info("capture hook fired but no species resolved — payload shape differs on this build")
-    end
-    publish("pal.capture",
-        state and player_subject(state) or pal_subject(species, nil, pal_id),
-        {
-            { "species", species },
-            { "level", level },
-            { "pal", pal_id },
-            { "success", success },
-        }, state and subject_of(state) or { kind = "pal", id = pal_id, name = species })
-end
-
 -- A player using an item on a character — feeding, medicine, and their
 -- kin. The slot is known here; which item sat in it is a container lookup
 -- this build has not needed yet, so the event carries what the call does.
@@ -2996,7 +2962,6 @@ local HOOK_IMPL = {
     ["/Script/Pal.PalPlayerCharacter:OnCompleteInitializeParameter"] = on_character_init,
     ["/Script/Pal.PalCharacter:OnDeadCharacter"] = on_death,
     ["/Script/Pal.PalCharacterParameterComponent:OnInitialize_AfterSetIndividualParameter"] = on_param_init,
-    ["/Script/Pal.PalCaptureJudgeObject:OnCaptureSuccess"] = on_capture,
     ["/Script/Pal.PalPlayerController:RequestUseItemToCharacter_ToServer"] = on_item_use,
 }
 

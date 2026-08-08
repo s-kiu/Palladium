@@ -9,7 +9,7 @@ panel re-exposes both over HTTP.
 The full list of events and actions — with parameters, stability and which
 runtime serves them — is generated from one manifest and lives in
 [bridge-reference.md](bridge-reference.md). This page is the protocol; runnable
-examples live in [`examples/bridge/`](../examples/bridge).
+examples live in [`examples/bridge/`](https://github.com/s-kiu/pal-up/tree/main/examples/bridge).
 
 ## The envelope
 
@@ -174,7 +174,7 @@ themselves; nobody types coordinates.
 
 The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 2 s). Everything beyond that belongs outside: read `player.chat`, call actions
-— [`chat-shop.mjs`](../examples/bridge/chat-shop.mjs) adds `!kit`, `!heal`,
+— [`chat-shop.mjs`](https://github.com/s-kiu/pal-up/tree/main/examples/bridge/chat-shop.mjs) adds `!kit`, `!heal`,
 `!gold` and `!deaths` without touching mod, daemon or panel.
 
 ## The two doors that are not HTTP
@@ -228,7 +228,7 @@ page and the command starts working for its members; the constraint syntax can
 narrow it further ("only Lamball", "only below level 20") without changing the
 mod. The full format is in [docs/mods.md](mods.md); a program that is a tool
 rather than a mod uses the same capabilities over plain HTTP, as in
-[`examples/bridge/`](../examples/bridge).
+[`examples/bridge/`](https://github.com/s-kiu/pal-up/tree/main/examples/bridge).
 
 ## Placed pals and wild pals
 
@@ -263,8 +263,11 @@ targets fault this UE4SS build rather than failing cleanly — registering one,
 or even looking a UFunction path up with `StaticFindObject`, takes the server
 down. The agent refuses them outright. Consequences: `player.leave` is derived
 from the agent watching who is still in the world (a few seconds' delay rather
-than instant). Pal-capture events, long impossible for exactly this reason,
-now ride a native judge-object hook as the experimental `pal.capture`. Capabilities marked `experimental` in the reference use engine
+than instant), and Pal-capture events are not available: every native
+candidate was probed on a live server — the capture judge's four functions
+and the Paldex registration never execute on a dedicated server, and the
+achievement counter's update hook faults the process. Item use is the
+adjacent event that does work (`player.item_use`). Capabilities marked `experimental` in the reference use engine
 calls that are unproven against a live player, and may fail with
 `not_supported` rather than doing nothing quietly; the fastcrash guard (three
 rapid crashes → unmodded boot) is the safety net around them.
