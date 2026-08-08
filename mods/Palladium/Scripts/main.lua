@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.21.0"
+local VERSION = "4.22.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1796,19 +1796,68 @@ IMPL["player.set_immortal"] = function(state, p)
         return false, "not_supported: bCanBeDamaged is not writable on this build",
             { { "immortal", tostring(want) } }
     end
+    -- The flags above hold and change nothing on this build, so the tick is
+    -- what actually keeps them alive: health refilled as fast as it is taken.
+    local userid = player_userid(state)
+    if want then held.immortal[userid] = true else held.immortal[userid] = nil end
+
     return true, nil, {
         { "immortal", tostring(want) },
         { "was", tostring(was) },
         { "can_be_damaged", tostring(damageable_now) },
-        { "can_be_damaged_was", tostring(damageable_was) },
+        { "enforced", "tick" },
     }
 end
 
--- Freezing is a named walk-speed multiplier pinned to zero, which is the
--- engine's own mechanism: the flag name keeps it out of the way of whatever
--- else the game is doing to the same player's speed, so releasing it puts
--- back exactly what was there rather than a guess at normal.
+-- Held players: frozen ones anchored to a point, immortal ones topped back up.
+--
+-- Both exist because this build's own switches do not reach the client. The
+-- server-side flags were verified written and verified still set twenty-five
+-- seconds later — bCanBeDamaged false, the walk-speed multiplier zero — while
+-- the player went on moving and went on dying. Movement here is simulated on
+-- the player's machine and reported to the server, and damage lands on
+-- Palworld's own health rather than through Unreal's damage gate, so a flag
+-- the server sets changes neither.
+--
+-- What does reach the client is a correction: a placement the client accepts,
+-- and a health value the server owns. So freezing is putting them back where
+-- they were, and immortality is refilling what was taken — both on the agent's
+-- own tick. It is enforcement rather than prevention, and the difference shows:
+-- a frozen player can take a step before being returned, and a hit big enough
+-- to kill between two ticks still kills.
+local held = { frozen = {}, immortal = {} }
+
+local FREEZE_TOLERANCE = 150   -- a step, not a jitter
 local FREEZE_FLAG = "Palladium_Freeze"
+
+local function enforce_held()
+    for userid, anchor in pairs(held.frozen) do
+        local state = find_player_state(userid)
+        local _, pawn = pawn_of(state)
+        if not valid(pawn) then
+            held.frozen[userid] = nil
+        else
+            local at = position_of(pawn)
+            if at and distance(at, anchor) > FREEZE_TOLERANCE then
+                place_actor(pawn, anchor)
+            end
+        end
+    end
+
+    for userid in pairs(held.immortal) do
+        local state = find_player_state(userid)
+        local _, pawn = pawn_of(state)
+        if not valid(pawn) then
+            held.immortal[userid] = nil
+        else
+            local hp = stat_value(pawn, "GetHP")
+            local max = stat_value(pawn, "GetMaxHP")
+            if hp and max and max > 0 and hp < max then
+                apply_stat(pawn, "hp", max)
+            end
+        end
+    end
+end
 
 IMPL["player.set_frozen"] = function(state, p)
     local _, pawn = pawn_of(state)
@@ -1819,16 +1868,25 @@ IMPL["player.set_frozen"] = function(state, p)
     end
 
     local frozen = p.on ~= false
-    local ok = pcall(function()
+    -- The multiplier is still set: it costs nothing and would do the work on
+    -- its own if a future build ever honours it server-side.
+    pcall(function()
         movement:SetWalkSpeedMultiplier(FName(FREEZE_FLAG), frozen and 0.0 or 1.0)
     end)
-    if not ok then
-        return false, "not_supported: SetWalkSpeedMultiplier is not callable on this build"
+
+    local userid = player_userid(state)
+    if frozen then
+        local at = position_of(pawn)
+        if not at then return false, "not_supported: cannot read where they are" end
+        held.frozen[userid] = { X = at.X, Y = at.Y, Z = at.Z }
+    else
+        held.frozen[userid] = nil
     end
 
-    local now = nil
-    pcall(function() now = movement:GetWalkSpeedMultiplier() end)
-    return true, nil, { { "frozen", tostring(frozen) }, { "multiplier", tostring(now) } }
+    return true, nil, {
+        { "frozen", tostring(frozen) },
+        { "anchored", frozen and "true" or "false" },
+    }
 end
 
 -- Flight is the controller's own server RPC, the one a client sends when it
@@ -3376,6 +3434,7 @@ if type(LoopAsync) == "function" then
     LoopAsync(ACTION_POLL_MS, function()
         guard("action poll", poll_actions)
         guard("mod dispatch", framework.drain)
+        guard("held players", enforce_held)
         tick = tick + 1
         -- An operator editing permissions.config by hand is meant to work, so
         -- the config files are re-read on the same cadence as the leave scan.

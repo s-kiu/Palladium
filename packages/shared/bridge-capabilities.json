@@ -1219,7 +1219,7 @@
       "since": "4.18.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults \u2014 this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so.",
+      "summary": "Make a player unkillable, or mortal again. This build's own switches do not reach the client \u2014 bCanBeDamaged and IsImmortality were both verified set while the player went on dying \u2014 so the agent refills their health on its own tick instead. Enforcement rather than prevention: a hit big enough to kill between two ticks still kills.",
       "params": {
         "on": {
           "type": "bool",
@@ -1230,7 +1230,7 @@
         "immortal": "bool",
         "was": "bool",
         "can_be_damaged": "bool",
-        "can_be_damaged_was": "bool"
+        "enforced": "string"
       }
     },
     {
@@ -1241,7 +1241,7 @@
       "since": "4.20.0",
       "stability": "experimental",
       "scope": "write",
-      "summary": "Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back.",
+      "summary": "Hold a player still, or let them go. Movement is simulated on the player's own machine, so a server-side speed of zero does not stop them; the agent anchors them instead and puts them back when they move more than a step. Enforcement rather than prevention: a frozen player can take that step before being returned.",
       "params": {
         "on": {
           "type": "bool",
@@ -1250,7 +1250,7 @@
       },
       "returns": {
         "frozen": "bool",
-        "multiplier": "number"
+        "anchored": "bool"
       }
     },
     {

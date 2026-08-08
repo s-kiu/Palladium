@@ -352,7 +352,7 @@ export interface PlayerSetStatsResult {
   stats: unknown;
 }
 
-/** Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults — this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so. */
+/** Make a player unkillable, or mortal again. This build's own switches do not reach the client — bCanBeDamaged and IsImmortality were both verified set while the player went on dying — so the agent refills their health on its own tick instead. Enforcement rather than prevention: a hit big enough to kill between two ticks still kills. */
 export interface PlayerSetImmortalParams {
   on?: boolean;
 }
@@ -360,16 +360,16 @@ export interface PlayerSetImmortalResult {
   immortal: boolean;
   was: boolean;
   can_be_damaged: boolean;
-  can_be_damaged_was: boolean;
+  enforced: string;
 }
 
-/** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. */
+/** Hold a player still, or let them go. Movement is simulated on the player's own machine, so a server-side speed of zero does not stop them; the agent anchors them instead and puts them back when they move more than a step. Enforcement rather than prevention: a frozen player can take that step before being returned. */
 export interface PlayerSetFrozenParams {
   on?: boolean;
 }
 export interface PlayerSetFrozenResult {
   frozen: boolean;
-  multiplier: number;
+  anchored: boolean;
 }
 
 /** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. */
@@ -598,9 +598,9 @@ export interface Capabilities {
     stats(target: string, params?: PlayerStatsParams): Promise<Envelope<PlayerStatsResult>>;
     /** Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused. _(experimental)_ */
     set_stats(target: string, params?: PlayerSetStatsParams): Promise<Envelope<PlayerSetStatsResult>>;
-    /** Make a player unkillable, or mortal again. Sets Unreal's own bCanBeDamaged on the character, which is what TakeDamage consults — this build's IsImmortality and enemy damage-rate flags were both verified written and both left the player mortal. Read back, so a build that ignores the write says so. _(experimental)_ */
+    /** Make a player unkillable, or mortal again. This build's own switches do not reach the client — bCanBeDamaged and IsImmortality were both verified set while the player went on dying — so the agent refills their health on its own tick instead. Enforcement rather than prevention: a hit big enough to kill between two ticks still kills. _(experimental)_ */
     set_immortal(target: string, params?: PlayerSetImmortalParams): Promise<Envelope<PlayerSetImmortalResult>>;
-    /** Hold a player still, or let them go. Pins the engine's own walk-speed multiplier to zero under a Palladium-owned flag name, so releasing it restores whatever the game had rather than a guess at normal. The multiplier is read back. _(experimental)_ */
+    /** Hold a player still, or let them go. Movement is simulated on the player's own machine, so a server-side speed of zero does not stop them; the agent anchors them instead and puts them back when they move more than a step. Enforcement rather than prevention: a frozen player can take that step before being returned. _(experimental)_ */
     set_frozen(target: string, params?: PlayerSetFrozenParams): Promise<Envelope<PlayerSetFrozenResult>>;
     /** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. _(experimental)_ */
     set_flying(target: string, params?: PlayerSetFlyingParams): Promise<Envelope<PlayerSetFlyingResult>>;
