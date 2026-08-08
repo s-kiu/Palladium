@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.23.2"
+local VERSION = "4.24.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -114,6 +114,15 @@ local species_seen = Collections.declare("bridge", "species", {
 -- Playtime is counted, not derived: once a minute, every present player's
 -- record gains a minute. A crash costs at most the minute in progress, and
 -- no session arithmetic can drift.
+-- Held players outlive a restart. Without this the agent forgets who was
+-- godded or frozen the moment the server bounces, and the player finds out by
+-- dying — which is exactly the kind of silent lapse an admin tool must not
+-- have.
+local held_c = Collections.declare("bridge", "held", {
+    description = "players the agent is holding: godded, frozen, and where",
+    fields = { mode = "string", x = "number", y = "number", z = "number", defence = "string" },
+})
+
 local playtime = Collections.declare("bridge", "playtime", {
     description = "minutes each player has actually spent on this server",
     fields = { name = "string", minutes = "int", last_seen = "int" },
@@ -1832,9 +1841,12 @@ IMPL["player.set_immortal"] = function(state, p)
         -- leaving them permanently tougher than the game made them.
         if held.defence[userid] == nil then held.defence[userid] = defence_was or 0 end
         held.immortal[userid] = true
+        held_c:set(userid .. "\30immortal",
+            { mode = "immortal", x = 0, y = 0, z = 0, defence = tostring(held.defence[userid]) })
     else
         held.immortal[userid] = nil
         held.defence[userid] = nil
+        held_c:delete(userid .. "\30immortal")
     end
 
     return true, nil, {
@@ -1944,8 +1956,11 @@ IMPL["player.set_frozen"] = function(state, p)
         local at = position_of(pawn)
         if not at then return false, "not_supported: cannot read where they are" end
         held.frozen[userid] = { X = at.X, Y = at.Y, Z = at.Z }
+        held_c:set(userid .. "\30frozen",
+            { mode = "frozen", x = at.X, y = at.Y, z = at.Z, defence = "" })
     else
         held.frozen[userid] = nil
+        held_c:delete(userid .. "\30frozen")
     end
 
     return true, nil, {
@@ -3496,6 +3511,19 @@ framework.init({
     permissions = perms,
     player_by_name = player_by_name,
 })
+-- Whatever was held when the server stopped is held again when it starts.
+guard("held players restore", function()
+    for key, record in pairs(held_c:all() or {}) do
+        local userid = tostring(key):match("^(.-)\30")
+        if userid and record.mode == "immortal" then
+            held.immortal[userid] = true
+            held.defence[userid] = tonumber(record.defence) or 0
+        elseif userid and record.mode == "frozen" then
+            held.frozen[userid] = { X = tonumber(record.x) or 0, Y = tonumber(record.y) or 0, Z = tonumber(record.z) or 0 }
+        end
+    end
+end)
+
 guard("mod loading", framework.load)
 guard("mod registry snapshot", framework.snapshot)
 
