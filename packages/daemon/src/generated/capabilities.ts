@@ -1252,7 +1252,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "4.18.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, switches on the build's infinite-stamina flag, and tops health, stomach and stamina back up on the agent's tick as a backstop. The player's own defence is remembered and handed back when it is switched off.",
+    "summary": "Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, and refills health and stomach on the agent's tick as a backstop; their own defence is remembered and handed back. Stamina is deliberately untouched — the client draws that bar from its own simulation, so a server-side refill only fights it.",
     "params": {
       "on": {
         "type": "bool",
@@ -1263,8 +1263,7 @@ export const CAPABILITIES: Capability[] = [
       "immortal": "bool",
       "was": "bool",
       "can_be_damaged": "bool",
-      "defence": "string",
-      "infinite_stamina": "bool"
+      "defence": "string"
     }
   },
   {
@@ -1295,7 +1294,7 @@ export const CAPABILITIES: Capability[] = [
     "since": "4.20.0",
     "stability": "experimental",
     "scope": "write",
-    "summary": "Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified.",
+    "summary": "Ask a player's game to start or end flight. The server cannot fly a player on its own — flight is a mode the client enters — so this sends an instruction the optional AdminControlsClient mod acts on. Unverified by design: nothing reports flight back, and without the client mod installed nothing happens.",
     "params": {
       "on": {
         "type": "bool",

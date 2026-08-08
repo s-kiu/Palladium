@@ -352,7 +352,7 @@ export interface PlayerSetStatsResult {
   stats: unknown;
 }
 
-/** Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, switches on the build's infinite-stamina flag, and tops health, stomach and stamina back up on the agent's tick as a backstop. The player's own defence is remembered and handed back when it is switched off. */
+/** Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, and refills health and stomach on the agent's tick as a backstop; their own defence is remembered and handed back. Stamina is deliberately untouched — the client draws that bar from its own simulation, so a server-side refill only fights it. */
 export interface PlayerSetImmortalParams {
   on?: boolean;
 }
@@ -361,7 +361,6 @@ export interface PlayerSetImmortalResult {
   was: boolean;
   can_be_damaged: boolean;
   defence: string;
-  infinite_stamina: boolean;
 }
 
 /** Hold a player still, or let them go. Movement is simulated on the player's own machine, so a server-side speed of zero does not stop them; the agent anchors them instead and puts them back when they move more than a step. Enforcement rather than prevention: a frozen player can take that step before being returned. */
@@ -373,7 +372,7 @@ export interface PlayerSetFrozenResult {
   anchored: boolean;
 }
 
-/** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. */
+/** Ask a player's game to start or end flight. The server cannot fly a player on its own — flight is a mode the client enters — so this sends an instruction the optional AdminControlsClient mod acts on. Unverified by design: nothing reports flight back, and without the client mod installed nothing happens. */
 export interface PlayerSetFlyingParams {
   on?: boolean;
 }
@@ -599,11 +598,11 @@ export interface Capabilities {
     stats(target: string, params?: PlayerStatsParams): Promise<Envelope<PlayerStatsResult>>;
     /** Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused. _(experimental)_ */
     set_stats(target: string, params?: PlayerSetStatsParams): Promise<Envelope<PlayerSetStatsResult>>;
-    /** Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, switches on the build's infinite-stamina flag, and tops health, stomach and stamina back up on the agent's tick as a backstop. The player's own defence is remembered and handed back when it is switched off. _(experimental)_ */
+    /** Make a player unkillable, or mortal again. Raises DefenseUp so almost nothing gets through, and refills health and stomach on the agent's tick as a backstop; their own defence is remembered and handed back. Stamina is deliberately untouched — the client draws that bar from its own simulation, so a server-side refill only fights it. _(experimental)_ */
     set_immortal(target: string, params?: PlayerSetImmortalParams): Promise<Envelope<PlayerSetImmortalResult>>;
     /** Hold a player still, or let them go. Movement is simulated on the player's own machine, so a server-side speed of zero does not stop them; the agent anchors them instead and puts them back when they move more than a step. Enforcement rather than prevention: a frozen player can take that step before being returned. _(experimental)_ */
     set_frozen(target: string, params?: PlayerSetFrozenParams): Promise<Envelope<PlayerSetFrozenResult>>;
-    /** Start or end flight for a player. Prefers ClientCheatFly, Unreal's own flight RPC, which is sent to the player's machine where flight is actually switched on; falls back to the ride take-off call. Nothing reports flight back, so the result names the call it used and marks itself unverified. _(experimental)_ */
+    /** Ask a player's game to start or end flight. The server cannot fly a player on its own — flight is a mode the client enters — so this sends an instruction the optional AdminControlsClient mod acts on. Unverified by design: nothing reports flight back, and without the client mod installed nothing happens. _(experimental)_ */
     set_flying(target: string, params?: PlayerSetFlyingParams): Promise<Envelope<PlayerSetFlyingResult>>;
     /** An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back. _(experimental)_ */
     status_points(target: string, params?: PlayerStatusPointsParams): Promise<Envelope<PlayerStatusPointsResult>>;

@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.24.1"
+local VERSION = "4.25.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -50,7 +50,7 @@ local ACTION_POLL_MS = 500
 -- topped back up. Declared here rather than beside the tick that reads it,
 -- because the capabilities that write it are defined further up this file —
 -- a local declared after its first use is a global lookup, and a nil one.
-local held = { frozen = {}, immortal = {}, defence = {}, said = {} }
+local held = { frozen = {}, immortal = {}, defence = {} }
 
 -- Large enough that the damage calculation has almost nothing left to take,
 -- small enough to stay a plain int the engine will accept.
@@ -1802,6 +1802,7 @@ IMPL["player.set_immortal"] = function(state, p)
     local rate_field = "AdditionalEnemyInflictDamageRate"
     pcall(function() component[rate_field] = want and 0.0 or 1.0 end)
 
+
     local damageable_was = member(pawn, "bCanBeDamaged")
     local gate_ok = pcall(function() pawn.bCanBeDamaged = not want end)
     local damageable_now = member(pawn, "bCanBeDamaged")
@@ -1809,13 +1810,12 @@ IMPL["player.set_immortal"] = function(state, p)
     -- Refilling health after the fact is the backstop, not the plan. These two
     -- are what make it feel like god mode rather than a defibrillator:
     -- DefenseUp is an int the damage calculation reads, so a large one leaves
-    -- almost nothing to refill, and bIsInfinitySP is the build's own switch
-    -- for a stamina bar that never empties.
+    -- almost nothing to refill. Stamina is left alone: the client draws that
+    -- bar from its own simulation and a server-side refill only fights it.
     local defence_was = member(component, "DefenseUp")
     pcall(function()
         component.DefenseUp = want and GOD_DEFENCE or (tonumber(held.defence[player_userid(state)]) or 0)
     end)
-    pcall(function() component.bIsInfinitySP = want end)
 
     local now = member(component, "IsImmortality")
     if now ~= nil and now ~= want then
@@ -1828,13 +1828,6 @@ IMPL["player.set_immortal"] = function(state, p)
     end
     -- The flags above hold and change nothing on this build, so the tick is
     -- what actually keeps them alive: health refilled as fast as it is taken.
-    -- Read back what the stamina calls answer with, so "it did not keep my
-    -- stamina up" can be told apart from "it could not read it".
-    local sp_now, sp_max_now = nil, nil
-    pcall(function() sp_now = as_number(component:GetSP()) end)
-    pcall(function() sp_max_now = as_number(component:GetMaxSP()) end)
-    if want then pcall(function() component:ResetSP() end) end
-
     local userid = player_userid(state)
     if want then
         -- Their own defence, kept so switching off puts it back rather than
@@ -1854,9 +1847,6 @@ IMPL["player.set_immortal"] = function(state, p)
         { "was", tostring(was) },
         { "can_be_damaged", tostring(damageable_now) },
         { "defence", tostring(member(component, "DefenseUp")) },
-        { "infinite_stamina", tostring(member(component, "bIsInfinitySP")) },
-        { "sp", tostring(sp_now) },
-        { "sp_max", tostring(sp_max_now) },
     }
 end
 
@@ -1911,33 +1901,12 @@ local function enforce_held()
                 apply_stat(pawn, "hunger", fed_max)
             end
 
-            -- SP is a fixed-point value, so SetSP(number) is the wrong shape
-            -- and quietly does nothing. ResetSP takes no argument at all,
-            -- which is why it is tried first — and when the reading cannot be
-            -- had, refilling anyway beats deciding from a nil.
-            local component = member(pawn, "CharacterParameterComponent")
-            if valid(component) then
-                local sp, sp_max = nil, nil
-                pcall(function() sp = as_number(component:GetSP()) end)
-                pcall(function() sp_max = as_number(component:GetMaxSP()) end)
-                -- Any drain at all, not a fraction of one: ResetSP restores the
-                -- bar outright and stamina is spent continuously, so a
-                -- threshold only decides how far it gets to fall first.
-                local low = (sp == nil) or (sp_max and sp_max > 0 and sp < sp_max)
-                if low then
-                    local reset = pcall(function() component:ResetSP() end)
-                    if not reset then pcall(function() component:SetSP(sp_max) end) end
-                    pcall(function() component.bIsInfinitySP = true end)
-
-                    local now = os.time()
-                    if now - (held.said[userid] or 0) >= 60 then
-                        held.said[userid] = now
-                        info(string.format("holding %s: stamina %s/%s refilled (%s)",
-                            userid:sub(1, 8), tostring(sp), tostring(sp_max),
-                            reset and "ResetSP" or "SetSP"))
-                    end
-                end
-            end
+            -- Stamina is deliberately NOT touched here. The server's copy can
+            -- be refilled and verified full while the player's bar empties in
+            -- front of them — that bar is drawn from the client's own
+            -- simulation. Writing it twice a second changed nothing the player
+            -- could see and interfered with their regeneration, so the only
+            -- correct amount of this is none.
         end
     end
 end
@@ -2002,12 +1971,13 @@ IMPL["player.set_flying"] = function(state, p)
         if ok then how = want and "StartFlyToServer" or "EndFlyToServer" end
     end
 
-    -- Palworld's own debug channel, tried last: a string parameter, so a word
-    -- this build does not recognise costs nothing.
-    if member(controller, "Debug_CheatCommand_ToServer") ~= nil then
-        pcall(function() controller:Debug_CheatCommand_ToServer(want and "fly" or "walk") end)
-        how = how and (how .. "+debug") or "Debug_CheatCommand_ToServer"
-    end
+    -- The instruction to the player's own machine. Flight is a mode the client
+    -- enters, so the server-side calls above cannot land on their own: this is
+    -- the line AdminControlsClient is listening for, and without that mod
+    -- installed it is an odd-looking chat message and nothing more.
+    local told = send_system_chat(state, string.format("[[PAL:fly:%s]]", want and "on" or "off"))
+    if told then how = how and (how .. "+client") or "client" end
+
     if not how then return false, "not_supported: this build takes no flight call" end
 
     -- Nothing reports flight back, so this says what was asked for and which
