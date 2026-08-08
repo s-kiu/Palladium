@@ -121,7 +121,7 @@ and safest first:
 3. **TLS reverse proxy** — a domain plus Caddy or nginx proxy manager
    terminating HTTPS in front of the panel, with `PANEL_BIND=127.0.0.1` so
    the proxy is the only way in (with nginx proxy manager, attach the panel
-   container to the proxy network and target `pal-up-panel:3000`). The
+   container to the proxy network and target `Pal-Up-panel:3000`). The
    panel's login is one password with rate limiting — no 2FA, no lockout —
    which is fine behind a VPN but thin as the only wall on the open
    internet, so give the proxy its own auth layer (basic auth or an access

@@ -1,4 +1,4 @@
-# server-image — the pal-up Palworld server container
+# server-image — the Pal-Up Palworld server container
 
 Palworld dedicated server for Linux x86_64 with the native-Linux **UE4SS** mod
 loader baked in.
@@ -71,7 +71,7 @@ docker compose run --rm palworld restore <archive|latest>
 | Variable | Default | Meaning |
 |---|---|---|
 | `ADMIN_PASSWORD` | — | **Required.** In-game admin + REST API credential |
-| `SERVER_NAME` | `Palworld Server (pal-up)` | Server browser name |
+| `SERVER_NAME` | `Palworld Server (Pal-Up)` | Server browser name |
 | `SERVER_DESCRIPTION` | empty | Server browser description |
 | `SERVER_PASSWORD` | empty | Join password (empty = open) |
 | `MAX_PLAYERS` | `32` | `ServerPlayerMaxNum` |

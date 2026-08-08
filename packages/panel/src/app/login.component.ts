@@ -9,7 +9,7 @@ import { Api, authed } from './api.service';
   template: `
     <div class="center">
       <form class="card login" (ngSubmit)="submit()">
-        <h1>pal-up</h1>
+        <h1>Pal-Up</h1>
         <p class="muted">Sign in with the server's admin password.</p>
         <input
           type="password"

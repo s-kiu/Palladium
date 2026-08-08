@@ -1,12 +1,12 @@
-# Palladium & pal-up
+# Palladium & Pal-Up
 
 **Server-side Palworld modding on Linux — a framework, a server that ships
 it, and one contract between them.**
 
 Two products, one project. Pick your door:
 
-- **"I want a modded server."** → **pal-up** — *Palladium, up.* Palworld's
-  official mod system supports Windows dedicated servers only; pal-up brings
+- **"I want a modded server."** → **Pal-Up** — *Palladium, up.* Palworld's
+  official mod system supports Windows dedicated servers only; Pal-Up brings
   server-side modding to Linux by integrating the native UE4SS port into a
   batteries-included container. Clone the repo, `docker compose up`, done —
   Palladium comes installed.

@@ -24,7 +24,7 @@ setup() { setup_lib; }
 @test "defaults are emitted for mapped keys with defaults" {
     out="$(build_option_settings "$MAP_FILE")"
     [[ "$out" == OptionSettings=\(* ]]
-    [[ "$out" == *'ServerName="Palworld Server (pal-up)"'* ]]
+    [[ "$out" == *'ServerName="Palworld Server (Pal-Up)"'* ]]
     [[ "$out" == *'ServerPlayerMaxNum=32'* ]]
     [[ "$out" == *'RESTAPIEnabled=True'* ]]
 }

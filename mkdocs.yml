@@ -3,7 +3,7 @@
 # Nothing here is hand-built — the same markdown files the repo always had,
 # including the generated bridge-reference, are the site.
 
-site_name: Palladium & pal-up
+site_name: Palladium & Pal-Up
 site_description: Server-side Palworld modding on Linux — a framework, a server, and one contract between them.
 site_url: https://s-kiu.github.io/palladium/
 repo_url: https://github.com/s-kiu/palladium

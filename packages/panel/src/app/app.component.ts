@@ -31,7 +31,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permiss
       <app-login />
     } @else {
       <header class="topbar">
-        <span class="brand">pal-up</span>
+        <span class="brand">Pal-Up</span>
         <nav>
           @for (t of tabs(); track t) {
             <button [class.active]="tab() === t" (click)="tab.set(t)">{{ t }}</button>

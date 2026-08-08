@@ -1,6 +1,6 @@
 # @pal-up/panel
 
-Angular 19 web UI for pal-up. Standalone components, signals, no router —
+Angular 19 web UI for Pal-Up. Standalone components, signals, no router —
 served as static files by the daemon.
 
 - **Dashboard** — status, versions, resources, the update flow.

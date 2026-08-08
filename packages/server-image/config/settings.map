@@ -8,7 +8,7 @@
 # Keys not listed here can always be set with OPT_<IniKey>=<verbatim value>.
 
 ## Identity & access
-SERVER_NAME|ServerName|str|Palworld Server (pal-up)|Name shown in the server browser and on join.
+SERVER_NAME|ServerName|str|Palworld Server (Pal-Up)|Name shown in the server browser and on join.
 SERVER_DESCRIPTION|ServerDescription|str||Short text shown under the server name in the browser.
 ADMIN_PASSWORD|AdminPassword|str||In-game admin and REST API password (managed via .env only).
 SERVER_PASSWORD|ServerPassword|str||Join password; empty means anyone can join (managed via .env only).

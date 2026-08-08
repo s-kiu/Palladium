@@ -11,7 +11,7 @@ server by spamming a command.
 ## Install
 
 Drop the folder into `./mods` (or your server's UE4SS `Mods` folder if you are
-not running pal-up, plus a line in `Mods/Palladium/mods.list`) and restart the
+not running Pal-Up, plus a line in `Mods/Palladium/mods.list`) and restart the
 server. Palladium reports it on startup and lists it in the panel's mods page.
 
 Needs Palladium 4.11.0 or newer (the `clock.minute` event and the plain

@@ -9,7 +9,7 @@ the game, registers the permission node it declares, and calls its handlers.
 ## Install
 
 Drop the folder into `./mods` (or your server's UE4SS `Mods` folder if you are
-not running pal-up) and restart the server. Palladium reports it on startup and
+not running Pal-Up) and restart the server. Palladium reports it on startup and
 lists it in the panel's mods page.
 
 Needs Palladium. Nothing else — no panel, no token, no process to run.

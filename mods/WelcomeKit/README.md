@@ -9,7 +9,7 @@ A Palladium mod: one `mod.lua`. No panel, no token, no process.
 ## Install
 
 Drop the folder into `./mods` (or your server's UE4SS `Mods` folder if you are
-not running pal-up) and restart the server.
+not running Pal-Up) and restart the server.
 
 Needs Palladium. Nothing else.
 

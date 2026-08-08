@@ -333,11 +333,11 @@ misbehaving where the author cannot see it.
 - Every mod's records live in `mods/<Mod>/<mod>.data` — tab-separated,
   appended and periodically rewritten, since this runtime has no JSON parser
   and no database. A line torn by a crash is dropped and the file healed on the
-  next load. On pal-up the loader reads an rsync copy of the mod folders, so
+  next load. On Pal-Up the loader reads an rsync copy of the mod folders, so
   Palladium writes to the originals instead; `PALLADIUM_MODS_SOURCE` names
   them, rather than the framework guessing and risking a write that the next
   boot's sync undoes.
-- Palladium reads `Mods/Palladium/mods.list` for the names to load. pal-up
+- Palladium reads `Mods/Palladium/mods.list` for the names to load. Pal-Up
   regenerates it on every boot from `./mods`, honouring `.disabled` markers; a
   standalone server maintains it by hand, exactly like BPModLoaderMod's
   `load_order.txt`. If the file is absent, Palladium falls back to asking the
@@ -361,13 +361,13 @@ and an entry file in JavaScript or TypeScript, run by the panel, with
 permissions and tags reached through the same capabilities.
 The client one runs against is [packages/mod-sdk](https://github.com/s-kiu/palladium/tree/main/packages/mod-sdk), which
 documents what a mod exports and everything `pal` offers on that side. Script
-mods need pal-up; Palladium mods do not.
+mods need Pal-Up; Palladium mods do not.
 
 ## How the Lua half is loaded
 
 Sync happens on every container start: `docker compose restart palworld`
 after changing mod folders. Mods removed from `./mods` are removed from the
-server; folders pal-up didn't put there (UE4SS's bundled mods) are left
+server; folders Pal-Up didn't put there (UE4SS's bundled mods) are left
 alone. Folders with a `mod.json` and no `scripts/` are skipped — they have no
 Lua half, and the panel is already running them.
 
@@ -393,7 +393,7 @@ This kills the classic "my mods.txt reset after restart" problem: the file is
 exotic load orders set `MODS_TXT_MODE=manual` and own the file themselves.
 
 Note: some mods ship an `enabled.txt` that would force-enable them in UE4SS
-regardless of `mods.txt`. In managed mode pal-up strips that file from the
+regardless of `mods.txt`. In managed mode Pal-Up strips that file from the
 synced copy so the enable/disable toggle always wins (your folder in `./mods`
 is left as downloaded). In `MODS_TXT_MODE=manual`, `enabled.txt` is preserved
 and behaves as UE4SS defines.
@@ -417,7 +417,7 @@ and behaves as UE4SS defines.
 
 ## Surviving game updates
 
-Game patches routinely break UE4SS (memory offsets move). pal-up's model:
+Game patches routinely break UE4SS (memory offsets move). Pal-Up's model:
 
 1. Run with `UPDATE_ON_BOOT=hold` — the game version stays put until *you*
    decide, no matter how often the container restarts.
@@ -441,7 +441,7 @@ config/persist/UE4SS-settings.ini
 ```
 
 Persisted files are copied over the server tree on every boot, *after*
-pal-up's own config generation — your file always wins.
+Pal-Up's own config generation — your file always wins.
 
 ## Mods that talk to the outside world
 
@@ -454,6 +454,6 @@ is why script mods exist at all — see
 
 ## Where do I even get mods?
 
-Nexus Mods and CurseForge, "Palworld" section. pal-up deliberately has no
+Nexus Mods and CurseForge, "Palworld" section. Pal-Up deliberately has no
 automatic downloader (Nexus Mods' API terms restrict automated downloads);
 download archives yourself and drop them in.

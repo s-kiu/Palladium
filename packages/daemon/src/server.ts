@@ -1,4 +1,4 @@
-// pal-up daemon — auth, game-server admin proxy, mods & backups API,
+// Pal-Up daemon — auth, game-server admin proxy, mods & backups API,
 // and static hosting for the Angular panel.
 //
 // Design constraints:
@@ -973,7 +973,7 @@ app.put<{ Body: { changes?: Record<string, string | null> } }>(
       }
     }
 
-    const lines = ['# Managed by the pal-up panel — merged over .env settings on every boot.'];
+    const lines = ['# Managed by the Pal-Up panel — merged over .env settings on every boot.'];
     for (const [k, v] of Object.entries(overrides)) lines.push(`${k}=${v}`);
     await fs.mkdir(path.dirname(PANEL_SETTINGS_FILE), { recursive: true });
     await fs.writeFile(PANEL_SETTINGS_FILE, lines.join('\n') + '\n');

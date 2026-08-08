@@ -10,7 +10,7 @@ mod reacts to it and owns no timer of its own.
 ## Install
 
 Drop the folder into `./mods` (or your server's UE4SS `Mods` folder if you are
-not running pal-up, plus a line in `Mods/Palladium/mods.list`) and restart the
+not running Pal-Up, plus a line in `Mods/Palladium/mods.list`) and restart the
 server. Palladium reports it on startup and lists it in the panel's mods page.
 
 Needs Palladium 4.10.0 or newer. Nothing else — no panel, no token, no

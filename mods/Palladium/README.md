@@ -11,7 +11,7 @@ mod. It does two things:
   relays and web panels a way in and out. UE4SS Lua has no sockets; files on
   disk are the only transport available.
 
-Nothing outside the game is required for either. [pal-up](https://github.com/s-kiu/palladium)
+Nothing outside the game is required for either. [Pal-Up](https://github.com/s-kiu/palladium)
 adds a web panel on top — permissions editing, item and pal pickers, history —
 but a server that just wants mods needs this folder and nothing else.
 
@@ -61,7 +61,7 @@ this runtime has no JSON parser and no database.
 Permissions are one file rather than one per mod: a group spans every mod, so
 splitting membership across them would leave no answer for which copy wins.
 
-On pal-up the loader reads an rsync copy of the mod folders, so writes go to the
+On Pal-Up the loader reads an rsync copy of the mod folders, so writes go to the
 originals instead — `PALLADIUM_MODS_SOURCE` names them, rather than the
 framework guessing and risking a write the next boot undoes.
 There is no database and no JSON parser in this runtime, so records are
@@ -78,7 +78,7 @@ Full guide: [docs/mods.md](https://github.com/s-kiu/palladium/blob/main/docs/mod
 ## Install
 
 Drop the `Palladium` folder into your server's UE4SS `Mods` directory (on
-[pal-up](https://github.com/s-kiu/palladium), into `./mods`) and restart the server.
+[Pal-Up](https://github.com/s-kiu/palladium), into `./mods`) and restart the server.
 `server/UE4SS.log` will show each hook registering.
 
 Nothing else is required: the mod has no configuration and no dependencies
@@ -92,7 +92,7 @@ To install a mod *for* it, drop that folder in beside this one and name it in
 GoldStreak
 ```
 
-On pal-up that file is regenerated on every boot from `./mods` and you never
+On Pal-Up that file is regenerated on every boot from `./mods` and you never
 touch it. Standalone, it is how you control load order and disable a mod
 without deleting it — the same job `load_order.txt` does for BPModLoaderMod. If
 the file is absent entirely, Palladium falls back to asking the loader for a
@@ -112,10 +112,10 @@ add `id`, `ok`, `error`. The subject id is `PlayerUId` as 32 hex digits, the
 same rendering the game's REST API uses for `playerId`, so events join to it
 directly. Which events exist — and which engine hooks produce them — comes from
 `Scripts/generated/capabilities.lua`, generated from the capability manifest in
-the pal-up repo; this mod implements handlers for what that table declares.
+the Pal-Up repo; this mod implements handlers for what that table declares.
 
 Where these live is decided at boot, in this order: `PAL_ROOT` if you set it,
-then `/palworld` if it exists (that is where pal-up mounts its volume), and
+then `/palworld` if it exists (that is where Pal-Up mounts its volume), and
 otherwise a `palladium/` folder beside the game binaries. So a standalone
 server needs no configuration — and if the chosen directory turns out not to be
 writable, the mod says so in the log at boot and keeps saying so, because a
@@ -145,7 +145,7 @@ Each request produces an `action` event carrying the same `id`, so the caller
 can match a result to its request.
 
 Both files are expected to be emptied when the server boots — offsets into them
-are only meaningful within one run. On pal-up the entrypoint does this; on a
+are only meaningful within one run. On Pal-Up the entrypoint does this; on a
 plain server, truncate them in your start script.
 
 ## Notes
@@ -157,5 +157,5 @@ plain server, truncate them in your start script.
 - Chat is untrusted input: strings are length-capped and JSON-escaped, and item
   ids are validated before they reach the inventory call.
 
-Full contract, the HTTP API pal-up layers on top, and runnable examples:
+Full contract, the HTTP API Pal-Up layers on top, and runnable examples:
 [docs/bridge.md](https://github.com/s-kiu/palladium/blob/main/docs/bridge.md).

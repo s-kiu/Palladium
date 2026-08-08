@@ -1,4 +1,4 @@
-# pal-up — modded Palworld dedicated server
+# Pal-Up — modded Palworld dedicated server
 #
 #   cp .env.example .env   # set ADMIN_PASSWORD at minimum
 #   docker compose up -d --build

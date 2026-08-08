@@ -1,7 +1,7 @@
 name: mod-release
 
 # Every mod that ships here is a normal mod: somebody running a Palworld server
-# without pal-up should be able to download one and drop it in. Each mod holds
+# without Pal-Up should be able to download one and drop it in. Each mod holds
 # exactly one release, updated in place: bump the version in the manifest and
 # a push replaces that mod's release — same tag, new zip, title carrying the
 # version — so the releases page lists one entry per mod, always current.
@@ -99,7 +99,7 @@ jobs:
           dir="${{ steps.mod.outputs.dir }}"
           {
             if [ -f "$dir/mod.json" ]; then
-              echo "A script mod: it runs in the pal-up panel, not in the game."
+              echo "A script mod: it runs in the Pal-Up panel, not in the game."
               echo
               echo "Drop the \`${{ matrix.mod }}\` folder from the archive into \`./mods\` — the panel picks it up within ten seconds."
             elif [ -f "$dir/mod.lua" ]; then
@@ -109,7 +109,7 @@ jobs:
             else
               echo "The modding framework: it loads other mods, and publishes in-game events and actions for tools outside the game."
               echo
-              echo "Drop the \`${{ matrix.mod }}\` folder from the archive into your server's UE4SS \`Mods\` directory (pal-up users: into \`./mods\`) and restart."
+              echo "Drop the \`${{ matrix.mod }}\` folder from the archive into your server's UE4SS \`Mods\` directory (Pal-Up users: into \`./mods\`) and restart."
             fi
             echo
             echo "Writing a mod: [docs/mods.md](https://github.com/${{ github.repository }}/blob/main/docs/mods.md)"

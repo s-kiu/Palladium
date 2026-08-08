@@ -67,7 +67,7 @@ doesn't load it, Palladium does — so check these instead:
    for any that failed: a `mod.lua` that returns nothing, will not parse, or
    declares a permission node outside its own namespace.
 2. Is it in the list Palladium reads? `cat
-   /palworld/server/Mods/Palladium/mods.list` — pal-up regenerates it on every
+   /palworld/server/Mods/Palladium/mods.list` — Pal-Up regenerates it on every
    boot from `./mods`, skipping folders with a `.disabled` marker.
 3. `UE4SS.log` carries Palladium's own lines, including which route it used to
    find mods and what each one registered.

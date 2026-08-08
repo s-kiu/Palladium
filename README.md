@@ -3,17 +3,29 @@
 **A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
 - **[Palladium](mods/Palladium)** is the framework: one UE4SS Lua mod, on any UE4SS dedicated server. A mod built on it is a single `mod.lua` — permissions, settings, storage, chat commands and in-game events all handled for it. [Download from releases](https://github.com/s-kiu/palladium/releases).
-- **pal-up** — *Palladium, up* — is the server: a modded Palworld dedicated server for Linux — which the official mod system doesn't support — in one `docker compose up`, with Palladium preinstalled, drop-in mod folders, a web panel, backups and safe updates. Clone this repo.
+- **Pal-Up** — *Palladium, up* — is the server: a modded Palworld dedicated server for Linux — which the official mod system doesn't support — in one `docker compose up`, with Palladium preinstalled, drop-in mod folders, a web panel, backups and safe updates. Clone this repo.
 
-Used together they become more than the sum — the framework's file protocol plus the server's panel:
+What each delivers — and what only the combination can:
 
-| **Palladium** brings | **pal-up** brings | together that becomes |
-|---|---|---|
-| every event and action, published as files on disk | a daemon running beside the game | an **HTTP API with tokens** — build against the server in any language, from anywhere |
-| 58 capabilities, generated from one manifest | a web panel | **a form for every capability** — searchable pickers for 2,400+ items and 750+ pal species, a live event stream, a stats editor |
-| permissions in one file: tiers, groups, constraints, expiry | the same panel | **permissions edited in the browser** — groups, overrides and constraints, no SSH |
-| mods that declare their settings and data | a panel that renders what is declared | **every mod's config and records listed and editable** — even for mods the panel has never heard of |
-| in-game Lua mods — no sockets, by design | a supervised process runner | **script mods in JS/TS that reach the network** — a Discord relay or shop bot as a drop-in folder, no token setup |
+| | **Palladium**<br>[release zip](https://github.com/s-kiu/palladium/releases) on any UE4SS server | **Pal-Up**<br>this repo, Docker on Linux | **Both**<br>clone, `compose up` — done |
+|---|:---:|:---:|:---:|
+| ***The framework*** | | | |
+| Lua modding — a mod is one `mod.lua` file | ✓ | | ✓ |
+| Permissions: five tiers, groups, constraints, expiry, audit log | ✓ | | ✓ |
+| Chat commands: `!commands`, `@me` / `@Name`, every capability gated | ✓ | | ✓ |
+| In-game events and actions: chat, joins, deaths, played hours, pal spawns, items, teleports, stats | ✓ | | ✓ |
+| Events and actions published to disk for local programs | ✓ | | ✓ |
+| ***The server*** | | | |
+| Palworld dedicated server on Linux, one `docker compose up` | | ✓ | ✓ |
+| UE4SS mod loader preinstalled, checksum-pinned | | ✓ | ✓ |
+| Drop-in folders for every mod kind: Lua, `.pak`, LogicMods | | ✓ | ✓ |
+| Automatic backups, one-command restore, safe game updates | | ✓ | ✓ |
+| Web panel and CLI: players online, kick/ban, broadcasts, logs, settings | | ✓ | ✓ |
+| ***Only in combination*** | | | |
+| HTTP API with tokens — drive the server from any language | | | ✓ |
+| A form for every capability: searchable pickers, live event stream, stats editor | | | ✓ |
+| Permissions and every mod's data edited in the browser | | | ✓ |
+| Script mods in JS/TS that reach the network — a Discord relay as a drop-in folder | | | ✓ |
 
 > [!NOTE]
 > Mod loading currently ships via the community-maintained
@@ -37,6 +49,16 @@ Used together they become more than the sum — the framework's file protocol pl
 - **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](mods/TimedRewards) mod pays it out at the hour marks you define.
 
 ## Quickstart
+
+### Just the mod — Palladium on a server you already run
+
+No clone, no Docker. Download the latest `Palladium` zip from the
+[releases page](https://github.com/s-kiu/palladium/releases), drop the
+`Palladium` folder into your server's UE4SS `Mods` directory, enable it, and
+restart. Mods built on it go in folders right beside it. Full steps, including
+where permissions and mod data land: [mods/Palladium](mods/Palladium).
+
+### The full server — Pal-Up
 
 Requirements: Linux x86_64, Docker with the compose plugin, ~25 GB free disk, 16 GB RAM recommended.
 
@@ -104,7 +126,7 @@ manifest with its chat form](docs/bridge-reference.md).
 |---|---|---|---|
 | **Is** | `mods/X/mod.lua` | `mods/X/mod.json` + `.ts`/`.mjs` | anything, anywhere |
 | **Runs** | inside the game | as a panel child process | wherever you start it |
-| **Needs** | Palladium only | pal-up | pal-up + an API token |
+| **Needs** | Palladium only | Pal-Up | Pal-Up + an API token |
 | **Install** | drop the folder in, restart | drop the folder in, ~10 s | run it |
 | **Language** | Lua | JS or TS, no build step | any |
 | **Reaches the network** | no — UE4SS Lua has no sockets | yes | yes |
@@ -257,7 +279,7 @@ one auth header and JSON.
 - Another: [TimedRewards](mods/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
 - The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
 - External programs with a token: [examples/bridge/](examples/bridge)
-- The framework on its own, for servers not running pal-up: [mods/Palladium](mods/Palladium)
+- The framework on its own, for servers not running Pal-Up: [mods/Palladium](mods/Palladium)
 
 ## Everyday operations
 

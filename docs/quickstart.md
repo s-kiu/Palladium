@@ -1,12 +1,18 @@
 # Quickstart — zero to modded Palworld server
 
+This is the **Pal-Up** walkthrough: the full server, cloned and composed. If
+you already run a UE4SS dedicated server and only want the modding framework,
+skip all of this — download the `Palladium` zip from the
+[releases page](https://github.com/s-kiu/palladium/releases) and follow
+[its README](https://github.com/s-kiu/palladium/tree/main/mods/Palladium).
+
 Tested target: Ubuntu 24.04, x86_64. Any Linux with Docker ≥ 24 and the
 compose plugin works the same way. **Not** supported: ARM (Raspberry Pi) — the
 UE4SS Linux build is x86_64 only.
 
 **Windows host?** Works through Docker Desktop (the containers run in its
 WSL2 Linux VM). Three rules for a good time: clone the repo *inside* the WSL
-filesystem (e.g. `~/pal-up` in your Ubuntu distro, not `C:\...` — bind-mounted
+filesystem (e.g. `~/palladium` in your Ubuntu distro, not `C:\...` — bind-mounted
 folders are slow and permission-quirky otherwise); give WSL enough memory for
 the 16 GB recommendation (`.wslconfig` → `memory=16GB`, then `wsl --shutdown`);
 and allow `8211/udp` through Windows Defender Firewall when it asks. The
