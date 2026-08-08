@@ -11,6 +11,8 @@ runtime serves them — is generated from one manifest and lives in
 [bridge-reference.md](bridge-reference.md). This page is the protocol; runnable
 examples live in [`examples/bridge/`](https://github.com/s-kiu/Palladium/tree/main/examples/bridge).
 
+![Events out, actions in: Palladium inside the game server writes bridge-events.jsonl and consumes bridge-actions.jsonl; your program sits on the other side of both files.](img/bridge-files.svg)
+
 ## The envelope
 
 Every message, in both directions, is one shape:
@@ -171,6 +173,8 @@ position) are recorded automatically as `source: "boss"` — arenas announce
 themselves; nobody types coordinates.
 
 ## Chat commands
+
+![One manifest generates three surfaces: the same capability is a chat command, an HTTP call and a Lua pal.call — all reaching the same action.](img/three-surfaces.svg)
 
 The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 2 s). Everything beyond that belongs outside: read `player.chat`, call actions

@@ -1,0 +1,54 @@
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Time as events: clock.minute, clock.day and player.hour drive mods</title>
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="720" fill="#1A2028"/>
+
+  <!-- clock glyph -->
+  <circle cx="170" cy="230" r="62" fill="none" stroke="#4FC3F7" stroke-width="3"/>
+  <line x1="170" y1="230" x2="170" y2="190" stroke="#4FC3F7" stroke-width="3" stroke-linecap="round"/>
+  <line x1="170" y1="230" x2="200" y2="245" stroke="#4FC3F7" stroke-width="3" stroke-linecap="round"/>
+  <text x="170" y="330" text-anchor="middle" fill="#8CA0B3" font-size="17">the wall clock</text>
+
+  <!-- hourglass glyph -->
+  <path d="M140 420 h60 l-24 42 v16 l24 42 h-60 l24 -42 v-16 Z" fill="none" stroke="#4FC3F7" stroke-width="3" stroke-linejoin="round"/>
+  <text x="170" y="560" text-anchor="middle" fill="#8CA0B3" font-size="17">played time, counted</text>
+
+  <!-- event chips -->
+  <g fill="#232B36" stroke="#FFB74D" stroke-width="2">
+    <rect x="430" y="150" width="270" height="60" rx="10"/>
+    <rect x="430" y="310" width="270" height="60" rx="10"/>
+    <rect x="430" y="470" width="270" height="60" rx="10"/>
+  </g>
+  <g fill="#FFB74D" font-size="21" text-anchor="middle" font-family="ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace">
+    <text x="565" y="188">clock.minute</text>
+    <text x="565" y="348">clock.day</text>
+    <text x="565" y="508">player.hour</text>
+  </g>
+  <g stroke="#64748B" stroke-width="2" marker-end="url(#ah)">
+    <line x1="238" y1="212" x2="422" y2="184"/>
+    <line x1="238" y1="248" x2="422" y2="332"/>
+    <line x1="212" y1="470" x2="422" y2="497"/>
+  </g>
+
+  <!-- consumer mods -->
+  <rect x="830" y="135" width="390" height="90" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="1025" y="173" text-anchor="middle" fill="#C7D0DA" font-size="20">Leaderboards — refreshes</text>
+  <text x="1025" y="201" text-anchor="middle" fill="#C7D0DA" font-size="20">standings on cadence</text>
+
+  <rect x="830" y="455" width="390" height="90" rx="12" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="1025" y="493" text-anchor="middle" fill="#C7D0DA" font-size="20">TimedRewards — pays every</text>
+  <text x="1025" y="521" text-anchor="middle" fill="#C7D0DA" font-size="20">unpaid hour mark</text>
+
+  <g stroke="#64748B" stroke-width="2" marker-end="url(#ah)">
+    <line x1="700" y1="180" x2="822" y2="180"/>
+    <line x1="700" y1="500" x2="822" y2="500"/>
+  </g>
+
+  <!-- caption -->
+  <rect x="410" y="632" width="460" height="50" rx="10" fill="#232B36" stroke="#3A4654" stroke-width="1.5"/>
+  <text x="640" y="664" text-anchor="middle" fill="#8CA0B3" font-size="20">mods never own a timer — they react</text>
+</svg>

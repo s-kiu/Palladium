@@ -30,6 +30,8 @@ Rules of thumb when a download page doesn't say which type it is:
 One file. `mods/GoldStreak/mod.lua` returns a table, and that table is the
 whole mod — what it is, what it owns, and what it does:
 
+![A mod is one file: mod.lua declares permissions, settings, data and commands, and Palladium registers all of it on restart.](img/mod-lifecycle.svg)
+
 ```lua
 return {
     name = "GoldStreak",
@@ -79,6 +81,8 @@ call that loads the file is the call that reads the manifest.
 | `settings` | Free-form table, reachable as `pal.settings` — the author's defaults; see the overlay below |
 | `on` | One function per event type — `player.join`, `player.chat`, `player.death`, `player.respawn`, `player.leave`, `npc.spawn`, `player.hour` (a played hour completed), `clock.minute` and `clock.day` (server-local wall clock), `player.item_use` (experimental) |
 | `commands` | Chat commands, each with a `run` and optionally a `node` to gate it |
+
+![Time arrives as events: the wall clock fires clock.minute and clock.day, counted playtime fires player.hour — Leaderboards and TimedRewards react instead of owning timers.](img/time-events.svg)
 
 ### What `pal` offers
 
@@ -157,6 +161,8 @@ A mod still ships its *node declarations* in `mod.lua`, which is what you read
 before installing it.
 
 ## permissions.config
+
+![Permission resolution: a call descends player overrides, groups by weight, the default group and the node default; a where-constraint on the matched grant decides allow or deny.](img/permission-ladder.svg)
 
 `mods/Palladium/permissions.config`, written by Palladium and yours to edit:
 
