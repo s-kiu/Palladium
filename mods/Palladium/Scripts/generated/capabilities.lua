@@ -279,6 +279,13 @@ return {
             { name = "rankCraftSpeed", kind = "int", min = 0, max = 10 },
             },
         },
+        ["player.set_immortal"] = {
+            target = "player",
+            scope = "write",
+            params = {
+            { name = "on", kind = "bool", default = true },
+            },
+        },
         ["player.status_points"] = {
             target = "player",
             scope = "read",

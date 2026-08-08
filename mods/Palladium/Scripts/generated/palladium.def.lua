@@ -150,6 +150,9 @@
 ---@field rankDefence? integer
 ---@field rankCraftSpeed? integer
 
+---@class PlayerSetImmortalParams
+---@field on? boolean
+
 ---@class PlayerStatusPointsParams
 
 ---@class PlayerStatusPointParams
@@ -235,6 +238,7 @@
 ---@field position fun(target: string, params: PlayerPositionParams, done?: fun(ok: boolean, err: string|nil, data: table)) # The online player's exact world position (Engine Actor location, includes z).
 ---@field stats fun(target: string, params: PlayerStatsParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, plus level, rank, talent* IVs and rank* soul upgrades from the save parameter. A stat this build does not expose comes back null rather than absent.
 ---@field set_stats fun(target: string, params: PlayerSetStatsParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Set any combination of an online player's stats in one call; omitted fields are left alone. Values are absolute, on the same scale player.stats reports — hp is converted to the rate the engine wants using the maximum it reports; asking for more HP than the maximum raises the maximum with it. Combat and work stats (level, rank, talent* IVs, rank* soul upgrades) are written to the save parameter and replicated — they are pal stats, and a player character is refused them rather than told they applied (player.status_point is the equivalent). Every write is read back: applied lists what changed, unverified what the engine accepted without visibly changing, failed what it refused.
+---@field set_immortal fun(target: string, params: PlayerSetImmortalParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Switch a player's immortality on or off. This is the engine's own IsImmortality flag on the character parameter component, replicated to the client, rather than a health ceiling: damage still lands and nothing takes the player below it. The flag is read back, so a build that ignores the write is reported rather than reported as success.
 ---@field status_points fun(target: string, params: PlayerStatusPointsParams, done?: fun(ok: boolean, err: string|nil, data: table)) # An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back.
 ---@field status_point fun(target: string, params: PlayerStatusPointParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Spend status points on one of a player's stats, the way a level-up does. This is how a player's max HP goes up: it is computed from the points, not stored, so nothing else can raise it. Additive. stat is the game's own FName for the stat and is passed through verbatim — this build spends through the player controller and exposes no way to read the allocation back, so the result reports which readable stat moved instead. player.status_points lists the names to try.
 ---@field playtime fun(target: string|nil, params: PlayerPlaytimeParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Minutes a player has actually spent on this server, credited one minute at a time while they are online — a crash costs at most the minute in progress. Also reports the current session's minutes and whether they are online right now. Answers for offline players too: the total is history, not presence.

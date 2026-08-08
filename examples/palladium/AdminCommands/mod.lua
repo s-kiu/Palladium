@@ -11,8 +11,9 @@
 --
 -- What is NOT here, and why — because a command that silently does nothing is
 -- worse than one that does not exist:
---   fly, freeze  the engine exposes no flight or movement lock this build can
---                reach; there is nothing to call.
+--   fly, freeze  the engine has both — StartFlyToServer on the controller, and
+--                a named walk-speed multiplier on the movement component — but
+--                neither is verified on this build yet, so neither is here.
 --   mute         Palladium observes chat, it cannot cancel it, so a muted
 --                player's words would still reach everyone. !mute here stops
 --                them using commands, which is the part that is real.
@@ -61,14 +62,11 @@ return {
         { node = "admincommands.tp", description = "teleport yourself or another player", default = "deny" },
         { node = "admincommands.give", description = "give items to a player", default = "deny" },
         { node = "admincommands.slay", description = "kill a player outright", default = "deny" },
-        { node = "admincommands.god", description = "make a player effectively unkillable", default = "deny" },
+        { node = "admincommands.god", description = "make a player unkillable", default = "deny" },
         { node = "admincommands.mute", description = "stop a player using chat commands", default = "deny" },
     },
 
     settings = {
-        -- What god mode raises a player's maximum health to. High enough that
-        -- nothing in the world reaches it, low enough to stay a plain number.
-        god_hp = 99999999,
         -- Told to everyone when an admin slays somebody, so a death nobody
         -- caused in game is not a mystery. Empty to keep it quiet.
         announce_slay = true,
@@ -79,10 +77,11 @@ return {
             description = "players whose chat commands are ignored, and who muted them",
             fields = { name = "string", by = "string", at = "int" },
         },
-        -- God mode replaces a player's maximum health, so the number it
-        -- replaced has to be kept somewhere it survives a restart.
+        -- Immortality is a flag on the character, not something this mod
+        -- holds, but who has it is worth surviving a restart so an operator
+        -- can see who is still unkillable.
         godded = {
-            description = "players in god mode, with the maximum health to give back",
+            description = "players currently made immortal, and when",
             fields = { name = "string", was_max_hp = "string", at = "int" },
         },
     },
@@ -181,13 +180,12 @@ return {
             end,
         },
 
-        -- God is a raised ceiling rather than true invulnerability: this build
-        -- exposes no invincibility flag, so what it can honestly offer is a
-        -- maximum health nothing in the world reaches, and the old maximum
-        -- handed back when it is switched off.
+        -- The engine's own immortality flag, replicated to the client. It
+        -- replaced a maximum-health ceiling that could not work: health here
+        -- is derived from level, so a raised maximum does not stay raised.
         ["!god"] = {
             node = "admincommands.god",
-            help = "!god @Name [off] — raise them out of reach of anything that hits, or put them back.",
+            help = "!god @Name [off] — make them unkillable, or mortal again.",
             run = function(event, args, pal)
                 local caller = event.subject.id
                 if is_muted(pal, caller) then return end
@@ -198,39 +196,21 @@ return {
 
                 local target, trouble = resolve(target_token, caller, pal)
                 if trouble then return say(pal, caller, trouble) end
-                local ledger = pal.data("godded")
 
-                if off then
-                    local record = ledger:get(target)
-                    if not record then return say(pal, caller, "They are not in god mode.") end
-                    local was = tonumber(record.was_max_hp)
-                    if not was then
-                        ledger:delete(target)
-                        return say(pal, caller, "Cleared, but their old maximum was not readable — set it by hand.")
+                pal.player.set_immortal(target, { on = not off }, function(ok, err)
+                    if not ok then
+                        return say(pal, caller, "Could not change that: " .. tostring(err))
                     end
-                    pal.player.set_stats(target, { maxHp = was, hp = was }, function(ok, err)
-                        if not ok then return say(pal, caller, "Could not restore them: " .. tostring(err)) end
-                        ledger:delete(target)
-                        say(pal, caller, "God mode off.")
-                        if target ~= caller then say(pal, target, "You are mortal again.") end
-                    end)
-                    return
-                end
+                    -- Remembered so !godded can answer, and so an operator can
+                    -- see who is still immortal after a restart.
+                    local ledger = pal.data("godded")
+                    if off then ledger:delete(target)
+                    else ledger:set(target, { name = "", was_max_hp = "", at = os.time() }) end
 
-                if ledger:get(target) then return say(pal, caller, "They are already in god mode.") end
-                -- Read first: without the old maximum there is no way back.
-                pal.player.stats(target, {}, function(ok, err, stats)
-                    local was = tonumber(stats and stats.maxHp)
-                    if not ok or not was then
-                        return say(pal, caller, "Could not read their health: " .. tostring(err or "no maxHp"))
+                    say(pal, caller, off and "God mode off." or "God mode on.")
+                    if target ~= caller then
+                        say(pal, target, off and "You are mortal again." or "An admin made you unkillable.")
                     end
-                    local ceiling = tonumber(pal.settings.god_hp) or 99999999
-                    pal.player.set_stats(target, { maxHp = ceiling, hp = ceiling }, function(ok2, err2)
-                        if not ok2 then return say(pal, caller, "Could not raise them: " .. tostring(err2)) end
-                        ledger:set(target, { name = "", was_max_hp = tostring(was), at = os.time() })
-                        say(pal, caller, "God mode on. !god @Name off puts them back.")
-                        if target ~= caller then say(pal, target, "An admin made you very hard to kill.") end
-                    end)
                 end)
             end,
         },

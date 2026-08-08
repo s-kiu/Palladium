@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.17.0"
+local VERSION = "4.18.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1750,6 +1750,32 @@ IMPL["player.position"] = function(state)
     local x, y, z = member(at, "X"), member(at, "Y"), member(at, "Z")
     if type(x) ~= "number" then return false, "not_supported" end
     return true, nil, { { "x", x }, { "y", y or 0 }, { "z", z or 0 } }
+end
+
+-- The engine's own immortality flag, on the same component the stat readers
+-- already use. A property rather than a setter, which is the safer of the two
+-- here: there is no signature to guess wrong, and guessing wrong at this layer
+-- takes the whole server with it. Written, then read back — a build that
+-- quietly ignores the write must not read as a player who cannot die.
+IMPL["player.set_immortal"] = function(state, p)
+    local _, pawn = pawn_of(state)
+    if not pawn then return false, "player_offline" end
+    local component = member(pawn, "CharacterParameterComponent")
+    if not valid(component) then
+        return false, "not_supported: this build exposes no CharacterParameterComponent"
+    end
+
+    local want = p.on ~= false
+    local written = pcall(function() component.IsImmortality = want end)
+    if not written then
+        return false, "not_supported: IsImmortality is not writable on this build"
+    end
+
+    local now = member(component, "IsImmortality")
+    if now ~= nil and now ~= want then
+        return false, "unverified: the flag did not hold", { { "immortal", tostring(now) } }
+    end
+    return true, nil, { { "immortal", tostring(want) } }
 end
 
 IMPL["player.count_item"] = function(state, p)

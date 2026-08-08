@@ -128,6 +128,10 @@ export const capabilities = {
     "target": "player",
     "scope": "write"
   },
+  "player.set_immortal": {
+    "target": "player",
+    "scope": "write"
+  },
   "player.status_points": {
     "target": "player",
     "scope": "read"
