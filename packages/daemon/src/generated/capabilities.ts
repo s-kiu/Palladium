@@ -1166,6 +1166,9 @@ export const CAPABILITIES: Capability[] = [
     "summary": "Read an online player's stats — hp/maxHp, hunger/maxHunger, shield/maxShield, sanity, plus level, rank, talent* IVs and rank* soul upgrades from the save parameter. A stat this build does not expose comes back null rather than absent.",
     "params": {},
     "returns": {
+      "level": "int",
+      "hp": "number",
+      "maxHp": "number",
       "stats": "json"
     },
     "errors": [
