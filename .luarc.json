@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.4",
+  "workspace.library": ["mods/Palladium/Scripts/generated"],
+  "diagnostics.globals": [
+    "FindFirstOf",
+    "FindAllOf",
+    "StaticFindObject",
+    "RegisterHook",
+    "ExecuteWithDelay",
+    "ExecuteInGameThread",
+    "FName",
+    "FText",
+    "IterateGameDirectories",
+    "NotifyOnNewObject",
+    "RegisterConsoleCommandHandler"
+  ],
+  "diagnostics.disable": ["lowercase-global"]
+}

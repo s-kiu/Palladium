@@ -54,6 +54,24 @@ nothing left to add.
 it, including ones with no helper here. Game-level failure is `ok: false`
 inside the returned envelope, not an exception.
 
+## Types and autocompletion
+
+`index.d.ts` types the client and `generated/capabilities.d.ts` types every
+capability — both generated from the same manifest as the runtimes, so an
+editor offers what the server actually has:
+
+```ts
+const r = await pal.player.give_item(id, { item: 'PalSphere', count: 5 });
+r.data.delivered;                          // boolean
+await pal.player.give_item(id, { itm: 'x' });
+//                              ~~~ 'itm' does not exist. Did you mean 'item'?
+```
+
+Plain JavaScript gets the same completions in any editor that reads
+declaration files — there is no build step and nothing to configure. Event
+payloads are typed too: `PalEvent<'player.join'>` knows about `firstEver`,
+`firstSeen` and `joins`.
+
 ## Settings
 
 `mod.json` carries a free-form `settings` object, and the operator edits it
