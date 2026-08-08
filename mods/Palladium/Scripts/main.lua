@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.11.1"
+local VERSION = "4.12.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -1453,6 +1453,160 @@ end
 -- Each handler: (state, params) → ok, error?, data_fields?
 local IMPL = {}
 
+-- ── UTF-8 across the loader boundary ────────────────────────────────────────
+-- This loader widens each Lua string byte into its own UTF-16 unit with the
+-- sign bit smeared across the high half: "ö" (C3 B6) reaches the engine as
+-- U+FFC3 U+FFB6, and the player reads two Hangul glyphs. The reverse direction
+-- is a real UTF-16 → UTF-8 encode, so engine strings arrive in Lua intact and
+-- only break on the way back. Everything Palladium says to a player leaves
+-- through send_system_chat, so the repair lives at that one door:
+--
+--   - one online player's name per message is spliced in on the engine's
+--     side of the boundary, from the live PlayerNamePrivate — the engine's
+--     own units, rendered exactly ("Löyly" stays "Löyly")
+--   - any other non-ASCII codepoint is transliterated to plain ASCII,
+--     because "Loyly" reads and "L╢ᄊyly" does not
+--
+-- Only ASCII crosses the boundary as bytes; nothing else can survive it.
+
+local KismetString
+
+local function kismet_string()
+    if valid(KismetString) then return KismetString end
+    local ok, found = pcall(StaticFindObject, "/Script/Engine.Default__KismetStringLibrary")
+    if ok and valid(found) then
+        KismetString = found
+        return KismetString
+    end
+    return nil
+end
+
+-- Latin letters lose their marks, typographic punctuation flattens, anything
+-- else becomes "?". Keyed by codepoint.
+local TRANSLIT = {
+    [0xC0]="A",[0xC1]="A",[0xC2]="A",[0xC3]="A",[0xC4]="A",[0xC5]="A",[0xC6]="AE",
+    [0xC7]="C",[0xC8]="E",[0xC9]="E",[0xCA]="E",[0xCB]="E",
+    [0xCC]="I",[0xCD]="I",[0xCE]="I",[0xCF]="I",
+    [0xD0]="D",[0xD1]="N",[0xD2]="O",[0xD3]="O",[0xD4]="O",[0xD5]="O",[0xD6]="O",
+    [0xD7]="x",[0xD8]="O",[0xD9]="U",[0xDA]="U",[0xDB]="U",[0xDC]="U",
+    [0xDD]="Y",[0xDE]="Th",[0xDF]="ss",
+    [0xE0]="a",[0xE1]="a",[0xE2]="a",[0xE3]="a",[0xE4]="a",[0xE5]="a",[0xE6]="ae",
+    [0xE7]="c",[0xE8]="e",[0xE9]="e",[0xEA]="e",[0xEB]="e",
+    [0xEC]="i",[0xED]="i",[0xEE]="i",[0xEF]="i",
+    [0xF0]="d",[0xF1]="n",[0xF2]="o",[0xF3]="o",[0xF4]="o",[0xF5]="o",[0xF6]="o",
+    [0xF7]="/",[0xF8]="o",[0xF9]="u",[0xFA]="u",[0xFB]="u",[0xFC]="u",
+    [0xFD]="y",[0xFE]="th",[0xFF]="y",
+    [0x141]="L",[0x142]="l",[0x152]="OE",[0x153]="oe",
+    [0x160]="S",[0x161]="s",[0x17D]="Z",[0x17E]="z",
+    [0x2013]="-",[0x2014]="-",[0x2018]="'",[0x2019]="'",
+    [0x201C]='"',[0x201D]='"',[0x2026]="...",
+}
+
+-- Decoded by hand: chat text is untrusted bytes, and a truncated or overlong
+-- sequence has to degrade to "?" rather than derail the whole message.
+local function transliterate(text)
+    local parts = {}
+    local i, n = 1, #text
+    while i <= n do
+        local b = text:byte(i)
+        if b < 0x80 then
+            local run_end = text:find("[\128-\255]", i + 1) or (n + 1)
+            parts[#parts + 1] = text:sub(i, run_end - 1)
+            i = run_end
+        else
+            local cp, extra
+            if b >= 0xC2 and b <= 0xDF then cp, extra = b - 0xC0, 1
+            elseif b >= 0xE0 and b <= 0xEF then cp, extra = b - 0xE0, 2
+            elseif b >= 0xF0 and b <= 0xF4 then cp, extra = b - 0xF0, 3
+            end
+            local len = 1
+            for _ = 1, extra or 0 do
+                local follow = text:byte(i + len)
+                if not follow or follow < 0x80 or follow > 0xBF then
+                    cp = nil
+                    break
+                end
+                cp = cp * 64 + (follow - 0x80)
+                len = len + 1
+            end
+            parts[#parts + 1] = cp and (TRANSLIT[cp] or "?") or "?"
+            i = i + len
+        end
+    end
+    return table.concat(parts)
+end
+
+-- Rebuild the text on the engine's side of the boundary, or answer nil when
+-- nothing there can help. An FString the engine handed over passes back
+-- through a UFunction parameter without re-conversion — but the loader drops
+-- every string parameter that follows a userdata argument, so the name can
+-- only ride in Replace's To slot, with a string template as the source. One
+-- Replace is therefore the budget: the one online name covering the most of
+-- the text is spliced, every occurrence at once, and the rest transliterates.
+local MARK = "\1" -- never in chat text; stripped below to make sure
+
+local function engine_message(text)
+    local ksl = kismet_string()
+    if not ksl then return nil end
+    text = text:gsub(MARK, "")
+
+    local best, best_cover
+    for userid, name in pairs(present) do
+        if type(name) == "string" and name:find("[\128-\255]") then
+            local cover, at = 0, 1
+            while true do
+                local s = text:find(name, at, true)
+                if not s then break end
+                cover = cover + #name
+                at = s + #name
+            end
+            if cover > 0 and (not best or cover > best_cover
+                or (cover == best_cover and name < best.name)) then
+                best, best_cover = { userid = userid, name = name }, cover
+            end
+        end
+    end
+    if not best then return nil end
+
+    local state = find_player_state(best.userid)
+    local live_name = state and member(state, "PlayerNamePrivate") or nil
+    if live_name == nil or type(live_name) == "string" then return nil end
+
+    local parts, expect, at = {}, {}, 1
+    while true do
+        local s = text:find(best.name, at, true)
+        if not s then
+            parts[#parts + 1] = text:sub(at)
+            expect[#expect + 1] = parts[#parts]
+            break
+        end
+        parts[#parts + 1] = text:sub(at, s - 1)
+        expect[#expect + 1] = parts[#parts]
+        parts[#parts + 1] = MARK
+        expect[#expect + 1] = best.name
+        at = s + #best.name
+    end
+    for i, part in ipairs(parts) do
+        if part ~= MARK and part:find("[\128-\255]") then
+            parts[i] = transliterate(part)
+            expect[i] = parts[i]
+        end
+    end
+
+    -- 0 is case-sensitive search; the trailing int is marshalled correctly
+    -- even after the userdata. The read-back check is the safety net: if the
+    -- loader ever hands back anything but the exact repaired text, the caller
+    -- falls back to plain transliteration rather than sending a surprise.
+    local ok, built = pcall(function()
+        return ksl:Replace(table.concat(parts), MARK, live_name, 0)
+    end)
+    if not ok or built == nil or type(built) == "string" then return nil end
+    local readable
+    ok, readable = pcall(function() return built:ToString() end)
+    if not ok or readable ~= table.concat(expect) then return nil end
+    return built
+end
+
 -- One player's system chat. Announcing is the same call to everybody, which is
 -- why it lives here rather than going out through the game's REST API: a mod
 -- inside the game cannot reach that, and telling everyone something is not an
@@ -1470,7 +1624,11 @@ local function send_system_chat(state, text)
     if not util or not valid(world) then return false, "not_supported" end
     local uid = member(state, "PlayerUId")
     if uid == nil then return false, "player_offline" end
-    util:SendSystemToPlayerChat(world, text, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
+    local payload = text
+    if type(text) == "string" and text:find("[\128-\255]") then
+        payload = engine_message(text) or transliterate(text)
+    end
+    util:SendSystemToPlayerChat(world, payload, { { A = uid.A, B = uid.B, C = uid.C, D = uid.D } })
     return true
 end
 
