@@ -8,6 +8,14 @@ Two products, one project. Pick your door:
 - **"I have a server — I want to build on it."** → **[Palladium](mods/Palladium)** — the modding framework, as one UE4SS Lua mod, [released standalone](https://github.com/s-kiu/palladium/releases) for any UE4SS Palworld server. Drop a folder with a `mod.lua` beside it and Palladium loads it, registers the permissions it declares, gives it storage that survives restarts, routes its chat commands and hands it every in-game event (chat, joins, leaves, deaths, pal spawns, played hours, the wall clock) with actions to answer them. It keeps permissions in a file you can edit, and publishes the same events and actions to disk so programs outside the game can react too. No Docker, no panel, no pal-up required.
 - **"Both."** → You are who this project is really for. Everything the framework publishes, the panel renders; everything the panel can do, a mod or an external program can do too — a Discord relay, a shop bot, an event-driven mod — because both ends speak [one generated contract](docs/bridge-reference.md), so a mod, a chat command and an HTTP call always agree.
 
+What each door asks of you, and what comes through it:
+
+| | **Palladium** | **pal-up** | **Both** |
+|---|---|---|---|
+| **You have** | a Palworld dedicated server running UE4SS — Windows, or Linux via the UE4SS port | a Linux x86_64 host with Docker (compose plugin), ~25 GB disk, 16 GB RAM | the same Linux host |
+| **You install** | the [release zip](https://github.com/s-kiu/palladium/releases), dropped into your server's UE4SS `Mods` folder | this repo: `git clone`, `docker compose up` | this repo — Palladium comes installed |
+| **You get** | the framework: `mod.lua` mods, permissions, chat commands, and every event and action published to disk | the server: game, mod loader, web panel, backups and safe updates — Palladium included | everything, plus the HTTP door: an API token, panel forms for every capability, and script mods that reach the network |
+
 > [!NOTE]
 > Mod loading currently ships via the community-maintained
 > [UE4SS build v1.0.3-palworld-linux](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux),
