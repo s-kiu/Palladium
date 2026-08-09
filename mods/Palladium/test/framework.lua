@@ -850,13 +850,38 @@ os.execute("mkdir -p '" .. MODS .. "/Leaderboards'")
 os.execute("cp '" .. shipped_mod("Leaderboards") .. "' '" .. MODS .. "/Leaderboards/mod.lua'")
 write(MODS .. "/Palladium/mods.list", "Leaderboards\n")
 
+-- Each board leads with a different player, so a board reading from the wrong
+-- column cannot pass by luck.
+-- Held onto so a board can be taken away from one player further down: the
+-- framework keeps whatever init was last given, and this is the same object.
+local board_perms = Permissions.new(Collections)
 local levels = { HIGH = 42, LOW = 7 }
+local minutes = { HIGH = 60, LOW = 600 }
+local captures = { HIGH = 99, LOW = 3 }
+local fished = { HIGH = 4, LOW = 40 }
+local crafted = { HIGH = 70, LOW = 7 }
+local bosses = { HIGH = 2, LOW = 20 }
 framework.init({
+    permissions = board_perms,
     event_types = { ["player.join"] = true, ["player.chat"] = true, ["clock.minute"] = true },
     call = function(action_type, userid, params, report)
         calls[#calls + 1] = { type = action_type, userid = userid, params = params }
         if action_type == "player.stats" then
             return report(true, nil, { { "level", levels[userid] or 0 }, { "hp", 1 }, { "maxHp", 1 } })
+        end
+        if action_type == "player.playtime" then
+            return report(true, nil, {
+                { "minutes", minutes[userid] or 0 }, { "session", 0 },
+                { "online", true }, { "name", userid == "HIGH" and "Hi" or "Lo" },
+            })
+        end
+        if action_type == "player.records" then
+            return report(true, nil, {
+                { "captures", captures[userid] or 0 }, { "paldex", 1 },
+                { "fished", fished[userid] or 0 },
+                { "crafted", crafted[userid] or 0 },
+                { "bosses", bosses[userid] or 0 },
+            })
         end
         report(true, nil, {})
     end,
@@ -871,27 +896,34 @@ levels.LOW = 90 -- they levelled hard; only a refresh may notice
 calls = {}
 framework.enqueue("player.chat", { kind = "player", id = "HIGH", name = "Hi" }, { message = "!lb" })
 framework.drain()
-local asked_engine, board
+-- A board arrives as several messages, one per line, so the answer is all of
+-- them together rather than whichever one happened to carry the heading.
+local function said()
+    local lines = {}
+    for _, call in ipairs(calls) do
+        if call.type == "player.message" then lines[#lines + 1] = call.params.text end
+    end
+    return table.concat(lines, "\n")
+end
+
+local asked_engine
 for _, call in ipairs(calls) do
     if call.type == "player.stats" then asked_engine = true end
-    if call.type == "player.message" and call.params.text:find("Level leaders", 1, true) then board = call end
 end
+local board = said()
 check("!lb answers from the last refresh and asks the engine nothing",
-    asked_engine == nil and board ~= nil and board.params.text:find("1. Hi (Lv 42)", 1, true) ~= nil,
-    board and board.params.text)
+    asked_engine == nil and board:find("Level leaders", 1, true) ~= nil
+        and board:find("1. Hi (Lv 42)", 1, true) ~= nil, board)
 
 calls = {}
 framework.enqueue("clock.minute", { kind = "server" }, { minute = 10, hour = 12, weekday = "friday" })
 framework.drain()
 framework.enqueue("player.chat", { kind = "player", id = "LOW", name = "Lo" }, { message = "!lb" })
 framework.drain()
-local board2
-for _, call in ipairs(calls) do
-    if call.type == "player.message" and call.params.text:find("Level leaders", 1, true) then board2 = call end
-end
+local board2 = said()
 check("a scheduled refresh reorders the board",
-    board2 ~= nil and board2.params.text:find("1. Lo (Lv 90)", 1, true) ~= nil,
-    board2 and board2.params.text)
+    board2:find("Level leaders", 1, true) ~= nil
+        and board2:find("1. Lo (Lv 90)", 1, true) ~= nil, board2)
 
 calls = {}
 framework.enqueue("clock.minute", { kind = "server" }, { minute = 7, hour = 12, weekday = "friday" })
@@ -901,6 +933,129 @@ for _, call in ipairs(calls) do
     if call.type == "player.stats" then off_cadence = true end
 end
 check("a minute off the cadence refreshes nothing", off_cadence == nil, off_cadence)
+
+-- The other two boards. Both read from records the server keeps rather than
+-- from a body in the world, which is what lets them answer for a player who is
+-- not here — and each is led by somebody the level board does not lead with.
+-- A fresh caller each time: commands are rate-limited per player, so asking
+-- three times as one person would answer once and swallow the rest.
+local function board_after(asker, message, title)
+    calls = {}
+    framework.enqueue("player.chat", { kind = "player", id = asker, name = asker }, { message = message })
+    framework.drain()
+    -- A board is several messages now, one per line, so the answer is all of
+    -- them joined — a check against a single message would only ever see the
+    -- heading or one row.
+    local lines = {}
+    for _, call in ipairs(calls) do
+        if call.type == "player.message" then lines[#lines + 1] = call.params.text end
+    end
+    local answer = table.concat(lines, "\n")
+    if answer:find(title, 1, true) then return answer end
+    return nil
+end
+
+local playtime_board = board_after("ASKA", "!lb playtime", "Most time played")
+check("the playtime board ranks by hours played, not by level",
+    playtime_board ~= nil and playtime_board:find("1. Lo (10h)", 1, true) ~= nil,
+    playtime_board)
+
+local capture_board = board_after("ASKB", "!lb captured", "Most pals captured")
+check("the capture board ranks by pals caught",
+    capture_board ~= nil and capture_board:find("1. Hi (99 caught)", 1, true) ~= nil,
+    capture_board)
+
+local fish_board = board_after("ASKD", "!lb fished", "Most fish caught")
+check("the fishing board ranks by fish caught",
+    fish_board ~= nil and fish_board:find("1. Lo (40 fish)", 1, true) ~= nil, fish_board)
+
+local craft_board = board_after("ASKE", "!lb crafted", "Most items crafted")
+check("the crafting board ranks by items crafted",
+    craft_board ~= nil and craft_board:find("1. Hi (70 crafted)", 1, true) ~= nil, craft_board)
+
+local boss_board = board_after("ASKF", "!lb bosses", "Most bosses beaten")
+check("the boss board ranks by bosses beaten",
+    boss_board ~= nil and boss_board:find("1. Lo (20 bosses)", 1, true) ~= nil, boss_board)
+
+-- The cache is the whole design, so it has to be visible: a board that goes
+-- stale silently is indistinguishable from a broken one.
+local timed = board_after("ASKH", "!lb captured", "Most pals captured")
+check("a board says when it will be read again",
+    timed ~= nil and timed:find("next refresh in", 1, true) ~= nil, timed)
+
+local real_clock = os.time
+os.time = function() return real_clock() + 240 end
+local later = board_after("ASKI", "!lb captured", "Most pals captured")
+os.time = real_clock
+check("and the countdown shrinks as the refresh approaches",
+    later ~= nil and later:find("next refresh in 1m", 1, true) ~= nil, later)
+
+local unknown = board_after("ASKC", "!lb bananas", "No such board")
+check("a board nobody has says so rather than answering with the wrong one",
+    unknown ~= nil and unknown:find("captured", 1, true) ~= nil, unknown)
+
+-- One board taken away from one player. The rest stay, which is the whole
+-- point of a node per board rather than a node for the command.
+board_perms:grant("ASKJ", "leaderboards.fished", "deny")
+local refused = board_after("ASKJ", "!lb fished", "not allowed to see the fished board")
+check("a denied board is refused by name", refused ~= nil, refused)
+check("and the refusal offers only boards that player may still see",
+    refused ~= nil and refused:find("captured", 1, true) ~= nil
+        and refused:find("fished,", 1, true) == nil, refused)
+
+local still = board_after("ASKK", "!lb captured", "Most pals captured")
+check("while a board nobody denied still answers", still ~= nil, still)
+
+-- An answer is the only place anybody reads: it names the other boards, and
+-- names itself nowhere, since the caller is already looking at it.
+check("an answer hints at the other boards",
+    still ~= nil and still:find("try: ", 1, true) ~= nil
+        and still:find("!lb fished", 1, true) ~= nil, still)
+check("and does not offer the board being read",
+    still ~= nil and still:find("!lb captured", 1, true) == nil, still)
+check("and puts each name on its own line",
+    still ~= nil and still:find("\n1%. ") ~= nil, still)
+
+-- The hint obeys the same permissions as the boards themselves.
+board_perms:grant("ASKL", "leaderboards.crafted", "deny")
+local hinted = board_after("ASKL", "!lb captured", "Most pals captured")
+check("a denied board is not hinted at either",
+    hinted ~= nil and hinted:find("try: ", 1, true) ~= nil
+        and hinted:find("!lb crafted", 1, true) == nil, hinted)
+
+-- A bare !lb is the operator's choice, not a hardcoded level board: a fishing
+-- server points it somewhere else entirely.
+write(MODS .. "/Leaderboards/settings.config", "default_board = fished\n")
+framework.reload_settings()
+local defaulted = board_after("ASKM", "!lb", "Most fish caught")
+check("a bare !lb follows the operator's default board", defaulted ~= nil, defaulted)
+
+write(MODS .. "/Leaderboards/settings.config", "default_board = bananas\n")
+framework.reload_settings()
+local nonsense = board_after("ASKN", "!lb", "Level leaders")
+check("and a default naming no board falls back rather than refusing",
+    nonsense ~= nil, nonsense)
+write(MODS .. "/Leaderboards/settings.config", "")
+framework.reload_settings()
+
+-- Two players at the same level: the one who got there first ranks higher.
+-- LOW reached 90 in the refresh above, so HIGH arriving at 90 now must sort
+-- second despite being level-equal.
+--
+-- The clock is moved by hand because os.time counts whole seconds and this
+-- file runs in far less than one — left alone, both level-ups stamp the same
+-- second and the tie this is here to test never happens.
+local real_time = os.time
+os.time = function() return real_time() + 3600 end
+levels.HIGH = 90
+calls = {}
+framework.enqueue("clock.minute", { kind = "server" }, { minute = 20, hour = 12, weekday = "friday" })
+framework.drain()
+os.time = real_time
+local tie = board_after("ASKG", "!lb level", "Level leaders")
+check("a level tie is broken by who reached it first",
+    tie ~= nil and tie:find("1. Lo (Lv 90)", 1, true) ~= nil
+        and tie:find("2. Hi (Lv 90)", 1, true) ~= nil, tie)
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)
