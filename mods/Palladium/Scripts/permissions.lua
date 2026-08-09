@@ -220,6 +220,7 @@ local MEMBER_ALLOWS = {
     "player.has_item where target = @me",
     "permission.check where target = @me",
     "player.playtime where target = @me",
+    "player.records where target = @me",
     "pal.list",
     "location.list",
 }
@@ -233,7 +234,7 @@ local VIP_EXTRA = {
 local MODERATOR_ALLOWS = {
     "player.position", "player.stats", "player.status_points",
     "player.count_item", "player.has_item", "permission.check",
-    "player.playtime", "pal.list", "location.list",
+    "player.playtime", "player.records", "pal.list", "location.list",
     "player.heal", "pal.inspect", "pal.stats",
     "player.teleport where target_weight < 12",
     "player.message", "server.announce",

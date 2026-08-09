@@ -271,7 +271,11 @@ than instant), and Pal-capture events are not available: every native
 candidate was probed on a live server — the capture judge's four functions
 and the Paldex registration never execute on a dedicated server, and the
 achievement counter's update hook faults the process. Item use is the
-adjacent event that does work (`player.item_use`). Capabilities marked `experimental` in the reference use engine
+adjacent event that does work (`player.item_use`). A capture *count* is a
+separate question with a better answer: `player.records` reads the running
+totals off the record the game keeps per player, so a board that wants
+"pals caught" polls for it rather than counting events — and gets an answer
+for players who are not online. Capabilities marked `experimental` in the reference use engine
 calls that are unproven against a live player, and may fail with
 `not_supported` rather than doing nothing quietly; the fastcrash guard (three
 rapid crashes → unmodded boot) is the safety net around them.

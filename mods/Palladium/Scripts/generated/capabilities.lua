@@ -323,6 +323,14 @@ return {
 
             },
         },
+        ["player.records"] = {
+            target = "player",
+            target_optional = true,
+            scope = "read",
+            params = {
+
+            },
+        },
         ["pal.stats"] = {
             scope = "read",
             params = {

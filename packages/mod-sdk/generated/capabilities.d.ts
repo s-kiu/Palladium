@@ -414,6 +414,19 @@ export interface PlayerPlaytimeResult {
   name: string;
 }
 
+/** A player's lifetime tallies — pals captured, Paldex entries unlocked, bosses beaten, areas found, fish caught, items crafted. Read from the record the game keeps per player rather than from their body, so it answers for offline players too. bosses is every kind summed, since the game counts normal, tower, raid and predator separately; records carries those apart, along with butchered, rankups and mutations. Each headline counter is a plain field for mods with no JSON parser, and a counter this build does not expose reads 0. */
+export interface PlayerRecordsParams {
+}
+export interface PlayerRecordsResult {
+  captures: number;
+  paldex: number;
+  bosses: number;
+  areas: number;
+  fished: number;
+  crafted: number;
+  records: unknown;
+}
+
 /** Read a loaded pal's stats, targeting the id from pal.list or a pal.spawn result — including level, rank, talent* IVs and rank* soul upgrades. */
 export interface PalStatsParams {
   pal: string;
@@ -612,6 +625,10 @@ export interface Capabilities {
     playtime(target: string, params?: PlayerPlaytimeParams): Promise<Envelope<PlayerPlaytimeResult>>;
     playtime(params?: PlayerPlaytimeParams): Promise<Envelope<PlayerPlaytimeResult>>;
     playtime(target: null, params?: PlayerPlaytimeParams): Promise<Envelope<PlayerPlaytimeResult>>;
+    /** A player's lifetime tallies — pals captured, Paldex entries unlocked, bosses beaten, areas found, fish caught, items crafted. Read from the record the game keeps per player rather than from their body, so it answers for offline players too. bosses is every kind summed, since the game counts normal, tower, raid and predator separately; records carries those apart, along with butchered, rankups and mutations. Each headline counter is a plain field for mods with no JSON parser, and a counter this build does not expose reads 0. _(experimental)_ */
+    records(target: string, params?: PlayerRecordsParams): Promise<Envelope<PlayerRecordsResult>>;
+    records(params?: PlayerRecordsParams): Promise<Envelope<PlayerRecordsResult>>;
+    records(target: null, params?: PlayerRecordsParams): Promise<Envelope<PlayerRecordsResult>>;
   };
   pal: {
     /** Spawn a pal, at explicit coordinates or beside a target player. One of the two is required; with coordinates the pal is placed there and the result reports where it landed. Level, rarity and passive-skill traits apply on spawn. hostile=true additionally turns the new pal on the target player through pal.aggro and reports whether that took. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id. _(experimental)_ */

@@ -167,6 +167,8 @@
 
 ---@class PlayerPlaytimeParams
 
+---@class PlayerRecordsParams
+
 ---@class PalStatsParams
 ---@field pal string
 
@@ -250,6 +252,7 @@
 ---@field status_points fun(target: string, params: PlayerStatusPointsParams, done?: fun(ok: boolean, err: string|nil, data: table)) # An online player's status points — the allocation the game computes their max HP, stamina, attack and carry weight from. Names are the game's own; the ones this build answers for are what comes back.
 ---@field status_point fun(target: string, params: PlayerStatusPointParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Spend status points on one of a player's stats, the way a level-up does. This is how a player's max HP goes up: it is computed from the points, not stored, so nothing else can raise it. Additive. stat is the game's own FName for the stat and is passed through verbatim — this build spends through the player controller and exposes no way to read the allocation back, so the result reports which readable stat moved instead. player.status_points lists the names to try.
 ---@field playtime fun(target: string|nil, params: PlayerPlaytimeParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Minutes a player has actually spent on this server, credited one minute at a time while they are online — a crash costs at most the minute in progress. Also reports the current session's minutes and whether they are online right now. Answers for offline players too: the total is history, not presence.
+---@field records fun(target: string|nil, params: PlayerRecordsParams, done?: fun(ok: boolean, err: string|nil, data: table)) # A player's lifetime tallies — pals captured, Paldex entries unlocked, bosses beaten, areas found, fish caught, items crafted. Read from the record the game keeps per player rather than from their body, so it answers for offline players too. bosses is every kind summed, since the game counts normal, tower, raid and predator separately; records carries those apart, along with butchered, rankups and mutations. Each headline counter is a plain field for mods with no JSON parser, and a counter this build does not expose reads 0.
 
 ---@class PalPal
 ---@field spawn fun(target: string|nil, params: PalSpawnParams, done?: fun(ok: boolean, err: string|nil, data: table)) # Spawn a pal, at explicit coordinates or beside a target player. One of the two is required; with coordinates the pal is placed there and the result reports where it landed. Level, rarity and passive-skill traits apply on spawn. hostile=true additionally turns the new pal on the target player through pal.aggro and reports whether that took. Spawns are not part of the world save: a server restart removes them. The result carries the new pal's id.

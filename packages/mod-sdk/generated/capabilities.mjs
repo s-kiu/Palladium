@@ -152,6 +152,10 @@ export const capabilities = {
     "target": "player",
     "scope": "read"
   },
+  "player.records": {
+    "target": "player",
+    "scope": "read"
+  },
   "pal.stats": {
     "target": null,
     "scope": "read"

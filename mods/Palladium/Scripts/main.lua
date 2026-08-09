@@ -2459,6 +2459,150 @@ IMPL["player.playtime"] = function(_state, _p, _finish, raw)
     }
 end
 
+-- ── records ─────────────────────────────────────────────────────────────────
+-- The tallies the game keeps for its own completion screens. They live on
+-- PalPlayerRecordData — one object per player, carrying the id of the player it
+-- belongs to — so a record is found by matching that id rather than by walking
+-- a player's body, and the answer survives them logging off.
+--
+-- Capture *events* are not available on a dedicated server: the capture judge
+-- never runs and the achievement counter's hook faults the process. A capture
+-- *count* is an unrelated question — a getter on a live object, asked on a
+-- cadence — and this is the answer to it. The class is Blueprint-generated,
+-- which bars it as a hook target but not as something to read: nothing here
+-- registers against it.
+
+-- The aggregates the build computes for itself. Only shapes with a known
+-- signature are ever called, and each of these takes no argument and returns a
+-- count.
+local RECORD_GETTERS = {
+    { "captures", "GetTotalPalCaptureCount" },
+    { "paldex", "GetUnlockedPaldexCount" },
+    { "normalBosses", "GetNormalBossDefeatCount" },
+    { "areas", "GetFoundedAreaNum" },
+}
+
+-- The counters the build has no getter for. Each is a UScriptStruct wrapping
+-- Unreal's fast-array shape — an `Items` TArray of {Key, Value} pairs, keyed by
+-- species or item — so the total is the sum of the values.
+--
+-- Bounded by GetArrayNum, and that bound is the whole point: reading Items[1]
+-- of an empty array does not return nil, it returns whatever memory is behind
+-- it, which arrives looking exactly like a real count.
+local function sum_items(struct)
+    local items = member(struct, "Items")
+    if items == nil then return nil end
+    local count
+    if not pcall(function() count = items:GetArrayNum() end) then return nil end
+    count = tonumber(count)
+    if not count or count <= 0 then return 0 end
+    local total = 0
+    for index = 1, count do
+        local entry = member(items, index)
+        local value = entry ~= nil and member(entry, "Value") or nil
+        -- Value is a number on a count map and a bool on a defeat flag; a
+        -- flag that is set counts as one.
+        if value == true then
+            total = total + 1
+        else
+            local number = as_number(value)
+            if number then total = total + number end
+        end
+    end
+    return total
+end
+
+local function player_record(userid)
+    if userid == "" then return nil end
+    local ok, found = pcall(FindAllOf, "PalPlayerRecordData")
+    if not ok or type(found) ~= "table" then return nil end
+    for _, record in ipairs(found) do
+        -- OwnerPlayerUId, not PlayerUId: the record names who it belongs to
+        -- rather than carrying a player's own id field.
+        if valid(record) and guid_hex(member(record, "OwnerPlayerUId")) == userid then
+            return record
+        end
+    end
+    return nil
+end
+
+local function read_records(record)
+    local found, by_name = {}, {}
+    local function keep(name, number)
+        if not number then return end
+        by_name[name] = math.floor(number)
+        found[#found + 1] = { name, math.floor(number) }
+    end
+
+    for _, entry in ipairs(RECORD_GETTERS) do
+        if declares(record, entry[2]) then
+            local ok, value = pcall(function() return record[entry[2]](record) end)
+            keep(entry[1], ok and as_number(value) or nil)
+        end
+    end
+    -- Inlined rather than a module-level table: main.lua sits at Lua's limit of
+    -- 200 locals in a chunk, and each new one here is one nobody else can have.
+    for _, entry in ipairs({
+        { "fished", "FishingCountMap" },
+        { "crafted", "CraftItemCount" },
+        { "towerBosses", "TowerBossDefeatCount" },
+        { "raidBosses", "RaidBossDefeatCount" },
+        { "predators", "PredatorDefeatCount" },
+        { "butchered", "PalButcherCount" },
+        { "rankups", "PalRankupCount" },
+        { "mutations", "MutationCount" },
+    }) do
+        keep(entry[1], sum_items(member(record, entry[2])))
+    end
+
+    -- One number for "bosses beaten", because the game counts them in four
+    -- separate places and nobody asking a leaderboard cares which. Normal comes
+    -- from the getter and the rest from their own counters, so no boss is
+    -- counted twice.
+    keep("bosses", (by_name.normalBosses or 0) + (by_name.towerBosses or 0)
+        + (by_name.raidBosses or 0) + (by_name.predators or 0))
+    return found
+end
+
+local function records_json(found)
+    local parts = {}
+    for _, entry in ipairs(found) do
+        parts[#parts + 1] = json_string(entry[1], 32) .. ":" .. json_value(entry[2])
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- Answers for offline players too, so no engine object of the player's is
+-- touched: the id from the registry is what finds the record.
+IMPL["player.records"] = function(_state, _p, _finish, raw)
+    local userid = raw.userid or ""
+    if userid == "" then return false, "invalid_params: no player given", {} end
+    local record = player_record(userid)
+    if not record then
+        return false, "not_supported: no record data for this player", {}
+    end
+    local found = read_records(record)
+    if #found == 0 then
+        return false, "not_supported: the record exposes no counters this build can read", {}
+    end
+    local by_name = {}
+    for _, entry in ipairs(found) do by_name[entry[1]] = entry[2] end
+    return true, nil, {
+        -- Every counter is promoted, not just the headline two: a mod has no
+        -- JSON parser, so a number left in the blob is a number no mod can
+        -- read. The blob stays for readers that do parse, and is the only
+        -- place a counter a later build adds will show up without a change
+        -- here.
+        { "captures", by_name.captures or 0 },
+        { "paldex", by_name.paldex or 0 },
+        { "bosses", by_name.bosses or 0 },
+        { "areas", by_name.areas or 0 },
+        { "fished", by_name.fished or 0 },
+        { "crafted", by_name.crafted or 0 },
+        { "records", { raw = records_json(found) } },
+    }
+end
+
 IMPL["player.set_stats"] = function(state, p)
     local _, pawn = pawn_of(state)
     if not pawn then return false, "player_offline" end

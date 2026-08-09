@@ -1387,6 +1387,32 @@ export const CAPABILITIES: Capability[] = [
     "targetOptional": true
   },
   {
+    "type": "player.records",
+    "kind": "query",
+    "runtime": "agent",
+    "group": "player",
+    "target": "player",
+    "since": "4.26.0",
+    "stability": "experimental",
+    "scope": "read",
+    "summary": "A player's lifetime tallies — pals captured, Paldex entries unlocked, bosses beaten, areas found, fish caught, items crafted. Read from the record the game keeps per player rather than from their body, so it answers for offline players too. bosses is every kind summed, since the game counts normal, tower, raid and predator separately; records carries those apart, along with butchered, rankups and mutations. Each headline counter is a plain field for mods with no JSON parser, and a counter this build does not expose reads 0.",
+    "params": {},
+    "returns": {
+      "captures": "int",
+      "paldex": "int",
+      "bosses": "int",
+      "areas": "int",
+      "fished": "int",
+      "crafted": "int",
+      "records": "json"
+    },
+    "errors": [
+      "invalid_params",
+      "not_supported"
+    ],
+    "targetOptional": true
+  },
+  {
     "type": "pal.stats",
     "kind": "query",
     "runtime": "agent",
