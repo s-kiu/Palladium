@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.25.0"
+local VERSION = "4.26.0"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -37,7 +37,7 @@ local Permissions = require("permissions")
 
 local MODS_DIR, MODS_DIR_SOURCE = Store.mods_dir(debug.getinfo(1, "S").source)
 
-local PAL_ROOT, ROOT_SOURCE = Store.resolve_root()
+local PAL_ROOT, ROOT_SOURCE = Store.resolve_root(nil, MODS_DIR)
 local EVENT_FILE = PAL_ROOT .. "/logs/bridge-events.jsonl"
 local ACTION_FILE = PAL_ROOT .. "/.state/bridge-actions.jsonl"
 

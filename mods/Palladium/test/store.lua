@@ -146,6 +146,17 @@ check("with no PAL_ROOT and no shared volume, it lands beside the server",
     root == "palladium", root)
 check("and says why", why:find("not here", 1, true) ~= nil, why)
 
+-- A bare "palladium" is resolved against the game's working directory, which
+-- is not the server folder — the standalone root has to be anchored to the one
+-- absolute path we have, which is where the mods were found.
+local anchored, anchored_why = Store.resolve_root("/definitely-not-here",
+    "Z:/srv/Pal/Binaries/Win64/ue4ss/Mods")
+check("given the mods directory, the standalone root is absolute",
+    anchored == "Z:/srv/Pal/Binaries/Win64/ue4ss/palladium", anchored)
+check("and says it is beside the server", anchored_why == "beside the server", anchored_why)
+check("a mods directory that is itself relative cannot anchor anything",
+    (Store.resolve_root("/definitely-not-here", "Mods")) == "palladium")
+
 local shared_root, shared_why = Store.resolve_root(ROOT)
 check("with the shared volume present, it uses that", shared_root == ROOT, shared_root)
 check("and says so", shared_why:find("volume", 1, true) ~= nil, shared_why)
@@ -179,6 +190,16 @@ check("a path that is already relative still answers something usable",
 check("an unrecognisable source falls back rather than failing",
     (Store.mods_dir("@somewhere/odd.lua")) == "Mods",
     Store.mods_dir("@somewhere/odd.lua"))
+
+-- The bug that broke every Windows server: UE4SS reports the running chunk
+-- with the host's own separator, the match wanted forward slashes, and so a
+-- perfectly ordinary Windows install fell back to a relative "Mods" and wrote
+-- nothing anywhere. Every test here used POSIX paths and none of them saw it.
+local win = "@Z:\\srv\\Pal\\Binaries\\Win64\\ue4ss\\Mods\\Palladium\\Scripts\\main.lua"
+local win_dir, win_how = Store.mods_dir(win)
+check("a Windows source resolves as readily as a POSIX one",
+    win_dir == "Z:/srv/Pal/Binaries/Win64/ue4ss/Mods", win_dir)
+check("and is credited to the same place", win_how == "beside this mod", win_how)
 
 os.getenv = function(name)
     if name == "PALLADIUM_MODS_DIR" then return "/explicit/Mods" end

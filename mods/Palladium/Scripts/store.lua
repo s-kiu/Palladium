@@ -60,16 +60,48 @@ local function shell_quote(path)
     return "'" .. tostring(path):gsub("'", "'\\''") .. "'"
 end
 
+-- Which half of the world this server is. Lua's own directory separator
+-- answers it without a library, and the answer decides how a shell is spoken
+-- to — a Windows dedicated server is the ordinary case for UE4SS.
+local WINDOWS = package.config:sub(1, 1) == "\\"
+
+-- Every path below is held with forward slashes, whatever it arrived as. UE4SS
+-- reports paths with the host's own separator, so a Windows server hands us
+-- backslashes; Win32 accepts `/` everywhere except inside a shell command.
+local function normalize(path)
+    return (tostring(path or ""):gsub("\\", "/"))
+end
+
+-- Whether a directory is there *and* takes files, which is the only thing any
+-- caller actually wants to know. Asked by writing, because there is no
+-- portable way to ask about a directory itself: the Windows CRT cannot open
+-- one at all, so probing the directory reports "missing" for one plainly there.
+local function writable(path)
+    local probe = path .. "/.palladium-probe"
+    local file = io.open(probe, "a")
+    if not file then return false end
+    file:close()
+    os.remove(probe)
+    return true
+end
+
 function store.ensure_dir(path)
     -- A directory that already exists needs no shell: os.execute forks, and
     -- a fork while the engine is mid-load can take the process down.
-    local probe = io.open(path .. "/.", "r")
-    if probe then
-        probe:close()
-        return true
-    end
+    path = normalize(path)
+    if writable(path) then return true end
     if type(os.execute) ~= "function" then return false end
-    return os.execute("mkdir -p " .. shell_quote(path) .. " 2>/dev/null") ~= nil
+    if WINDOWS then
+        -- cmd.exe has no `-p` and no /dev/null, and reads a leading `/` as the
+        -- start of a switch. Its own mkdir builds intermediate levels already.
+        -- A Windows path cannot contain a quote, so quoting is enough.
+        os.execute('mkdir "' .. path:gsub("/", "\\") .. '" 2>nul')
+    else
+        os.execute("mkdir -p " .. shell_quote(path) .. " 2>/dev/null")
+    end
+    -- Whether the shell claimed success is worth less than whether the
+    -- directory now takes a file: os.execute's answer varies by platform.
+    return writable(path)
 end
 
 local function dirname(path)
@@ -88,10 +120,12 @@ end
 -- path of the chunk that is running, which is the one thing always true here.
 --
 --   @/palworld/server/Mods/Palladium/Scripts/main.lua → /palworld/server/Mods
+--   @Z:\srv\Pal\Binaries\Win64\ue4ss\Mods\Palladium\Scripts\main.lua
+--                                       → Z:/srv/Pal/Binaries/Win64/ue4ss/Mods
 function store.mods_dir(source)
     local explicit = os.getenv("PALLADIUM_MODS_DIR")
-    if explicit and explicit ~= "" then return explicit, "PALLADIUM_MODS_DIR" end
-    local dir = tostring(source or ""):match("^@(.*)/[^/]+/Scripts/[^/]+$")
+    if explicit and explicit ~= "" then return normalize(explicit), "PALLADIUM_MODS_DIR" end
+    local dir = normalize(source):match("^@(.*)/[^/]+/Scripts/[^/]+$")
     if dir then return dir, "beside this mod" end
     return "Mods", "relative to the working directory"
 end
@@ -111,11 +145,19 @@ function store.mods_source()
     return nil
 end
 
-function store.resolve_root(shared)
+-- `near` is where the mods were found. It is the one absolute path this mod is
+-- ever sure of, so the fallback is anchored to it rather than left as a bare
+-- name: a relative root is resolved against the game's working directory,
+-- which is not the server folder and is frequently not writable.
+function store.resolve_root(shared, near)
     shared = shared or "/palworld"
     local explicit = os.getenv("PAL_ROOT")
-    if explicit and explicit ~= "" then return explicit, "PAL_ROOT" end
+    if explicit and explicit ~= "" then return normalize(explicit), "PAL_ROOT" end
     if store.path_exists(shared) then return shared, "the pal-up data volume" end
+    local beside = near and near ~= "" and dirname(normalize(near))
+    if beside and beside ~= "." then
+        return beside .. "/palladium", "beside the server"
+    end
     return "palladium", "beside the server — " .. shared .. " is not here"
 end
 
