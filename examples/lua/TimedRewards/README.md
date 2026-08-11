@@ -20,6 +20,11 @@ per player however often they rejoin.
 Two nodes rather than one, so a group can watch the ladder without earning on
 it — or earn on it without being able to ask.
 
+Set these without editing a file: drop your config on
+**[Palladium Studio](https://s-kiu.github.io/Palladium/)** — it runs the agent's
+own resolver in your browser, so what it shows is what your server will answer.
+Nothing is uploaded.
+
 ## Settings
 
 | Key | Default | What it means |

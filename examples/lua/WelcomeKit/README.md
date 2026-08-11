@@ -18,6 +18,11 @@ Palladium's own store, so "once ever" survives reinstalling this mod.
 
 Deny it to a group and its members get the greeting without the kit.
 
+Set these without editing a file: drop your config on
+**[Palladium Studio](https://s-kiu.github.io/Palladium/)** — it runs the agent's
+own resolver in your browser, so what it shows is what your server will answer.
+Nothing is uploaded.
+
 ## Settings
 
 | Key | Default | What it means |

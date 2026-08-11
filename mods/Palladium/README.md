@@ -11,9 +11,40 @@ mod. It does two things:
   relays and web panels a way in and out. UE4SS Lua has no sockets; files on
   disk are the only transport available.
 
-Nothing outside the game is required for either. [Pal-Up](https://github.com/s-kiu/Palladium)
-adds a web panel on top — permissions editing, item and pal pickers, history —
-but a server that just wants mods needs this folder and nothing else.
+Nothing outside the game is required for either.
+
+## Palladium Studio
+
+Editing `permissions.config` by hand works, and nobody should have to.
+
+**[s-kiu.github.io/Palladium](https://s-kiu.github.io/Palladium/)**
+
+Open that in any browser and drop your `permissions.config` on it — or the
+whole `Mods/Palladium/mods/` folder, mods and all. It answers with **this
+mod's own engine**: the page runs `permissions.lua`, `collections.lua`,
+`store.lua` and `framework.lua` — the same files in this folder, drift-checked
+copies — compiled to run in the tab. Its answers cannot disagree with your
+server, because it is your server's code doing the answering.
+
+Nothing is uploaded. There is no backend to upload to; the file never leaves
+the tab, and closing it forgets everything.
+
+| It shows you | |
+|---|---|
+| **Overview** | every mod Palladium loaded, what it brought, and any that would not load, with the reason |
+| **Data** | what the mods have remembered |
+| **Commands** | every command, from mods and built in, as a form — with searchable pickers for items, pal species and traits |
+| **Permissions** | every node against every group, four answers per cell, plus one player at a time with the deciding entry spelled out |
+| **Settings** | every mod's settings, the author's default beside each |
+
+Edit, download, put the file back: a running server re-reads it within
+seconds, no restart. Only the files you actually changed are written.
+
+**Running [Pal-Up](https://github.com/s-kiu/Palladium)?** The same page is
+built into the panel, reading the live config and writing through the panel's
+audited door — edits apply as you make them, commands really run, and an
+**Agent** tab shows the event stream, the hooks this build holds, who is
+connected and the pals loaded around them.
 
 ## Writing a mod
 

@@ -39,6 +39,11 @@ constraint when you want to — `allow = admincommands.give where item in
 Money,PalSphere and count <= 1000` gives a junior moderator the command
 without the run of the item list.
 
+Set these without editing a file: drop your config on
+**[Palladium Studio](https://s-kiu.github.io/Palladium/)** — it runs the agent's
+own resolver in your browser, so what it shows is what your server will answer.
+Nothing is uploaded.
+
 ## Settings
 
 | Key | Default | What it means |

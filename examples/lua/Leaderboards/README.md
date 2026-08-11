@@ -33,6 +33,11 @@ Every board answers with how long until the next refresh.
 One node per board, so a board that does not suit your server can be denied
 without taking the rest with it.
 
+Set these without editing a file: drop your config on
+**[Palladium Studio](https://s-kiu.github.io/Palladium/)** — it runs the agent's
+own resolver in your browser, so what it shows is what your server will answer.
+Nothing is uploaded.
+
 ## Settings
 
 | Key | Default | What it means |

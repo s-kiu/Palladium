@@ -18,6 +18,11 @@ these examples, and the one to read first.
 
 Deny it to a group and its members still die — they just stop being paid.
 
+Set these without editing a file: drop your config on
+**[Palladium Studio](https://s-kiu.github.io/Palladium/)** — it runs the agent's
+own resolver in your browser, so what it shows is what your server will answer.
+Nothing is uploaded.
+
 ## Settings
 
 | Key | Default | What it means |

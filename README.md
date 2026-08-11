@@ -19,7 +19,7 @@ What each delivers — and what only the combination can:
 | ***The framework*** | | | |
 | Lua modding — a mod is one `mod.lua` file | ✓ | | ✓ |
 | Permissions: five tiers, groups, constraints, expiry, audit log | ✓ | | ✓ |
-| [Permission studio](https://s-kiu.github.io/Palladium/): who-may-do-what matrix, player lens, command simulator — in any browser, nothing uploaded | ✓ | | ✓ live |
+| [Palladium Studio](https://s-kiu.github.io/Palladium/): every mod's commands, settings, stored data and permissions — the agent's own engine, in any browser, nothing uploaded | ✓ | | ✓ live |
 | Chat commands: `!commands`, `@me` / `@Name`, every capability gated | ✓ | | ✓ |
 | In-game events and actions: chat, joins, deaths, played hours, pal spawns, items, teleports, stats | ✓ | | ✓ |
 | Events and actions published to disk for local programs | ✓ | | ✓ |
@@ -32,7 +32,7 @@ What each delivers — and what only the combination can:
 | ***Only in combination*** | | | |
 | HTTP API with tokens — drive the server from any language | | | ✓ |
 | A form for every capability: searchable pickers, live event stream, stats editor | | | ✓ |
-| The studio live: edits apply as you make them, commands really run | | | ✓ |
+| The studio live: edits apply as you make them, commands really run, the event stream and the world in view | | | ✓ |
 | Every mod's data edited in the browser | | | ✓ |
 | Script mods in JS/TS that reach the network — a Discord relay as a drop-in folder | | | ✓ |
 
