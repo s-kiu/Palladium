@@ -339,6 +339,113 @@ export const capabilities = ${JSON.stringify(
 export const events = ${JSON.stringify(caps.filter((c) => c.kind === 'event').map((c) => c.type), null, 2)};
 `;
 
+// The permission studio (packages/studio) runs the agent's real permission engine
+// in the browser, so its answers can never disagree with a server. These are
+// verbatim copies of the engine files behind one provenance line — generated
+// like everything else, so the same drift check that guards the tables guards
+// them.
+const engineCopy = (path) =>
+  `-- ${HEADER}\n-- Verbatim copy of ${path} for packages/studio.\n` +
+  readFileSync(join(ROOT, path), 'utf8');
+
+// What the studio page itself needs to know about this build: the version it
+// speaks, and every capability's shape for the command reference. Served as a
+// plain script global — the page also runs from file://, where fetch of JSON
+// is not an option.
+const infoJson = JSON.parse(readFileSync(join(ROOT, 'mods/Palladium/Info.json'), 'utf8'));
+const studioManifest = `// ${HEADER}
+window.PALLADIUM_STUDIO = ${JSON.stringify(
+  {
+    version: infoJson.Version,
+    capabilities: caps
+      .filter((c) => (c.kind === 'action' || c.kind === 'query') && c.runtime === 'agent')
+      .map((c) => ({
+        type: c.type,
+        group: c.group ?? '',
+        summary: c.summary ?? '',
+        scope: c.scope ?? 'read',
+        target: c.target ?? null,
+        targetOptional: c.targetOptional ?? false,
+        params: Object.fromEntries(
+          Object.entries(c.params ?? {}).map(([n, p]) => [n, {
+            type: p.type,
+            required: p.required ?? false,
+            min: p.min,
+            max: p.max,
+            default: p.default,
+          }]),
+        ),
+      })),
+    events: caps.filter((c) => c.kind === 'event').map((c) => ({ type: c.type, summary: c.summary ?? '' })),
+  },
+  null,
+  2,
+)};
+`;
+
+// ── the picker catalog ───────────────────────────────────────────────────────
+// What an item_id or a species actually is. The Studio runs with no network
+// and no daemon, so the names have to travel with it; a mod that adds its own
+// items appends to the same file, which is why it ships beside the mods rather
+// than inside the framework.
+const traitsData = JSON.parse(readFileSync(join(ROOT, 'packages/shared/game-data/traits.json'), 'utf8'));
+
+// Each entry carries what a picker needs to show: the name, and whatever
+// tells them apart — a pal's element, a trait's effect and tier. An id alone
+// makes every row look the same.
+// Some rows in the game data carry an untranslated placeholder where a name
+// should be. Showing "en_text" four times running is worse than showing the id,
+// which is at least the thing the engine wants.
+// Matched anywhere, because the variants read "en_text (Boss)" — a placeholder
+// with a suffix is still a placeholder, and the id already says Boss.
+const PLACEHOLDER = /en[_ ]text|unknown item/i;
+// A few rows carry a dash or a stray symbol where the name should be. A picker
+// sorted by name puts those first, which reads as a broken list — the id is a
+// worse name but an honest one.
+const shownName = (name, id) => {
+  const text = String(name ?? '').trim();
+  if (!text || text.toLowerCase() === 'none' || PLACEHOLDER.test(text)) return id;
+  if (!/[\p{L}\p{N}]/u.test(text)) return id;
+  return text;
+};
+
+const catalogSections = [
+  ['items', JSON.parse(readFileSync(join(ROOT, 'packages/shared/game-data/items.json'), 'utf8'))
+    .map((i) => [i.id, { name: shownName(i.name, i.id) }])],
+  // One row per species id; the variants share an id and the normal one wins.
+  ['pals', [...new Map(
+    palsData
+      .slice()
+      .sort((a, b) => (a.variant === 'normal' ? -1 : 1))
+      .map((p) => [p.id, { name: shownName(p.name, p.id), element: p.element ?? null, variant: p.variant }]),
+  )]],
+  ['traits', traitsData.map((t) => [t.id, {
+    name: shownName(t.name, t.id), effect: t.effect ?? null, tier: t.tier ?? null,
+  }])],
+];
+
+const catalogRef = `; Palladium — catalog.ref
+; Generated: what the game calls its items, pals and traits, so a picker can
+; offer names while the engine still gets ids. Read-only — a mod that adds its
+; own entries appends a section of the same shape at load.
+;
+${catalogSections
+  .map(([name, rows]) => `[${name}]\n${rows
+    .map(([id, meta]) => {
+      const extras = [meta.element, meta.tier != null ? `tier ${meta.tier}` : null, meta.effect]
+        .filter(Boolean).join(', ');
+      return `${id} = ${meta.name}${extras ? `    ; ${extras}` : ''}`;
+    })
+    .join('\n')}`)
+  .join('\n\n')}
+`;
+
+const catalogJs = `// ${HEADER}
+window.PALLADIUM_CATALOG = ${JSON.stringify(
+  Object.fromEntries(catalogSections.map(([name, rows]) => [name, Object.fromEntries(rows)])),
+)};
+`;
+
 const outputs = [
   [join(ROOT, 'mods/Palladium/Scripts/generated/capabilities.lua'), lua],
   [join(ROOT, 'packages/daemon/src/generated/capabilities.ts'), ts],
@@ -346,6 +453,17 @@ const outputs = [
   [join(ROOT, 'packages/mod-sdk/generated/capabilities.mjs'), sdk],
   [join(ROOT, 'packages/mod-sdk/generated/capabilities.d.ts'), dts],
   [join(ROOT, 'mods/Palladium/Scripts/generated/palladium.def.lua'), luadef],
+  [join(ROOT, 'packages/studio/engine/store.lua'), engineCopy('mods/Palladium/Scripts/store.lua')],
+  [join(ROOT, 'packages/studio/engine/collections.lua'), engineCopy('mods/Palladium/Scripts/collections.lua')],
+  [join(ROOT, 'packages/studio/engine/permissions.lua'), engineCopy('mods/Palladium/Scripts/permissions.lua')],
+  [join(ROOT, 'packages/studio/engine/framework.lua'), engineCopy('mods/Palladium/Scripts/framework.lua')],
+  // From the in-memory string, not the file: the file is written by this same
+  // loop, and reading it here would copy the previous generation.
+  [join(ROOT, 'packages/studio/engine/capabilities.lua'),
+    `-- ${HEADER}\n-- Verbatim copy of mods/Palladium/Scripts/generated/capabilities.lua for packages/studio.\n${lua}`],
+  [join(ROOT, 'packages/studio/engine/manifest.js'), studioManifest],
+  [join(ROOT, 'packages/studio/engine/catalog.js'), catalogJs],
+  [join(ROOT, 'mods/Palladium/mods/Palladium/generated/catalog.ref'), catalogRef],
 ];
 for (const [path, content] of outputs) {
   mkdirSync(dirname(path), { recursive: true });

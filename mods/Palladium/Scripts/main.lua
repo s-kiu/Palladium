@@ -77,13 +77,65 @@ Store.ensure_dir(PAL_ROOT .. "/.state")
 -- the originals — the folders somebody actually dropped mods into — are named
 -- explicitly rather than guessed at; writing to the mirror would be undone on
 -- the next boot.
+--
+-- Everything a mod accumulates lives under Palladium, not inside the folder it
+-- was installed from: `Palladium/mods/<Mod>/` holds its settings, its data, the
+-- nodes it registered and a generated reference to its commands. So a mod
+-- folder stays the thing you downloaded — replacing it keeps the operator's
+-- settings, and deleting it leaves a readable record of what it had.
+-- The expression is repeated rather than named: main.lua sits at Lua's ceiling
+-- of 200 locals in a chunk, and a name here is one nobody else can have.
 local MODS_SOURCE = Store.mods_source()
+
 local function home_for(folder)
-    return (MODS_SOURCE or MODS_DIR) .. "/" .. folder
+    return (MODS_SOURCE or MODS_DIR) .. "/" .. MOD .. "/mods/" .. folder
 end
 
 Collections.init({ root = PAL_ROOT, info = info, home_for = home_for })
-Collections.home("bridge", home_for(MOD))
+
+-- Everything Palladium keeps lives under mods/, one folder per owner —
+-- Palladium included, so the framework's own folder reads like any mod's:
+--
+--   Palladium/mods/Palladium/permissions.config   groups and per-player grants
+--   Palladium/mods/Palladium/.data                the registry, tags, playtime
+--   Palladium/mods/Palladium/generated/           written by the build, not by hand
+--   Palladium/mods/<Mod>/                         that mod's own files
+--
+-- The grants in permissions.config span every mod and belong to none, which is
+-- why they sit with the framework rather than with a mod.
+do
+    local mods_root = (MODS_SOURCE or MODS_DIR) .. "/" .. MOD .. "/mods"
+    local own = mods_root .. "/" .. MOD
+    Store.ensure_dir(own)
+    Store.ensure_dir(own .. "/generated")
+
+    local function carry(from, to)
+        if Store.path_exists(to) then return end
+        local source = io.open(from, "r")
+        if not source then return end
+        local text = source:read("a")
+        source:close()
+        local target = io.open(to, "w")
+        if not target then return end
+        target:write(text)
+        target:close()
+        os.remove(from)
+        info("moved " .. from .. " to " .. to)
+    end
+    -- Two layouts came before this one: everything directly in Palladium/, then
+    -- a mods/ folder with the config loose in it and the records under bridge/.
+    local was = (MODS_SOURCE or MODS_DIR) .. "/" .. MOD
+    carry(was .. "/permissions.config", own .. "/permissions.config")
+    carry(was .. "/bridge.data", own .. "/.data")
+    carry(mods_root .. "/permissions.config", own .. "/permissions.config")
+    carry(mods_root .. "/bridge/.data", own .. "/.data")
+    carry(mods_root .. "/catalog.ref", own .. "/generated/catalog.ref")
+    os.remove(mods_root .. "/bridge")
+
+    -- Home is enough: the permissions file and the records both live in it, so
+    -- there is nothing left to pin somewhere else.
+    Collections.home("bridge", own)
+end
 local perms = Permissions.new(Collections)
 perms:seed_tiers()
 
@@ -3623,6 +3675,13 @@ framework.init({
     capabilities = CAPS.actions,
     collections = Collections,
     home_for = home_for,
+    -- Where a mod's files used to live, so the first boot after an update
+    -- carries them across instead of quietly starting over.
+    legacy_home_for = function(folder)
+        return (MODS_SOURCE or MODS_DIR) .. "/" .. folder
+    end,
+    -- Only for making a mod's new home before anything is written into it.
+    store = Store,
     tags = tags,
     root = PAL_ROOT,
     mods_dir = MODS_DIR,
@@ -3646,6 +3705,16 @@ end)
 
 guard("mod loading", framework.load)
 guard("mod registry snapshot", framework.snapshot)
+
+-- Every mod has registered its nodes by now, so the grants that mention them
+-- can be read for sense. A rule that cannot be parsed and a node listed twice
+-- both resolve silently to "no"; said out loud here, they are a typo instead
+-- of an evening.
+guard("permission lint", function()
+    for _, problem in ipairs(perms:lint()) do
+        info("permissions: " .. problem)
+    end
+end)
 
 if type(LoopAsync) == "function" then
     local LEAVE_SCAN_TICKS = math.max(1, math.floor(LEAVE_SCAN_MS / ACTION_POLL_MS))

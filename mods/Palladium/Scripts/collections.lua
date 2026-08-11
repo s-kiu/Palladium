@@ -53,11 +53,21 @@ local function home_of(owner)
     return homes[owner] or (host.root .. "/palladium")
 end
 
+-- Whether this owner has a folder of its own, as against the shared fallback.
+-- Callers that file something per mod need to know the difference: writing to
+-- the fallback is how two owners end up sharing one file without either
+-- meaning to.
+function collections.has_home(owner)
+    return homes[tostring(owner):lower()] ~= nil
+end
+
+-- `.data`, not `<owner>.data`: the folder already says whose it is, and a name
+-- repeated in its own path is a name that can disagree with it.
 local function store_for(owner)
     if not stores[owner] then
         local Store = require("store")
         Store.ensure_dir(home_of(owner))
-        stores[owner] = Store.open(home_of(owner) .. "/" .. owner .. ".data", function(message)
+        stores[owner] = Store.open(home_of(owner) .. "/.data", function(message)
             log(owner .. " cannot persist: " .. message)
         end)
     end
@@ -69,6 +79,35 @@ end
 -- `id = value` lines when the spec asks for the flat layout — which is what
 -- makes a list of a hundred permission nodes readable rather than a hundred
 -- sections.
+
+-- Everything before the first section header. A mod's settings live there, in
+-- the same file as its nodes, so one folder holds one config — which means
+-- render has to put those lines back rather than treating the file as its own.
+local function preamble_of(text)
+    local out = {}
+    for line in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do
+        if line:match("^%s*%[") then break end
+        out[#out + 1] = line
+    end
+
+    -- Whatever render writes for itself is not part of what it must carry
+    -- through: the banner, and the blank lines around it. Kept, they would
+    -- stack another copy on every single rewrite.
+    while out[1] and (out[1]:match("^%s*$")
+        or out[1]:match("^;%s*Palladium —")
+        or out[1]:match("^;%s*Edit by hand")
+        or out[1]:match("^;%s*Rewritten whenever")) do
+        table.remove(out, 1)
+    end
+
+    -- A comment sitting immediately above a section describes that section —
+    -- render emits it from the collection's own description — so it belongs to
+    -- what follows, not to what came before.
+    while out[#out] and (out[#out]:match("^%s*$") or out[#out]:match("^%s*;")) do
+        table.remove(out)
+    end
+    return table.concat(out, "\n")
+end
 
 local function parse_ini(text)
     local sections = {}   -- { header, line, fields, comments, lines }
@@ -148,6 +187,14 @@ local function render(key)
         "; Rewritten whenever anything changes it, so comments do not survive.",
         "",
     }
+    -- Lines this file's collections do not own — a mod's settings — are copied
+    -- through untouched. Losing them on the next node change would be losing
+    -- the operator's tuning.
+    local kept = files[key] and files[key].preamble
+    if kept and kept:gsub("%s", "") ~= "" then
+        out[#out + 1] = (kept:gsub("^%s*\n", ""):gsub("%s+$", ""))
+        out[#out + 1] = ""
+    end
     for _, qualified in ipairs(sorted_keys(declared)) do
         local spec = declared[qualified]
         if spec.storage == "config" and key_of(spec) == key then
@@ -186,12 +233,21 @@ local function render(key)
     return table.concat(out, "\n")
 end
 
+-- One file can be pinned somewhere other than its owner's folder. The groups
+-- and grants Palladium keeps span every mod, so their file sits beside the mod
+-- folders rather than inside the one that happens to own the collection.
+local pins = {}
+
+function collections.pin(key, dir)
+    pins[key] = dir
+end
+
 local function file_for(key)
     local file = files[key]
     if not file then
         local owner, base = key:match("^([^/]+)/(.+)$")
         file = {
-            path = home_of(owner) .. "/" .. base .. ".config",
+            path = (pins[key] or home_of(owner)) .. "/" .. base .. ".config",
             text = nil, records = {}, problems = {},
         }
         files[key] = file
@@ -243,6 +299,14 @@ local function absorb(key, text)
     local file = file_for(key)
     file.records = {}
     file.problems = {}
+    file.preamble = preamble_of(text)
+
+    -- Whether anything sharing this file owns the lines above the first
+    -- section. When something does, they are data rather than a mistake.
+    local shared = false
+    for _, spec in pairs(declared) do
+        if spec.storage == "config" and key_of(spec) == key and spec.preamble then shared = true end
+    end
     local function problem(line, message)
         file.problems[#file.problems + 1] = { line = line, message = message }
     end
@@ -256,7 +320,9 @@ local function absorb(key, text)
 
     local sections, unparsed = parse_ini(text)
     for _, bad in ipairs(unparsed) do
-        problem(bad.line, string.format("not `key = value`: %s", bad.text))
+        if not (shared and bad.text:find("(before any section)", 1, true)) then
+            problem(bad.line, string.format("not `key = value`: %s", bad.text))
+        end
     end
 
     for _, section in ipairs(sections) do
@@ -312,7 +378,7 @@ local function save(key)
     if text == file.text then return true end
 
     local Store = require("store")
-    Store.ensure_dir(home_of(owner_of_key(key)))
+    Store.ensure_dir(pins[key] or home_of(owner_of_key(key)))
     local handle, err = io.open(file.path .. ".tmp", "w")
     if not handle then
         log("cannot write " .. file.path .. ": " .. tostring(err))
@@ -443,6 +509,10 @@ function collections.declare(owner, name, spec)
         value_field = spec.value_field or "value",
         comment_field = spec.comment_field,
         key = spec.key or "string",
+        -- Something else owns the lines above the first section in this file —
+        -- a mod's settings sit there. They are copied through on a rewrite and
+        -- never reported as unreadable.
+        preamble = spec.preamble == true,
     }
 
     -- A config collection's file is its home, so it is read the moment the
@@ -493,7 +563,7 @@ end
 
 -- Test seam: a fresh registry without reloading the module.
 function collections.reset()
-    declared, files, homes, stores = {}, {}, {}, {}
+    declared, files, homes, stores, pins = {}, {}, {}, {}, {}
 end
 
 return collections
