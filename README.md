@@ -5,6 +5,36 @@
 [![release](https://img.shields.io/github/v/release/s-kiu/Palladium?display_name=release&label=release)](https://github.com/s-kiu/Palladium/releases)
 [![license](https://img.shields.io/github/license/s-kiu/Palladium)](LICENSE)
 
+> ## 🛠️ New — [Palladium Studio](https://s-kiu.github.io/Palladium/)
+>
+> **[→ Open it in your browser](https://s-kiu.github.io/Palladium/)** · nothing to install, nothing uploaded
+>
+> Permissions used to mean hand-editing an INI file and hoping. The Studio is
+> the whole framework with a face on it — and it answers using **Palladium's
+> own engine**, compiled to run in your browser tab, so what it shows you is
+> what your server will actually do.
+>
+> Drop `permissions.config` on it — or your whole `Mods/Palladium/mods/` folder —
+> and you get:
+>
+> | | |
+> |---|---|
+> | **Overview** | every mod that loaded, what it brought, and any that refused — with the reason |
+> | **Data** | what your mods have remembered |
+> | **Commands** | every command as a form, with searchable pickers: 2,400+ items, 750+ pal species, every passive skill |
+> | **Permissions** | every node × every group, and one player at a time with the deciding entry spelled out |
+> | **Settings** | every mod's settings, the author's default beside each |
+>
+> Edit, download, put the file back — a running server re-reads it in seconds,
+> and only the files you actually changed are written. **Works on a rented
+> server you have no shell access to:** all you need is your provider's file
+> manager.
+>
+> **Running Pal-Up?** The same page is built into the panel — reading the live
+> config, applying edits as you make them, running commands for real, plus an
+> **Agent** tab with the live event stream, the engine hooks this build holds,
+> who is connected and the pals loaded around them.
+
 **A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
 ![Architecture: players reach the Palworld dedicated server directly, admins and external apps go through the web panel, and Palladium — running inside the game via UE4SS — exchanges events and actions with the panel. Palladium also drops into any UE4SS server on its own.](docs/img/architecture.svg)

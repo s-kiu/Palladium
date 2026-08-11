@@ -1,5 +1,15 @@
 # Palladium
 
+> ## 🛠️ New — Palladium Studio
+>
+> **[→ s-kiu.github.io/Palladium](https://s-kiu.github.io/Palladium/)** · nothing to install, nothing uploaded
+>
+> Every mod's commands, settings, stored data and permissions, in one page —
+> answered by **this mod's own engine**, compiled to run in your browser tab.
+> Drop your `permissions.config` on it, edit, download, put it back. A running
+> server re-reads it in seconds. Works on a rented server you have no shell
+> access to. [What is on it](#palladium-studio).
+
 A modding framework for **Palworld dedicated servers**, as one UE4SS Lua
 mod. It does two things:
 
@@ -16,15 +26,14 @@ Nothing outside the game is required for either.
 ## Palladium Studio
 
 Editing `permissions.config` by hand works, and nobody should have to.
+Open **[s-kiu.github.io/Palladium](https://s-kiu.github.io/Palladium/)** and
+drop the file on it — or the whole `Mods/Palladium/mods/` folder, mods and all.
 
-**[s-kiu.github.io/Palladium](https://s-kiu.github.io/Palladium/)**
-
-Open that in any browser and drop your `permissions.config` on it — or the
-whole `Mods/Palladium/mods/` folder, mods and all. It answers with **this
-mod's own engine**: the page runs `permissions.lua`, `collections.lua`,
-`store.lua` and `framework.lua` — the same files in this folder, drift-checked
-copies — compiled to run in the tab. Its answers cannot disagree with your
-server, because it is your server's code doing the answering.
+It answers with **this mod's own engine**: the page runs `permissions.lua`,
+`collections.lua`, `store.lua` and `framework.lua` — the same files in this
+folder, drift-checked copies — compiled to run in the tab. Its answers cannot
+disagree with your server, because it is your server's code doing the
+answering.
 
 Nothing is uploaded. There is no backend to upload to; the file never leaves
 the tab, and closing it forgets everything.
