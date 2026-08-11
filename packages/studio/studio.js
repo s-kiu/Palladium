@@ -1592,7 +1592,7 @@ function renderCommandList(filter) {
     const from = document.createElement("span");
     from.textContent = command.source;
     item.appendChild(from);
-    item.onclick = () => chooseCommand(command);
+    item.onclick = () => chooseCommand(command, true);
     host.appendChild(item);
   }
   if (matches.length === 0) {
@@ -1604,9 +1604,13 @@ function renderCommandList(filter) {
   renderCommandReference(wanted);
 }
 
-function chooseCommand(command) {
+function chooseCommand(command, narrow) {
   chosenCommand = command;
+  // Picking one is saying "this is the one I want", so the long list becomes
+  // that one — and the search box says why, which is also how to undo it.
+  if (narrow) $("cmdsearch").value = command.word;
   renderCommandList($("cmdsearch").value);
+  $("cmdall").classList.toggle("hidden", $("cmdsearch").value.trim() === "");
   $("cmdform").classList.remove("hidden");
   $("cmdname").textContent = command.word;
   $("cmdhelp").textContent = command.help
@@ -2017,9 +2021,11 @@ function openCellEditor(kind, name, node, cell) {
     : cell.source === "group:" + name;
   $("celleffect").value = decidedHere
     ? (cell.allowed || cell.self || cell.conditional ? "allow" : "deny") : "inherit";
-  $("cellwhere").value = decidedHere ? cell.where : "";
+  // A cell decided here may still carry no rule, and `undefined` printed
+  // into the box became the first half of whatever got typed next.
+  $("cellwhere").value = (decidedHere && cell.where) || "";
   $("celluntil").value = "";
-  $("cellfields").textContent = fieldsFor(node);
+  renderCellFields(node);
   attachSuggest($("cellwhere"), constraintSuggestions(node));
   $("celldialog").showModal();
 }
@@ -2030,17 +2036,50 @@ function shortId(id) {
   return id.length > 12 ? id.slice(0, 8) + "…" : id;
 }
 
-// Which fields a constraint on this node can test, straight from the manifest.
-function fieldsFor(node) {
-  const capability = (window.PALLADIUM_STUDIO?.capabilities || []).find((c) => c.type === node);
-  if (!capability) {
-    return "Fields here are whatever the owning mod passes to its permission check.";
+// What this call actually carries, so a constraint is written against the
+// arguments rather than guessed at. Each one is a button: clicking it puts the
+// field into the box, joined with `and` if a clause is already there.
+function renderCellFields(node) {
+  const host = $("cellfields");
+  host.textContent = "";
+  const fields = constraintFields(node);
+  const words = (lastCommands || []).filter((c) => c.node === node).map((c) => c.word);
+
+  const lead = document.createElement("span");
+  lead.textContent = fields.length
+    ? (words.length ? words.join(", ") + " carries:" : "This call carries:")
+    : "This call carries no fields, so a constraint on it can never hold.";
+  host.appendChild(lead);
+  if (!fields.length) return;
+
+  const list = document.createElement("ul");
+  list.className = "chips fieldchips";
+  for (const field of fields) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "linklike";
+    button.textContent = field.name;
+    button.title = "Add `" + field.name + "` to the constraint";
+    button.onclick = () => insertField(field.name);
+    item.appendChild(button);
+    const kind = document.createElement("span");
+    kind.textContent = field.hint;
+    item.appendChild(kind);
+    list.appendChild(item);
   }
-  const names = Object.keys(capability.params);
-  if (capability.target === "player") names.unshift("target", "target_group", "target_weight");
-  return names.length > 0
-    ? "Fields this call carries: " + names.join(", ")
-    : "This call carries no fields — a constraint on it can never hold.";
+  host.appendChild(list);
+}
+
+function insertField(name) {
+  const box = $("cellwhere");
+  const text = box.value.trim();
+  box.value = text === "" ? "where " + name + " "
+    : /\b(and|or|where)$/.test(text) ? text + " " + name + " "
+    : text + " and " + name + " ";
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+  box.dispatchEvent(new Event("input"));
 }
 
 // ── the player lens ──────────────────────────────────────────────────────────
@@ -2136,6 +2175,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   for (const button of document.querySelectorAll("#agenttabs button")) {
     button.addEventListener("click", () => setAgentSub(button.dataset.agentsub));
   }
+  $("cmdall").onclick = () => {
+    $("cmdsearch").value = "";
+    renderCommandList("");
+    $("cmdall").classList.add("hidden");
+  };
   $("matrixsearch").addEventListener("input", refreshMatrix);
   $("palrefresh").onclick = guarded(refreshWorldPals);
   $("statssave").onclick = guarded(saveStats);
@@ -2235,7 +2279,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     return knownGroups().filter((g) => !token || g.label.startsWith(token));
   });
 
-  $("cmdsearch").addEventListener("input", () => renderCommandList($("cmdsearch").value));
+  $("cmdsearch").addEventListener("input", () => {
+    renderCommandList($("cmdsearch").value);
+    $("cmdall").classList.toggle("hidden", $("cmdsearch").value.trim() === "");
+  });
   $("cmdshow").onclick = () => {
     if (!chosenCommand) return;
     const { target, params } = commandValues();
@@ -2476,7 +2523,17 @@ function renderCommandReference(wanted) {
     const row = table.insertRow();
     const words = [command.word];
     for (const alias of aliasesOf(command)) words.push(alias);
-    row.insertCell().innerHTML = words.map((w) => "<code>" + escapeHtml(w) + "</code>").join("<br>");
+    const name = row.insertCell();
+    const pick = document.createElement("button");
+    pick.type = "button";
+    pick.className = "linklike cmdpick";
+    pick.innerHTML = words.map((w) => "<code>" + escapeHtml(w) + "</code>").join("<br>");
+    pick.title = "Open " + command.word + " as a form";
+    pick.onclick = () => {
+      chooseCommand(command, true);
+      $("cmdform").scrollIntoView({ block: "nearest" });
+    };
+    name.appendChild(pick);
 
     const does = row.insertCell();
     does.textContent = helpFor(command) || "—";

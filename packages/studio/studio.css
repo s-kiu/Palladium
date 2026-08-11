@@ -453,6 +453,16 @@ body.busy::before {
   to { background-position: 140% 0; }
 }
 
+/* The fields a call carries, in the constraint dialog: a name you can click
+   to write, with what it holds beside it. */
+.fieldchips li { align-items: baseline; gap: .35rem; }
+.fieldchips li span { color: var(--muted); font-size: .74rem; }
+
+/* A command in the reference table opens as a form, so it looks like the
+   link it is rather than like text next to one. */
+button.cmdpick { text-align: left; padding: 0; }
+button.cmdpick code { background: none; border: none; padding: 0; }
+
 /* The button that does the thing there is no undo for. */
 button.danger { background: var(--no); border-color: var(--no); color: #fff; }
 button.danger:hover { filter: brightness(1.08); }

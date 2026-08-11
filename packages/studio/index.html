@@ -404,7 +404,10 @@ if (new URLSearchParams(location.search).has("embed")) {
     </div>
     <div id="cmdlist" class="cmdlist"></div>
     <div id="cmdform" class="hidden">
-      <h3 id="cmdname"></h3>
+      <div class="row spread">
+        <h3 id="cmdname"></h3>
+        <button id="cmdall" type="button" class="linklike hidden">show every command</button>
+      </div>
       <p id="cmdhelp" class="fine"></p>
       <div id="cmdfields"></div>
       <div class="row">
