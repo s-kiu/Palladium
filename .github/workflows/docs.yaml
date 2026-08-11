@@ -37,7 +37,9 @@ jobs:
       # The Studio is the front door: it is what an operator without a panel
       # actually opens. The documentation is a whole site of its own and moves
       # one level down, linked from the Studio and the README.
-      - run: mkdocs build --strict || mkdocs build
+      # Strict, with no fallback: a broken link should fail the build rather
+      # than publish a site that quietly has one.
+      - run: mkdocs build --strict
       - run: |
           mkdir -p published/docs
           cp -r site/. published/docs/
