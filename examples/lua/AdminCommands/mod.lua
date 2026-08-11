@@ -71,7 +71,7 @@ end
 
 return {
     name = "AdminCommands",
-    version = "1.0.0",
+    version = "1.0.1",
     api = 1,
     description = "Moderator commands: teleport, give, slay, god and mute.",
 
