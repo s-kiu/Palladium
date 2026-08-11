@@ -49,7 +49,38 @@ code, .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, mono
   z-index: 5;
 }
 .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
-.topbar nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+.topbar nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; align-items: center; }
+
+/* Pages one mod contributes travel together: an unclickable product label,
+   then its tabs, fenced off from the panel's own. */
+.topbar nav .navgroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 6px;
+  padding: 0 8px;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+.brand-sub {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+  line-height: 1;
+  margin-top: 2px;
+}
+.topbar nav .navgroup-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  padding: 0 6px 0 2px;
+  user-select: none;
+  white-space: nowrap;
+  cursor: default;
+}
 .topbar nav button {
   background: none;
   border: none;
@@ -91,16 +122,23 @@ app-bridge, app-chat {
 }
 
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 120px), var(--surface);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  padding: 16px 18px;
 }
 .card h2 {
-  margin-bottom: 12px;
-  font-size: 1rem;
+  margin-bottom: 10px;
+  font-size: 1.02rem;
   letter-spacing: -0.01em;
+}
+/* A card inside a card: a section of one view, not a surface of its own. */
+.card .subcard {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
 }
 .card > p.muted { margin: 0 0 12px; font-size: 0.85rem; }
 
@@ -180,6 +218,25 @@ button.ghost:hover { color: var(--text); background: none; }
 }
 button.signout:hover { background: var(--surface-2); }
 
+/* In the top bar the streamer switch is a sibling of sign out, so it wears
+   sign out's shape — the pill it wears inside the Connect card put it on a
+   different height and a different baseline from the button beside it. */
+.signout.streamer-toggle {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+}
+.signout.streamer-toggle svg { width: 19px; height: 19px; }
+.signout.streamer-toggle:hover { background: var(--surface-2); color: inherit; }
+.signout.streamer-toggle.on { color: var(--warn); background: none; border-color: transparent; }
+.signout.streamer-toggle.on:hover { background: var(--surface-2); }
+
 input, select {
   background: #0d0f12;
   border: 1px solid var(--border-strong);
@@ -206,11 +263,10 @@ table { width: 100%; border-collapse: collapse; }
 th {
   text-align: left;
   color: var(--muted);
-  font-weight: 500;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0;
+  padding: 7px 10px;
 }
 thead th { border-bottom: 1px solid var(--border); }
 td { padding: 10px; border-top: 1px solid var(--border); vertical-align: top; }
@@ -222,6 +278,50 @@ td.actions { text-align: right; white-space: nowrap; }
 td.actions button { padding: 3px 10px; font-size: 12.5px; }
 td.actions { vertical-align: middle; }
 td.actions button + button { margin-left: 6px; }
+
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.pill.good { background: rgba(74, 222, 128, 0.12); color: var(--ok); }
+.pill.bad { background: rgba(248, 113, 113, 0.12); color: var(--danger); }
+.pill.warn { background: rgba(251, 191, 36, 0.12); color: var(--warn); }
+
+/* One line that says what state something is in, tinted to match. */
+.banner {
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 0.88rem;
+}
+.banner.ok { background: rgba(74, 222, 128, 0.1); color: var(--ok); }
+.banner.warn { background: rgba(251, 191, 36, 0.1); color: var(--warn); }
+.banner.error { background: rgba(248, 113, 113, 0.1); color: var(--danger); }
+
+/* Nested navigation inside one view — the shape Permissions uses. */
+.subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.subtabs button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 5px 12px;
+}
+.subtabs button.active { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+
+/* The quiet explanatory line the Studio leans on. */
+.fine { color: var(--muted); font-size: 0.84rem; line-height: 1.55; margin: 6px 0; }
 
 .tag {
   display: inline-block;
@@ -426,7 +526,51 @@ app-permissions { display: grid; gap: 16px; align-content: start; }
 }
 table.settings td { vertical-align: middle; }
 td.setting-name { width: 45%; }
-td.setting-name .tag { margin-left: 8px; }
+td.setting-name .pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.pill.good { background: rgba(74, 222, 128, 0.12); color: var(--ok); }
+.pill.bad { background: rgba(248, 113, 113, 0.12); color: var(--danger); }
+.pill.warn { background: rgba(251, 191, 36, 0.12); color: var(--warn); }
+
+/* One line that says what state something is in, tinted to match. */
+.banner {
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 0.88rem;
+}
+.banner.ok { background: rgba(74, 222, 128, 0.1); color: var(--ok); }
+.banner.warn { background: rgba(251, 191, 36, 0.1); color: var(--warn); }
+.banner.error { background: rgba(248, 113, 113, 0.1); color: var(--danger); }
+
+/* Nested navigation inside one view — the shape Permissions uses. */
+.subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.subtabs button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 5px 12px;
+}
+.subtabs button.active { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+
+/* The quiet explanatory line the Studio leans on. */
+.fine { color: var(--muted); font-size: 0.84rem; line-height: 1.55; margin: 6px 0; }
+
+.tag { margin-left: 8px; }
 .setting-desc { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
 td.setting-input input, td.setting-input select { width: 100%; }
 .tag.warn-tag { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); }

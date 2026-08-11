@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { Api, authed } from './api.service';
 import { LoginComponent } from './login.component';
 import { DashboardComponent } from './dashboard.component';
@@ -6,11 +6,10 @@ import { PlayersComponent } from './players.component';
 import { ModsComponent } from './mods.component';
 import { BackupsComponent } from './backups.component';
 import { AdminComponent } from './admin.component';
-import { BridgeComponent } from './bridge.component';
 import { PermissionsComponent } from './permissions.component';
 import { streamerMode, toggleStreamerMode } from './streamer';
 
-type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permissions' | 'admin';
+type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'admin';
 
 @Component({
   selector: 'app-root',
@@ -21,7 +20,6 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permiss
     PlayersComponent,
     ModsComponent,
     BackupsComponent,
-    BridgeComponent,
     PermissionsComponent,
     AdminComponent,
   ],
@@ -33,10 +31,23 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permiss
       <app-login />
     } @else {
       <header class="topbar">
-        <span class="brand">Pal-Up</span>
+        <span class="brand">Pal-Up<span class="brand-sub">the server</span></span>
         <nav>
-          @for (t of tabs(); track t) {
+          @for (t of coreTabs; track t) {
             <button [class.active]="tab() === t" (click)="tab.set(t)">{{ t }}</button>
+          }
+          <button [class.active]="tab() === 'admin'" (click)="tab.set('admin')">admin</button>
+          @if (bridgeUp()) {
+            <!-- Two products, one panel: Pal-Up is the server around the game,
+                 Palladium is the framework inside it. One page covers the
+                 framework — the studio, which is also what the docs site
+                 serves to operators who cannot run Pal-Up at all. It sits at
+                 the end because it is the other product, not another Pal-Up
+                 page. -->
+            <span class="navgroup">
+              <span class="navgroup-label">Palladium</span>
+              <button [class.active]="tab() === 'palladium'" (click)="tab.set('palladium')">studio</button>
+            </span>
           }
         </nav>
         <button
@@ -77,8 +88,7 @@ type Tab = 'dashboard' | 'players' | 'mods' | 'backups' | 'palladium' | 'permiss
           @case ('players') { <app-players /> }
           @case ('mods') { <app-mods /> }
           @case ('backups') { <app-backups /> }
-          @case ('palladium') { <app-bridge /> }
-          @case ('permissions') { <app-permissions /> }
+          @case ('palladium') { <app-permissions /> }
           @case ('admin') { <app-admin /> }
         }
       </main>
@@ -94,17 +104,10 @@ export class AppComponent implements OnInit, OnDestroy {
   streamer = streamerMode;
   toggleStreamer = toggleStreamerMode;
   tab = signal<Tab>('dashboard');
-  // The bridge tab only means anything once the agent mod is loaded, so it
-  // appears when the agent has announced itself and not before.
-  private bridgeUp = signal(false);
-  tabs = computed<Tab[]>(() => [
-    'dashboard',
-    'players',
-    'mods',
-    'backups',
-    ...(this.bridgeUp() ? (['palladium', 'permissions'] as Tab[]) : []),
-    'admin',
-  ]);
+  // The Palladium group only means anything once the agent mod is loaded, so
+  // it appears when the agent has announced itself and not before.
+  bridgeUp = signal(false);
+  coreTabs: Tab[] = ['dashboard', 'players', 'mods', 'backups'];
   private timer?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
@@ -128,7 +131,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.bridgeStatus().subscribe({
       next: (s) => {
         this.bridgeUp.set(s.available);
-        if (!s.available && (this.tab() === 'palladium' || this.tab() === 'permissions')) this.tab.set('dashboard');
+        if (!s.available && this.tab() === 'palladium') this.tab.set('dashboard');
       },
       error: () => this.bridgeUp.set(false),
     });
