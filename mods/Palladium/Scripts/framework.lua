@@ -247,6 +247,9 @@ end
 local function parse_settings(content)
     local overlay = {}
     for raw_line in (tostring(content) .. "\n"):gmatch("(.-)\n") do
+        -- The same file carries this mod's permission nodes, in sections
+        -- below. Settings are the lines above the first one.
+        if raw_line:match("^%s*%[") then break end
         local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
         if line ~= "" and line:sub(1, 1) ~= ";" and line:sub(1, 1) ~= "#" then
             local key, value = line:match("^([%w_%.]+)%s*=%s*(.*)$")
@@ -271,6 +274,87 @@ local function settings_path(name)
     return home .. "/settings.config"
 end
 
+-- ── carrying an older install across ────────────────────────────────────────
+-- A mod's settings, data and node file used to live inside the folder it was
+-- installed from; they live under Palladium now. Moved once, on the first load
+-- that finds them, and each move is logged — an operator who upgrades must not
+-- have to notice that their tuning quietly reverted to defaults.
+--
+-- Only the files Palladium itself writes are moved. Anything else in a mod's
+-- folder is the mod's own and stays where its author put it.
+local function move_file(from, to)
+    local source = io.open(from, "r")
+    if not source then return false end
+    local content = source:read("a")
+    source:close()
+    local target = io.open(to, "w")
+    if not target then return false end
+    target:write(content)
+    target:close()
+    os.remove(from)
+    return true
+end
+
+local function migrate_home(name)
+    if not host.legacy_home_for or not host.home_for then return end
+    local from, to = host.legacy_home_for(name), host.home_for(name)
+    if from == to then return end
+    if host.store and host.store.ensure_dir then host.store.ensure_dir(to) end
+    -- from → to, and what each is called once it gets there. The store used to
+    -- repeat the mod's name inside its own folder; it is just `.data` now.
+    for _, pair in ipairs({
+        { "settings.config", "settings.config" },
+        { "permissions.config", "permissions.config" },
+        { name:lower() .. ".data", ".data" },
+    }) do
+        local was, becomes = pair[1], pair[2]
+        if not exists(to .. "/" .. becomes) and exists(from .. "/" .. was) then
+            if move_file(from .. "/" .. was, to .. "/" .. becomes) then
+                log(string.format("%s: moved %s into %s as %s", name, was, to, becomes))
+            else
+                log(string.format("%s: could not move %s out of %s — it is still read from there",
+                    name, was, from))
+            end
+        end
+    end
+
+    -- A folder already moved by an earlier version still carries the old
+    -- store name; rename it in place rather than starting an empty one.
+    if not exists(to .. "/.data") and exists(to .. "/" .. name:lower() .. ".data") then
+        if move_file(to .. "/" .. name:lower() .. ".data", to .. "/.data") then
+            log(string.format("%s: renamed %s.data to .data", name, name:lower()))
+        end
+    end
+
+    -- An earlier version wrote the command reference as a config beside the
+    -- others, where it read as something an operator should edit.
+    if exists(to .. "/commands.config") then
+        os.remove(to .. "/commands.config")
+        log(string.format("%s: removed commands.config — it is generated/commands.ref now", name))
+    end
+
+    -- One config per mod. The separate permissions file held nothing but this
+    -- mod's node list once groups moved out, so it is appended to the settings
+    -- file and dropped — a folder with two config files invites editing the
+    -- wrong one.
+    local separate = to .. "/permissions.config"
+    if exists(separate) then
+        local source = io.open(separate, "r")
+        local text = source and source:read("a") or ""
+        if source then source:close() end
+        -- The banner is regenerated on the next write; carrying it would leave
+        -- two of them in one file.
+        text = text:gsub("^;[^\n]*\n;[^\n]*\n;[^\n]*\n\n?", "")
+        local target = io.open(to .. "/settings.config", "a")
+        if target then
+            target:write("\n" .. text)
+            target:close()
+            os.remove(separate)
+            log(string.format("%s: merged permissions.config into settings.config", name))
+        end
+    end
+end
+
 -- A mod may ship a commented settings.example.config next to its code. On
 -- the first load with no live settings.config, the example becomes it —
 -- so a fresh install has a real file to open, already explaining itself.
@@ -293,92 +377,10 @@ local function seed_settings(name)
     seed_from_example(name, settings_path(name), "settings")
 end
 
--- A mod declares its permission nodes in mod.lua, which keeps a small mod one
--- file. A large one can move them out instead: a permissions.config beside the
--- mod declares the same nodes, and when that file is present it is the whole
--- truth — the table in mod.lua is not merged with it, so what an operator
--- reads in the file is what the mod owns. One section per node:
---
---   [bigmod.reward]
---   default = allow
---   description = earn the reward on a streak
---
--- Same shape as settings.config beside it: a shipped permissions.example.config
--- becomes the live file on first load, full-line `;` and `#` comments only,
--- and a line that makes no sense is named with its number rather than dropped
--- in silence.
-local function parse_permissions(content)
-    local list, problems, current = {}, {}, nil
-    local lineno = 0
-    for raw_line in (tostring(content) .. "\n"):gmatch("(.-)\n") do
-        lineno = lineno + 1
-        local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
-        if line ~= "" and line:sub(1, 1) ~= ";" and line:sub(1, 1) ~= "#" then
-            local section = line:match("^%[%s*([^%]]-)%s*%]$")
-            if section then
-                current = { node = section:lower() }
-                list[#list + 1] = current
-            else
-                local key, value = line:match("^([%w_]+)%s*=%s*(.*)$")
-                if not key then
-                    problems[#problems + 1] = string.format("line %d: not a [node] heading or key = value", lineno)
-                elseif not current then
-                    problems[#problems + 1] = string.format("line %d: %s before any [node] heading", lineno, key)
-                elseif key:lower() == "default" or key:lower() == "description" then
-                    current[key:lower()] = value:gsub("%s+$", "")
-                else
-                    problems[#problems + 1] = string.format('line %d: unknown key "%s" — expected default or description', lineno, key)
-                end
-            end
-        end
-    end
-    return list, problems
-end
-
--- The same rules a mod.lua declaration answers to: a mod owns its own
--- namespace and only its own, and a default is allow or deny.
-local function usable_permissions(name, list)
-    local prefix = name:lower() .. "."
-    local kept, refused = {}, {}
-    for _, entry in ipairs(list) do
-        if type(entry.node) ~= "string" or entry.node == "" then
-            refused[#refused + 1] = "a section with no node name"
-        elseif entry.node:sub(1, #prefix) ~= prefix then
-            refused[#refused + 1] = string.format('"%s" must start with "%s"', entry.node, prefix)
-        elseif entry.default ~= nil and entry.default ~= "allow" and entry.default ~= "deny" then
-            refused[#refused + 1] = string.format('"%s": default must be allow or deny', entry.node)
-        else
-            kept[#kept + 1] = entry
-        end
-    end
-    return kept, refused
-end
-
-local function permissions_path(name)
-    local home = host.home_for and host.home_for(name) or (host.mods_dir .. "/" .. name)
-    return home .. "/permissions.config"
-end
-
--- Whichever the operator can see wins: a permissions.config beside the mod
--- replaces the mod.lua table wholesale rather than adding to it, so there is
--- one place to read and no half-merged answer.
-local function declared_permissions(name, mod)
-    local file = io.open(permissions_path(name), "r")
-    if not file then return mod.permissions or {}, false end
-    local content = file:read("a")
-    file:close()
-
-    local parsed, problems = parse_permissions(content)
-    for _, problem in ipairs(problems) do
-        log(name .. ": permissions.config " .. problem)
-    end
-    local kept, refused = usable_permissions(name, parsed)
-    for _, refusal in ipairs(refused) do
-        log(name .. ": permissions.config refused " .. refusal)
-    end
-    log(string.format("%s: permissions.config declares %d node(s) — the mod.lua table is not read", name, #kept))
-    return kept, true
-end
+-- A mod's permission nodes are declared in mod.lua and nowhere else. An
+-- operator changes a default in the mod's own settings.config, under [nodes],
+-- which is where the engine keeps them — one config per mod folder, so there
+-- is never a second file saying something different.
 
 local settings_seen = {} -- mod name → file content behind the current overlay
 
@@ -583,6 +585,73 @@ local function api_for(name, mod)
     return pal
 end
 
+-- ── the command reference a mod publishes ───────────────────────────────────
+-- Written on every load from what the mod declares, so a folder says what its
+-- commands are without anyone reading its Lua. It lives in generated/ and does
+-- not end in .config, because it is neither: a .config invites editing, and an
+-- edit here survives exactly until the next restart. The Studio renders and
+-- drives it.
+local KINDS = { item_id = "an item or species id", int = "a whole number",
+                number = "a number", bool = "true or false", string = "text" }
+
+local function describe_param(p)
+    local bits = { tostring(p.kind or "string") }
+    if p.required then bits[#bits + 1] = "required" end
+    if p.min ~= nil or p.max ~= nil then
+        bits[#bits + 1] = tostring(p.min or "") .. ".." .. tostring(p.max or "")
+    end
+    if p.default ~= nil then bits[#bits + 1] = "default " .. tostring(p.default) end
+    if p.max_len then bits[#bits + 1] = "up to " .. p.max_len .. " characters" end
+    return table.concat(bits, ", ")
+end
+
+local function write_commands(name, mod)
+    local home = host.home_for and host.home_for(name)
+    if not home then return end
+    local words = framework.command_words(mod)
+
+    local out = {
+        "; Palladium — generated/commands.ref",
+        "; What this mod's chat commands are, written from the mod on every",
+        "; load. Read-only: change mod.lua, not this.",
+        "",
+    }
+    if #words == 0 then
+        out[#out + 1] = "; This mod declares no chat commands."
+        out[#out + 1] = ""
+    end
+    for _, word in ipairs(words) do
+        local command = mod.commands[word]
+        out[#out + 1] = "[" .. word .. "]"
+        if command.node and command.node ~= "" then
+            out[#out + 1] = "node = " .. command.node
+        else
+            out[#out + 1] = "; open to everybody — this command declares no node"
+        end
+        if command.target then out[#out + 1] = "target = " .. tostring(command.target) end
+        if command.help and command.help ~= "" then
+            -- One line: a newline here would end the value mid-sentence.
+            out[#out + 1] = "help = " .. tostring(command.help):gsub("%s*\n%s*", " ")
+        end
+        for _, p in ipairs(command.params or {}) do
+            out[#out + 1] = string.format("param = %s: %s", tostring(p.name), describe_param(p))
+        end
+        if not command.params then
+            out[#out + 1] = "; arguments are parsed by the mod itself, so they are not listed here"
+        end
+        out[#out + 1] = ""
+    end
+
+    if host.store and host.store.ensure_dir then host.store.ensure_dir(home .. "/generated") end
+    local file = io.open(home .. "/generated/commands.ref", "w")
+    if not file then
+        log(name .. ": cannot write generated/commands.ref")
+        return
+    end
+    file:write(table.concat(out, "\n"))
+    file:close()
+end
+
 function framework.load()
     framework.mods = {}
     framework.order = {}
@@ -606,9 +675,14 @@ function framework.load()
                     if not entry.error then
                         entry.ok = true
                         entry.mod = result
+                        migrate_home(name)
                         seed_settings(name)
-                        seed_from_example(name, permissions_path(name), "permissions")
-                        entry.permissions, entry.permissions_from_file = declared_permissions(name, result)
+                        -- No permissions.config is seeded any more: a mod's
+                        -- nodes are declared in its mod.lua and their defaults
+                        -- live in the [nodes] section of settings.config, one
+                        -- config per folder. A mod that still ships its own
+                        -- permissions.config is read from it, unchanged.
+                        entry.permissions, entry.permissions_from_file = result.permissions or {}, false
                         entry.pal = api_for(name, result)
                         entry.warnings = unfireable(result)
                     end
@@ -616,6 +690,12 @@ function framework.load()
             end
             framework.mods[name] = entry
             framework.order[#framework.order + 1] = name
+            -- The home comes first: everything below writes into it, and a
+            -- collection declared before it is known would land in the
+            -- fallback and be invisible from then on.
+            if entry.ok and host.collections then
+                host.collections.home(name, host.home_for and host.home_for(name) or dir)
+            end
             -- A mod's nodes are registered whether or not anyone has granted
             -- them: the panel lists what exists, and a default of "deny" only
             -- means something once the node is known.
@@ -624,10 +704,9 @@ function framework.load()
             end
             -- A mod's collections exist from the moment it loads, so the panel
             -- can list an empty one rather than nothing at all — and they live
-            -- in the mod's own folder, so its config and its records travel
-            -- with it and deleting the folder is a clean uninstall.
+            -- under Palladium in the mod's own folder, so its settings and its
+            -- records survive the mod folder being replaced.
             if entry.ok and host.collections then
-                host.collections.home(name, host.home_for and host.home_for(name) or dir)
                 for collection, spec in pairs(entry.mod.data or {}) do
                     host.collections.declare(name:lower(), collection:lower(), spec)
                 end
@@ -639,6 +718,9 @@ function framework.load()
                 end
             end
             if entry.ok then
+                -- Written after the home is set, so it lands in the mod's own
+                -- folder rather than the fallback.
+                write_commands(name, entry.mod)
                 local events = 0
                 for _ in pairs(entry.mod.on or {}) do events = events + 1 end
                 log(string.format("loaded %s (%d handler(s), %d command(s))",
@@ -757,8 +839,11 @@ local function resolve_at(value, who)
     return nil, "no player named " .. name .. " is online"
 end
 
-local function parse_args(action, rest, who)
-    local spec = host.capabilities[action]
+-- `spec` is anything shaped like a capability — `{ params = {…}, target = … }`.
+-- Built-ins pass the generated table; a mod command passes its own declaration,
+-- so both are parsed by one piece of code and a mod gets `@Name` targeting,
+-- positional arguments and bracketed values for free.
+local function parse_args(spec, rest, who)
     local declared = type(spec) == "table" and spec.params or {}
     local params, target, targeted = {}, who, false
     local s, i = tostring(rest or ""), 1
@@ -847,7 +932,7 @@ local function builtin(event, word, rest)
     if not action then return false end
 
     local who = event.subject and event.subject.id or ""
-    local params, target, trouble, targeted = parse_args(action, rest, who)
+    local params, target, trouble, targeted = parse_args(host.capabilities[action], rest, who)
     if trouble then
         host.call("player.message", who, { text = word .. ": " .. trouble }, function() end)
         return true
@@ -1056,11 +1141,40 @@ function framework.chat(event)
             if now - (last_command[who] or 0) < COMMAND_COOLDOWN_S then return true end
             last_command[who] = now
 
-            if command.node and not entry.pal.can(who, command.node) then
-                entry.pal.message(who, "You are not allowed to use that.")
-                return true
+            -- A command that declares its parameters is parsed here, and the
+            -- node is resolved *with* them: without that, a grant carrying any
+            -- constraint could never be satisfied, because a constraint with
+            -- nothing to check against is a refusal. A command that declares
+            -- nothing resolves bare, exactly as before.
+            local params, target, trouble = {}, who, nil
+            if type(command.params) == "table" then
+                params, target, trouble = parse_args(command, rest, who)
+                if trouble then
+                    entry.pal.message(who, word .. ": " .. trouble)
+                    return true
+                end
             end
-            local ok, err = pcall(command.run, event, rest or "", entry.pal)
+
+            if command.node then
+                local gated = { target = (target == who) and "@me" or target }
+                for key, value in pairs(params) do gated[key] = value end
+                local allowed, _source, _where, violation
+                if host.permissions then
+                    allowed, _source, _where, violation =
+                        host.permissions:resolve(who, command.node, gated)
+                end
+                if not allowed then
+                    -- Say which constraint failed, the way the built-in path
+                    -- does. A bare refusal is what turns a mistyped grant into
+                    -- an evening of guessing.
+                    entry.pal.message(who, violation and (word .. ": " .. violation)
+                        or "You are not allowed to use that.")
+                    return true
+                end
+            end
+            -- `args` stays the rest of the line, so every existing command is
+            -- untouched; the parsed table rides alongside it.
+            local ok, err = pcall(command.run, event, rest or "", entry.pal, params, target)
             if not ok then
                 host.info(string.format("%s: %s failed: %s", name, word, tostring(err)))
             end

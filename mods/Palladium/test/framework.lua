@@ -11,20 +11,20 @@ local ROOT = assert(os.getenv("PALLADIUM_TEST_ROOT"), "PALLADIUM_TEST_ROOT is no
 local SCRIPTS = assert(os.getenv("PALLADIUM_SCRIPTS"), "PALLADIUM_SCRIPTS is not set")
 
 -- The mods this framework ships with are examples first: they live in
--- examples/palladium/, and an operator may also have copied one into mods/ to
+-- examples/lua/, and an operator may also have copied one into mods/ to
 -- run it. Look in both, and say so loudly when neither has it — a missing file
 -- otherwise reads as a dozen unrelated failures further down.
 local REPO = SCRIPTS .. "/../../.."
 local function shipped_mod(name)
     for _, path in ipairs({
-        REPO .. "/examples/palladium/" .. name .. "/mod.lua",
+        REPO .. "/examples/lua/" .. name .. "/mod.lua",
         REPO .. "/mods/" .. name .. "/mod.lua",
     }) do
         local probe = io.open(path, "r")
         if probe then probe:close() return path end
     end
     error(string.format(
-        "cannot find the shipped mod %s: looked in examples/palladium/%s and mods/%s", name, name, name))
+        "cannot find the shipped mod %s: looked in examples/lua/%s and mods/%s", name, name, name))
 end
 
 -- Those mods call real capabilities, so the fixtures they run against have to
@@ -419,6 +419,80 @@ framework.enqueue("player.chat", { kind = "player", id = "OTHERONE", name = "Nix
     { message = "!nosuch.capability x=1" })
 framework.drain()
 check("a word that is not a capability is left alone", #calls == 0, #calls)
+
+-- ── a mod's own command, under a constrained grant ──────────────────────────
+-- The bug this exists for: a mod command's node used to be resolved with no
+-- parameters at all, so any `where` on it refused every call forever — the
+-- grant was unusable and the refusal did not say why.
+mkmod("Handout", [[
+return {
+    name = "Handout",
+    permissions = { { node = "handout.give", description = "hand items over", default = "deny" } },
+    commands = {
+        ["!handout"] = {
+            node = "handout.give",
+            target = "player",
+            help = "!handout @Name <item> [count]",
+            params = {
+                { name = "item", kind = "item_id", required = true },
+                { name = "count", kind = "int", min = 1, max = 9999, default = 1 },
+            },
+            run = function(_event, _args, pal, params, target)
+                pal.player.give_item(target, { item = params.item, count = params.count })
+            end,
+        },
+    },
+}
+]])
+write(MODS .. "/Palladium/mods.list", "Handout\n")
+framework.load()
+perms:register("handout", { { node = "handout.give", default = "deny" } })
+perms:grant("HANDOUT1", "handout.give", "allow",
+    "where item in Money,DogCoin and count <= 1000")
+perms:grant("HANDOUT2", "handout.give", "allow",
+    "where item in Money,DogCoin and count <= 1000")
+
+local function handout_as(id, line)
+    calls = {}
+    framework.enqueue("player.chat", { kind = "player", id = id, name = id }, { message = line })
+    framework.drain()
+    local gave, said
+    for _, call in ipairs(calls) do
+        if call.type == "player.give_item" then gave = call end
+        if call.type == "player.message" then said = call.params.text end
+    end
+    return gave, said
+end
+
+local gave, said = handout_as("HANDOUT1", "!handout DogCoin 100")
+check("a constrained grant on a mod command now passes when the call satisfies it",
+    gave ~= nil and gave.params.item == "DogCoin", said or "nothing ran")
+check("and the parsed parameters reach the command",
+    gave and gave.params.count == "100", gave and gave.params)
+
+local blocked, why = handout_as("HANDOUT2", "!handout PalSphere 5")
+check("a call outside the constraint is refused", blocked == nil, blocked and blocked.params)
+check("and the refusal names the constraint rather than saying nothing",
+    why ~= nil and why:find("item must be one of", 1, true) ~= nil, why)
+
+-- ── the two silences ────────────────────────────────────────────────────────
+-- Both of these resolve to "no" without a word anywhere, which is what turns
+-- a mistyped grant into an unexplainable one.
+perms:grant("LINTED", "handout.give", "allow", "where item matches Sphere_* and count <= 50")
+local groups_c = perms.groups_c
+groups_c:set("linters", { weight = "1", is_default = "false",
+    allow = { "handout.give where count <= 5", "handout.give where count <= 500" } })
+
+local linted = perms:lint()
+local reported = table.concat(linted, "\n")
+check("an unreadable condition is reported, with the fragment quoted",
+    reported:find("cannot read `item matches Sphere_%*`") ~= nil, reported)
+check("and the readable half of the same rule still applies",
+    (perms:resolve("LINTED", "handout.give", { count = 10 })) == true
+        and (perms:resolve("LINTED", "handout.give", { count = 500 })) == false,
+    reported)
+check("a node listed twice in one group is reported as unreachable",
+    reported:find("listed more than once", 1, true) ~= nil, reported)
 
 -- ── chat ergonomics: aliases, positions, @me, help ──────────────────────────
 -- Declared parameters, as the generated capabilities table carries them.
@@ -1056,6 +1130,176 @@ local tie = board_after("ASKG", "!lb level", "Level leaders")
 check("a level tie is broken by who reached it first",
     tie ~= nil and tie:find("1. Lo (Lv 90)", 1, true) ~= nil
         and tie:find("2. Hi (Lv 90)", 1, true) ~= nil, tie)
+
+-- ── an older install, carried across ────────────────────────────────────────
+-- A mod's settings and data used to live inside the folder it was installed
+-- from. Upgrading must not quietly revert an operator's tuning, so the first
+-- load that finds the old files moves them and says so.
+local LEGACY = MODS .. "/Carried"
+local CARRIED_HOME = MODS .. "/Palladium/mods/Carried"
+mkmod("Carried", [[
+return {
+    name = "Carried",
+    settings = { greeting = "the author's default" },
+    data = { notes = { description = "kept", fields = { value = "string" } } },
+}
+]])
+write(LEGACY .. "/settings.config", "greeting = the operator's own\n")
+-- A record's kind is the qualified collection name, the way the store writes it.
+write(LEGACY .. "/carried.data", "carried.notes\tid=OLD\tvalue=survived\n")
+
+write(MODS .. "/Palladium/mods.list", "Carried\n")
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+logged = {}
+framework.init({
+    collections = Collections,
+    permissions = Permissions.new(Collections),
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    store = Store,
+})
+framework.load()
+
+check("an old settings.config is moved into the mod's home under Palladium",
+    exists_file(CARRIED_HOME .. "/settings.config")
+        and not exists_file(LEGACY .. "/settings.config"))
+check("with the operator's value intact, not the author's default",
+    framework.mods.Carried.pal.settings.greeting == "the operator's own",
+    framework.mods.Carried.pal.settings.greeting)
+check("the stored data comes across too, renamed to .data",
+    Collections.open("carried.notes"):get("OLD") ~= nil
+        and exists_file(CARRIED_HOME .. "/.data")
+        and not exists_file(LEGACY .. "/carried.data"))
+check("and every move is said out loud",
+    table.concat(logged, "\n"):find("moved settings.config into", 1, true) ~= nil,
+    table.concat(logged, "\n"))
+
+-- ── a mod's nodes live with the mod ─────────────────────────────────────────
+-- Groups and grants stay central because they span every mod; the node
+-- declarations belong in the folder of the mod that owns them.
+mkmod("Filed", [[
+return {
+    name = "Filed",
+    permissions = {
+        { node = "filed.one", description = "the first", default = "deny" },
+        { node = "filed.two", description = "the second", default = "allow" },
+    },
+}
+]])
+write(MODS .. "/Palladium/mods.list", "Filed\n")
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local split = Permissions.new(Collections)
+-- An operator had already changed one default, back when every node lived in
+-- the central file.
+split.nodes_c:set("filed.one", { default = "allow", description = "the first" })
+framework.init({
+    collections = Collections,
+    permissions = split,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    store = Store,
+})
+framework.load()
+
+local filed_home = MODS .. "/Palladium/mods/Filed/settings.config"
+check("a mod's nodes are written into its own folder, in settings.config",
+    exists_file(filed_home))
+local filed_text = io.open(filed_home):read("a")
+check("with its declarations in them",
+    filed_text:find("filed.two = allow", 1, true) ~= nil, filed_text)
+check("the operator's earlier default is carried across, not reset",
+    filed_text:find("filed.one = allow", 1, true) ~= nil, filed_text)
+check("and the central file no longer keeps a second copy",
+    split.nodes_c:get("filed.one") == nil)
+check("resolution still finds a node now filed under its mod",
+    (split:resolve("ANYBODY", "filed.one", {})) == true
+        and (split:resolve("ANYBODY", "filed.two", {})) == true)
+check("and nodes() still answers with every mod's, merged",
+    split:nodes()["filed.one"] ~= nil and split:nodes()["filed.two"] ~= nil)
+
+-- Groups did not move: a grant is not any one mod's business.
+local central = io.open(MODS .. "/Palladium/permissions.config"):read("a")
+check("groups stay in the central file", central:find("[groups", 1, true) ~= nil)
+check("and a mod's nodes are not duplicated there",
+    central:find("filed.two", 1, true) == nil, central)
+
+-- ── settings and nodes share one file, and neither eats the other ───────────
+-- The file is rewritten whole whenever a node changes. Settings live above the
+-- first section, so they are copied through — losing them here would silently
+-- reset every mod's tuning the first time anybody touched a permission.
+mkmod("Shared", [[
+return {
+    name = "Shared",
+    settings = { greeting = "author's", interval = 5 },
+    permissions = { { node = "shared.use", description = "use it", default = "deny" } },
+}
+]])
+local shared_home = MODS .. "/Palladium/mods/Shared"
+os.execute("mkdir -p '" .. shared_home .. "'")
+write(shared_home .. "/settings.config", "greeting = the operator's\ninterval = 30\n")
+
+write(MODS .. "/Palladium/mods.list", "Shared\n")
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local shared_perms = Permissions.new(Collections)
+framework.init({
+    collections = Collections,
+    permissions = shared_perms,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    store = Store,
+})
+framework.load()
+
+check("the operator's settings are read from the shared file",
+    framework.mods.Shared.pal.settings.greeting == "the operator's"
+        and framework.mods.Shared.pal.settings.interval == 30,
+    framework.mods.Shared.pal.settings.greeting)
+
+-- Changing a node rewrites the file from scratch; the settings must still be there.
+shared_perms:nodes_of("shared"):set("shared.use", { default = "allow", description = "use it" })
+local merged = io.open(shared_home .. "/settings.config"):read("a")
+check("a node written into it does not take the settings with it",
+    merged:find("greeting = the operator's", 1, true) ~= nil
+        and merged:find("interval = 30", 1, true) ~= nil, merged)
+check("and the node is in there too",
+    merged:find("shared.use = allow", 1, true) ~= nil, merged)
+check("the file reads clean — settings are not reported as junk",
+    #Collections.problems("shared") == 0,
+    table.concat(Collections.problems("shared"), " | "))
+
+-- Rewriting it repeatedly must not grow it: the banner and the section's own
+-- description are render's, and carrying them through would stack a copy each
+-- time anybody touched a permission.
+for round = 1, 3 do
+    shared_perms:nodes_of("shared"):set("shared.use",
+        { default = round % 2 == 1 and "allow" or "deny", description = "use it" })
+end
+local settled = io.open(shared_home .. "/settings.config"):read("a")
+local banners = select(2, settled:gsub("Rewritten whenever", ""))
+local descriptions = select(2, settled:gsub("the permission nodes this mod registers", ""))
+check("the banner appears once however often the file is rewritten", banners == 1, banners)
+check("and so does the section's description", descriptions == 1, descriptions)
+check("with the settings still intact after all of it",
+    settled:find("greeting = the operator's", 1, true) ~= nil, settled)
+
+-- Read back from disk: what a restart would see.
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local reread = Permissions.new(Collections)
+framework.init({ collections = Collections, permissions = reread,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end, store = Store })
+framework.load()
+check("and a restart reads both back",
+    framework.mods.Shared.pal.settings.interval == 30
+        and (reread:resolve("ANYONE", "shared.use", {})) == true,
+    framework.mods.Shared.pal.settings.interval)
 
 say(failures == 0 and "all checks passed" or (failures .. " check(s) failed"))
 os.exit(failures == 0 and 0 or 1)
