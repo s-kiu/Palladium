@@ -1,69 +1,69 @@
 # AdminCommands
 
-Moderator commands in chat: teleport, give, slay, god, freeze, fly and mute. Every one is
-gated by its own permission node, **all denied by default**, so installing this
-mod hands nobody anything until you say so.
-
-A Palladium mod: one `mod.lua`. No panel, no token, no process to run.
-
-## Install
-
-Drop the folder into `./mods` (or your server's UE4SS `Mods` folder if you are
-not running Pal-Up) and restart the server.
-
-```bash
-cp -r "examples/palladium/AdminCommands" mods/
-docker compose restart palworld
-```
-
-Then grant the nodes to the group that should have them, in
-`mods/Palladium/permissions.config`:
-
-```ini
-[groups moderator]
-allow = admincommands.tp
-allow = admincommands.give
-allow = admincommands.slay where target_weight < 12
-```
-
-That last line is worth knowing: a grant can be narrowed by Palladium itself,
-so a moderator can slay players below their own rank and nobody at or above it.
-
-## What appears in the folder
-
-```
-mods/AdminCommands/
-├── mod.lua                      the mod itself
-├── settings.example.config      shipped and commented; reference material
-├── settings.config              yours — the slay announcement
-├── permissions.example.config   shipped and commented
-├── permissions.config           yours — the seven nodes and their defaults
-├── admincommands.data           who is muted, godded, frozen or flying
-└── (nothing else)
-```
+Moderator commands in chat: teleport, give, slay, god, freeze, fly and mute.
+Every one is gated by a node of its own, all denied by default, so installing
+this mod hands nobody anything until you say who.
 
 ## Commands
 
-Targets are written the way chat already writes them: `@Name` for an online
-player, `@me` for yourself, and no target at all also means yourself. A name
-nobody online carries is refused rather than guessed at.
+| Command | Node | What it does |
+|---|---|---|
+| `!tp @Name` | `admincommands.tp` | Go to them. `!tp @Name @Other` sends the first to the second. |
+| `!give @Name <item> [count]` | `admincommands.give` | Hand items over. Item ids are the game's internal names. |
+| `!slay @Name` | `admincommands.slay` | Kill them outright. |
+| `!god @Name` | `admincommands.god` | Toggle near-invulnerability. `off` to be explicit. |
+| `!freeze @Name` | `admincommands.freeze` | Hold them where they stand. Toggle. |
+| `!fly @Name` | `admincommands.fly` | Toggle flight. Needs the [client mod](../../client/AdminControlsClient) on that player's machine. |
+| `!mute @Name` | `admincommands.mute` | Ignore their chat **commands**. Toggle. |
 
-| Command | Does |
-|---|---|
-| `!tp @Name` | Takes **you** to them |
-| `!tp @Name @Other` | Sends the first player to the second |
-| `!give @Name <item> [count]` | Hands over items. Ids are the game's own — gold is `Money`, bread is `Pan`. Answers only once the inventory agrees |
-| `!slay @Name` | Kills them outright |
-| `!god @Name` | Makes them unkillable. **Toggles** — run it again to undo |
-| `!freeze @Name` | Holds them where they stand. Toggles. `@me` works — it stops movement, not chat |
-| `!fly @Name` | Toggles flight. **Needs the [client mod](../../client/AdminControlsClient) installed on that player's game**, and is unverified even then |
-| `!mute @Name` | Ignores their chat **commands**. Toggles |
+Every switch toggles: `!god @Name` turns it on, again turns it off. An explicit
+`on` or `off` still wins, because a script or a second admin should be able to
+say what it means rather than flip whatever it finds. The state lives in this
+mod's own collections, so it survives a restart and two admins see the same
+answer.
 
-Every switch above toggles: `!god @Name` turns it on, `!god @Name` again turns
-it off. An explicit `on` or `off` still wins — `!god @Name off` — because a
-script or a second admin should be able to say what it means rather than flip
-whatever it finds. The state lives in this mod's own collections, so it
-survives a restart and two admins see the same answer.
+## Permission nodes
+
+| Node | Default | Grants |
+|---|---|---|
+| `admincommands.tp` | deny | Teleport yourself, or one player to another. |
+| `admincommands.give` | deny | Hand items to a player. |
+| `admincommands.slay` | deny | Kill a player. |
+| `admincommands.god` | deny | Turn near-invulnerability on and off. |
+| `admincommands.freeze` | deny | Hold a player in place. |
+| `admincommands.fly` | deny | Toggle flight on a player. |
+| `admincommands.mute` | deny | Stop a player using chat commands. |
+
+All denied by default. Grant them to a group, and narrow them further with a
+constraint when you want to — `allow = admincommands.give where item in
+Money,PalSphere and count <= 1000` gives a junior moderator the command
+without the run of the item list.
+
+## Settings
+
+| Key | Default | What it means |
+|---|---|---|
+| `announce_slay` | `true` | Tell everyone when an admin slays somebody, so a death nobody caused in game is not a mystery. `false` keeps it between the admin and the victim. |
+
+## Files
+
+```
+mods/AdminCommands/
+├── mod.lua                   the mod — replaced when you update it
+└── settings.example.config   shipped and commented; reference material
+
+Mods/Palladium/mods/AdminCommands/
+├── settings.config           yours — created from the example on the first load
+│                             that finds none, never overwritten after; its
+│                             [nodes] section holds your node defaults
+├── .data                     who is muted, godded, frozen or flying
+└── generated/commands.ref    what this mod added, written by the framework
+```
+
+## Install
+
+Drop the folder into `./mods` — or your server's UE4SS `Mods` folder if you are
+not running Pal-Up — and restart. Needs Palladium and nothing else.
 
 ## God mode, honestly
 

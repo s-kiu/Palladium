@@ -13,7 +13,7 @@ Read them in this order — each is one file, and each adds one idea:
 |---|---|
 | **[WelcomeKit](WelcomeKit)** | The whole shape: an event handler, settings, a permission node, a tag that survives restarts — and giving items so that "did it arrive" is answered honestly |
 | **[GoldStreak](GoldStreak)** | The smallest useful loop: count something per player with a tag, act every Nth time, and answer a chat command about it |
-| **[TimedRewards](TimedRewards)** | Settlement rather than scheduling: pay every unpaid milestone at or below what a player has earned, so a restart owes nobody double. Also the first mod to keep its permission nodes in a [`permissions.config`](TimedRewards/permissions.example.config) instead of in `mod.lua` |
+| **[TimedRewards](TimedRewards)** | Settlement rather than scheduling: pay every unpaid milestone at or below what a player has earned, so a restart owes nobody double. Two nodes rather than one, so a group can watch the ladder without earning on it |
 | **[Leaderboards](Leaderboards)** | Reacting to the clock: refresh standings on a cadence the operator sets, and answer `!lb` from what was already collected rather than hitting the engine on every command |
 
 And one that is not a tutorial so much as a tool:

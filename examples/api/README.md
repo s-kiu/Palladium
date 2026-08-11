@@ -23,7 +23,7 @@ restart the server. Revoke it from the same page.
 Node 22 or newer, no dependencies, nothing to install:
 
 ```bash
-PALUP_TOKEN=palup_... node examples/palladium+pal-up+token/death-feed.mjs
+PALUP_TOKEN=palup_... node examples/api/death-feed.mjs
 ```
 
 Set `PANEL_URL` if the panel is not on `http://localhost:3000`. Both scripts

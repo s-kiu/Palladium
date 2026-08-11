@@ -14,7 +14,7 @@ Copy the folder into `./mods` and it starts within about ten seconds — no
 restart, because the panel owns the process, not the game.
 
 ```bash
-cp -r examples/palladium+pal-up/DiscordRelay mods/
+cp -r examples/mjs/DiscordRelay mods/
 ```
 
 It runs immediately with no webhook set, logging what it *would* have posted,

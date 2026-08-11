@@ -4,19 +4,18 @@ Three ways to build on a Palworld server, and a worked example of each. They
 differ in one thing — where the code runs — and everything else follows from
 that.
 
-Each folder is named for what you need to run what is inside it, so the ladder
-is the directory listing:
+Each folder is named for what you write in it:
 
-| Folder | Needs | Runs | Reaches the network |
-|---|---|---|---|
-| **[palladium](palladium)** | Palladium, on any UE4SS server | inside the game | no |
-| **[palladium+pal-up](palladium+pal-up)** | Palladium **and** Pal-Up | beside the game, started by the panel | yes |
-| **[palladium+pal-up+token](palladium+pal-up+token)** | Palladium, Pal-Up **and** an API token | wherever you like | yes |
-| **[client](client)** | UE4SS on the **player's game** | on the player's machine | — |
+| Folder | You write | Needs | Runs | Reaches the network |
+|---|---|---|---|---|
+| **[lua](lua)** | `mod.lua` | Palladium, on any UE4SS server | inside the game | no |
+| **[mjs](mjs)** | `mod.mjs` | Palladium **and** Pal-Up | beside the game, started by the panel | yes |
+| **[api](api)** | anything that speaks HTTP | Palladium, Pal-Up **and** an API token | wherever you like | yes |
+| **[client](client)** | `mod.lua` | UE4SS on the **player's game** | on the player's machine | — |
 
-Start with [WelcomeKit](palladium/WelcomeKit), then
-[DiscordRelay](palladium+pal-up/DiscordRelay), then
-[death-feed.mjs](palladium+pal-up+token/death-feed.mjs).
+Start with [WelcomeKit](lua/WelcomeKit), then
+[DiscordRelay](mjs/DiscordRelay), then
+[death-feed.mjs](api/death-feed.mjs).
 
 **Write a Palladium mod by default.** It is one `mod.lua`, it reaches the
 engine directly, it needs nothing running outside the game, and it works on a
