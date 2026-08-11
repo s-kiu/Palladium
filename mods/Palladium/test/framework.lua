@@ -1227,6 +1227,62 @@ check("groups stay in the central file", central:find("[groups", 1, true) ~= nil
 check("and a mod's nodes are not duplicated there",
     central:find("filed.two", 1, true) == nil, central)
 
+-- ── an upgrade keeps the defaults the operator set ─────────────────────────
+-- A mod that kept its nodes in its own permissions.config wrote one section
+-- per node. That file is merged into settings.config on upgrade, and appending
+-- it verbatim parsed as nothing: every default the operator had set reverted
+-- to the mod's own, with only a warning in the log to say so.
+mkmod("Carried", [[
+return {
+    name = "Carried",
+    permissions = {
+        { node = "carried.one", description = "the first", default = "deny" },
+        { node = "carried.two", description = "the second", default = "deny" },
+    },
+}
+]])
+local carried_home = MODS .. "/Palladium/mods/Carried"
+os.execute("mkdir -p '" .. carried_home .. "'")
+write(carried_home .. "/settings.config", "tuning = mine\n")
+write(carried_home .. "/permissions.config", [[
+; Carried — permission nodes.
+
+[carried.one]
+default = allow
+description = the first
+
+[carried.two]
+default = deny
+]])
+
+write(MODS .. "/Palladium/mods.list", "Carried\n")
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local carried = Permissions.new(Collections)
+framework.init({
+    collections = Collections,
+    permissions = carried,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    store = Store,
+})
+framework.load()
+
+local carried_text = io.open(carried_home .. "/settings.config"):read("a")
+check("an upgrade keeps the default the operator set, not the mod's",
+    carried_text:find("carried.one = allow", 1, true) ~= nil, carried_text)
+check("and the resolver agrees with the file",
+    (carried:resolve("ANYBODY", "carried.one", {})) == true
+        and (carried:resolve("ANYBODY", "carried.two", {})) == false)
+check("their settings are still there beside the nodes",
+    carried_text:find("tuning = mine", 1, true) ~= nil, carried_text)
+check("and the file it came from is gone, so there is one config per mod",
+    not exists_file(carried_home .. "/permissions.config"))
+check("the merged nodes parse — a warning would mean they were dropped",
+    Collections.problems() == nil or #Collections.problems() == 0,
+    Collections.problems() and Collections.problems()[1])
+
 -- ── settings and nodes share one file, and neither eats the other ───────────
 -- The file is rewritten whole whenever a node changes. Settings live above the
 -- first section, so they are copied through — losing them here would silently

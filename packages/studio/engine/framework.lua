@@ -297,25 +297,86 @@ local function move_file(from, to)
     return true
 end
 
-local function migrate_home(name)
-    if not host.legacy_home_for or not host.home_for then return end
-    local from, to = host.legacy_home_for(name), host.home_for(name)
-    if from == to then return end
-    if host.store and host.store.ensure_dir then host.store.ensure_dir(to) end
-    -- from → to, and what each is called once it gets there. The store used to
-    -- repeat the mod's name inside its own folder; it is just `.data` now.
-    for _, pair in ipairs({
-        { "settings.config", "settings.config" },
-        { "permissions.config", "permissions.config" },
-        { name:lower() .. ".data", ".data" },
-    }) do
-        local was, becomes = pair[1], pair[2]
-        if not exists(to .. "/" .. becomes) and exists(from .. "/" .. was) then
-            if move_file(from .. "/" .. was, to .. "/" .. becomes) then
-                log(string.format("%s: moved %s into %s as %s", name, was, to, becomes))
+-- The old per-mod permissions.config wrote one section per node:
+--
+--   [bigmod.reward]
+--   default = allow
+--   description = earn the reward on a streak
+--
+-- The settings file writes the same thing as one line under [nodes]. Appending
+-- the old shape verbatim parsed as nothing, so an operator who had set a
+-- default lost it to the mod's own opinion on the first boot after upgrading —
+-- silently in the file, and only as a warning in the log.
+local function translate_nodes(text)
+    local out, count = {}, 0
+    local node, default, description = nil, nil, nil
+    local function flush()
+        if node and default then
+            count = count + 1
+            out[#out + 1] = string.format("%s = %s%s\n", node, default,
+                (description and description ~= "") and ("    ; " .. description) or "")
+        end
+        node, default, description = nil, nil, nil
+    end
+    for raw in (tostring(text) .. "\n"):gmatch("(.-)\n") do
+        local line = raw:gsub("^%s+", ""):gsub("%s+$", "")
+        if line == "" or line:sub(1, 1) == ";" or line:sub(1, 1) == "#" then
+            -- a comment or a blank line ends nothing; sections do
+        else
+            local header = line:match("^%[([^%]]+)%]$")
+            if header then
+                flush()
+                -- `[nodes]` is already the new shape: anything under it is
+                -- carried across as it stands.
+                if header:lower() ~= "nodes" then node = header:lower() end
+            elseif node then
+                local key, value = line:match("^([%w_]+)%s*=%s*(.*)$")
+                if key == "default" then
+                    default = (value:lower() == "allow") and "allow" or "deny"
+                elseif key == "description" then
+                    description = value
+                end
             else
-                log(string.format("%s: could not move %s out of %s — it is still read from there",
-                    name, was, from))
+                local key, value = line:match("^([%w_%.%-]+)%s*=%s*(.*)$")
+                if key and value then
+                    count = count + 1
+                    out[#out + 1] = key:lower() .. " = " .. value .. "\n"
+                end
+            end
+        end
+    end
+    flush()
+    return table.concat(out), count
+end
+
+local function migrate_home(name)
+    if not host.home_for then return end
+    local to = host.home_for(name)
+    local from = host.legacy_home_for and host.legacy_home_for(name)
+    if host.store and host.store.ensure_dir then host.store.ensure_dir(to) end
+
+    -- Moving a folder and tidying what is inside it are two jobs. A mod that
+    -- is already in its folder still has the old files in it, and returning
+    -- early when there was nothing to move left a permissions.config sitting
+    -- there that nothing reads any more — the operator's node defaults with it.
+    if from and from ~= to then
+        -- from → to, and what each is called once it gets there. The store
+        -- used to repeat the mod's name inside its own folder; it is just
+        -- `.data` now.
+        for _, pair in ipairs({
+            { "settings.config", "settings.config" },
+            { "permissions.config", "permissions.config" },
+            { name:lower() .. ".data", ".data" },
+        }) do
+            local was, becomes = pair[1], pair[2]
+            if not exists(to .. "/" .. becomes) and exists(from .. "/" .. was) then
+                if move_file(from .. "/" .. was, to .. "/" .. becomes) then
+                    log(string.format("%s: moved %s into %s as %s", name, was, to, becomes))
+                else
+                    log(string.format(
+                        "%s: could not move %s out of %s — it is still read from there",
+                        name, was, from))
+                end
             end
         end
     end
@@ -344,15 +405,16 @@ local function migrate_home(name)
         local source = io.open(separate, "r")
         local text = source and source:read("a") or ""
         if source then source:close() end
-        -- The banner is regenerated on the next write; carrying it would leave
-        -- two of them in one file.
-        text = text:gsub("^;[^\n]*\n;[^\n]*\n;[^\n]*\n\n?", "")
+        local lines, count = translate_nodes(text)
         local target = io.open(to .. "/settings.config", "a")
         if target then
-            target:write("\n" .. text)
+            if count > 0 then
+                target:write("\n; carried over from permissions.config\n[nodes]\n" .. lines)
+            end
             target:close()
             os.remove(separate)
-            log(string.format("%s: merged permissions.config into settings.config", name))
+            log(string.format("%s: carried %d node default(s) from permissions.config into "
+                .. "settings.config", name, count))
         end
     end
 end
