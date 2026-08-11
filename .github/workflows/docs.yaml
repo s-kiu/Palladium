@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'packages/studio/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs.yaml'
   workflow_dispatch:
@@ -33,7 +34,16 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install mkdocs-material
+      # The Studio is the front door: it is what an operator without a panel
+      # actually opens. The documentation is a whole site of its own and moves
+      # one level down, linked from the Studio and the README.
       - run: mkdocs build --strict || mkdocs build
+      - run: |
+          mkdir -p published/docs
+          cp -r site/. published/docs/
+          cp -r packages/studio/. published/
+          rm -rf published/test published/README.md
+      - run: rm -rf site && mv published site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

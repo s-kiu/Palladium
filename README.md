@@ -19,6 +19,7 @@ What each delivers — and what only the combination can:
 | ***The framework*** | | | |
 | Lua modding — a mod is one `mod.lua` file | ✓ | | ✓ |
 | Permissions: five tiers, groups, constraints, expiry, audit log | ✓ | | ✓ |
+| [Permission studio](https://s-kiu.github.io/Palladium/): who-may-do-what matrix, player lens, command simulator — in any browser, nothing uploaded | ✓ | | ✓ live |
 | Chat commands: `!commands`, `@me` / `@Name`, every capability gated | ✓ | | ✓ |
 | In-game events and actions: chat, joins, deaths, played hours, pal spawns, items, teleports, stats | ✓ | | ✓ |
 | Events and actions published to disk for local programs | ✓ | | ✓ |
@@ -31,7 +32,8 @@ What each delivers — and what only the combination can:
 | ***Only in combination*** | | | |
 | HTTP API with tokens — drive the server from any language | | | ✓ |
 | A form for every capability: searchable pickers, live event stream, stats editor | | | ✓ |
-| Permissions and every mod's data edited in the browser | | | ✓ |
+| The studio live: edits apply as you make them, commands really run | | | ✓ |
+| Every mod's data edited in the browser | | | ✓ |
 | Script mods in JS/TS that reach the network — a Discord relay as a drop-in folder | | | ✓ |
 
 > [!NOTE]
@@ -48,7 +50,7 @@ What each delivers — and what only the combination can:
 
 Everything in this group is Palladium itself, identical on Pal-Up and on a standalone UE4SS server:
 
-- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the five mods that ship with it ([WelcomeKit](examples/palladium/WelcomeKit), [GoldStreak](examples/palladium/GoldStreak), [TimedRewards](examples/palladium/TimedRewards), [Leaderboards](examples/palladium/Leaderboards) and [AdminCommands](examples/palladium/AdminCommands)) are each that one file, doubling as the tutorial.
+- **A mod is one file** — a `mod.lua` returning a table: the events it handles, the chat commands it answers, the permission nodes it owns, the settings an operator may tune, the collections it stores. Loading, validation, sandboxing and dispatch are Palladium's job — and the five mods that ship with it ([WelcomeKit](examples/lua/WelcomeKit), [GoldStreak](examples/lua/GoldStreak), [TimedRewards](examples/lua/TimedRewards), [Leaderboards](examples/lua/Leaderboards) and [AdminCommands](examples/lua/AdminCommands)) are each that one file, doubling as the tutorial.
 
 - **The game surface as capabilities** — over forty actions behind one call: give items, heal, teleport, spawn pals up to bosses, read and write stats and status points, tags, saved locations, announcements. Every parameter is validated against a generated manifest, and every action is also a chat command — and, on Pal-Up, a panel form.
 
@@ -56,7 +58,7 @@ Everything in this group is Palladium itself, identical on Pal-Up and on a stand
 
 - **Permissions that mean something** — dotted nodes with wildcards, groups by weight, per-player overrides, and constraints that narrow a grant to *"may spawn, but only Lamball below level 20"* — or to *"only yourself"* (`where target = @me`), *"only below your rank"* (`where target_weight < 12`), with `or`-alternatives and `until <date>` expiry for a VIP month that ends itself. Five tiers ship as defaults (guest → member → vip → moderator → admins), the whole system is explained line by line in [example.permissions.config](mods/Palladium/example.permissions.config), and every in-game write lands in an audit file.
 
-- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](examples/palladium/TimedRewards) mod pays it out at the hour marks you define.
+- **Chat that answers back** — every capability is a chat command gated by its own node, denied by default: positional arguments matched to the declared parameters (`!spawn_wild BlueDragon_Ice 20 true`), `@me` and `@Name` targeting, `!commands` for what *you* may use, `?command` for how. Playtime is counted per player (`!playtime`), and the shipped [TimedRewards](examples/lua/TimedRewards) mod pays it out at the hour marks you define.
 
 - **Storage an operator can open** — mods declare collections instead of inventing files: `data` records ride an append-only, crash-safe log; `config` records are INI files meant for hand-editing, re-read within seconds of a change, mistakes reported line by line with a did-you-mean. A mod's settings overlay the author's defaults the same live way — tuning a reward needs no restart.
 
@@ -75,7 +77,7 @@ Everything in this group **needs Pal-Up**: it is the server and panel built arou
 - **Web panel** — sign in with the admin password at `http://<host>:3000`: live server status, one-click game updates, online players with kick/ban/unban, mod toggles, backups with one-click create and rollback, server controls with the live log, and a grouped, searchable settings editor with diff-before-apply. It needs **no docker.sock** — it drives the game through its REST API and the shared data volume.
 - **Safe to stream** — one **hide** toggle on the dashboard's Connect card paints a solid block over your public IP, API tokens, player ids and the server log, so a screenshot or a recording cannot leak them. Solid rather than blurred: a blur can be reconstructed from enough frames. Copy-to-clipboard keeps working underneath.
 
-- **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform, and the panel gives it a face: every capability rendered as a form, with searchable pickers (2,400+ items, 750+ pal species), a live event stream, a stats editor, and the permissions page pictured below. Mods that need the network run in the panel instead, in JavaScript or TypeScript.
+- **A modding framework with a GUI** — [Palladium](mods/Palladium) turns the server into a platform, and [Palladium Studio](https://s-kiu.github.io/Palladium/) gives it a face: every capability rendered as a form with searchable pickers (2,400+ items, 750+ pal species), a permission grid that answers with the engine's own resolver, every mod's settings and stored data, a live event stream and a stats editor. The panel embeds it as the Palladium tab; the same page runs standalone in any browser for servers without a panel. Mods that need the network run in the panel instead, in JavaScript or TypeScript.
 
 The Pal-Up panel, page by page — click any image for full size. **Standalone Palladium has no panel**; these pages are what running the full server adds:
 
@@ -235,7 +237,7 @@ return {
 }
 ```
 
-The shipped [WelcomeKit](examples/palladium/WelcomeKit) is this plus delivery verification —
+The shipped [WelcomeKit](examples/lua/WelcomeKit) is this plus delivery verification —
 the kit is only marked claimed once the items verifiably arrived, because the
 engine accepts an unknown item id and reports success having added nothing.
 Notice what the mod never does: it doesn't track who joined before
@@ -276,7 +278,8 @@ can your own tooling.
 
 ### Permissions live in a file
 
-`mods/Palladium/permissions.config` — written by Palladium, edited by you. Every
+`Mods/Palladium/mods/Palladium/permissions.config` — written by Palladium, edited by
+you. Every
 mod keeps its config and records in its own folder the same way, so updating a
 mod leaves them alone and deleting the folder is a clean uninstall:
 
@@ -340,9 +343,9 @@ one auth header and JSON.
 - Writing a mod, both kinds: [docs/mods.md](docs/mods.md)
 - Protocol and endpoints: [docs/bridge.md](docs/bridge.md)
 - Every capability, generated from one manifest: [docs/bridge-reference.md](docs/bridge-reference.md)
-- A worked Palladium mod: [GoldStreak](examples/palladium/GoldStreak)
-- Another: [WelcomeKit](examples/palladium/WelcomeKit) — a starter kit on a player's first ever join
-- Another: [TimedRewards](examples/palladium/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
+- A worked Palladium mod: [GoldStreak](examples/lua/GoldStreak)
+- Another: [WelcomeKit](examples/lua/WelcomeKit) — a starter kit on a player's first ever join
+- Another: [TimedRewards](examples/lua/TimedRewards) — playtime paid out at configurable hour marks, driven by the `player.hour` event, tuned from a `settings.config`
 - The client a script mod runs against: [packages/mod-sdk](packages/mod-sdk)
 - All three kinds, with a worked example of each: [examples/](examples)
 - The framework on its own, for servers not running Pal-Up: [mods/Palladium](mods/Palladium)
@@ -376,7 +379,7 @@ palladium/
 │   ├── GoldStreak/           # a Palladium mod: gold on every fifth respawn
 │   ├── TimedRewards/         # a Palladium mod: rewards at the hour marks you set
 │   └── WelcomeKit/           # a Palladium mod: starter kit for first-time players
-├── examples/palladium+pal-up+token/          # runnable consumers of the event/action API
+├── examples/api/          # runnable consumers of the event/action API
 ├── paks/                     # ← drop loose .pak mods here
 ├── logicmods/                # ← drop Blueprint/LogicMod .paks here
 ├── backups/                  # world snapshots appear here

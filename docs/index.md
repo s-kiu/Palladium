@@ -28,6 +28,13 @@ Two products, one project. Pick your door:
 - **Every event, action and chat command** → the
   [capability reference](bridge-reference.md), generated from one manifest
   so it can never drift from the code
+- **Who may do what on *your* server** → the
+  [Palladium Studio](studio.md) — every command and who can use it, a
+  per-player lens, a command simulator, editing with constraint help. It runs
+  Palladium's own permission engine in the browser tab, so its answers cannot
+  disagree with the game. Standalone against a downloaded
+  `permissions.config` (nothing is uploaded anywhere), and live inside the
+  Pal-Up panel, where edits apply immediately and commands really run
 - **Before exposing anything** → [Security](security.md)
 - **When something is wrong** → [Troubleshooting](troubleshooting.md)
 
@@ -35,13 +42,13 @@ Two products, one project. Pick your door:
 
 Read them before writing your own — each is one file:
 
-- [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/GoldStreak) —
+- [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/examples/lua/GoldStreak) —
   gold on a respawn streak
-- [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/WelcomeKit) —
+- [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/examples/lua/WelcomeKit) —
   a starter kit on a first-ever join, delivery-verified
-- [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/TimedRewards)
+- [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/examples/lua/TimedRewards)
   — rewards at the playtime hour marks the operator defines
-- [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/Leaderboards)
+- [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/examples/lua/Leaderboards)
   — who leads the server, refreshed on the clock's cadence
 
 ## Downloads

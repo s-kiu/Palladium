@@ -112,10 +112,10 @@ docker compose restart palworld     # syncs mods, regenerates mods.txt + mods.li
 ```
 
 Four Palladium mods ship with the project, so you can read a working one
-before writing your own: [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/WelcomeKit)
-(a starter kit on a player's first ever join), [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/GoldStreak)
-(gold on a respawn streak), [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/TimedRewards)
-(rewards at configurable hour marks) and [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/examples/palladium/Leaderboards)
+before writing your own: [WelcomeKit](https://github.com/s-kiu/Palladium/tree/main/examples/lua/WelcomeKit)
+(a starter kit on a player's first ever join), [GoldStreak](https://github.com/s-kiu/Palladium/tree/main/examples/lua/GoldStreak)
+(gold on a respawn streak), [TimedRewards](https://github.com/s-kiu/Palladium/tree/main/examples/lua/TimedRewards)
+(rewards at configurable hour marks) and [Leaderboards](https://github.com/s-kiu/Palladium/tree/main/examples/lua/Leaderboards)
 (`!lb`, refreshed on a clock cadence). All are enabled out of the box.
 
 Disable without deleting: `touch mods/CoolMod/.disabled`. A script mod stops

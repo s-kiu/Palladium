@@ -27,7 +27,7 @@ Rules of thumb when a download page doesn't say which type it is:
 
 ## Writing a Palladium mod
 
-One file. `examples/palladium/GoldStreak/mod.lua` returns a table, and that table is the
+One file. `examples/lua/GoldStreak/mod.lua` returns a table, and that table is the
 whole mod — what it is, what it owns, and what it does:
 
 ![A mod is one file: mod.lua declares permissions, settings, data and commands, and Palladium registers all of it on restart.](img/mod-lifecycle.svg)
@@ -187,7 +187,7 @@ copy. Plain `key = value` lines; dotted keys reach into tables and numeric
 segments make list positions:
 
 ```ini
-; examples/palladium/TimedRewards/settings.config
+; examples/lua/TimedRewards/settings.config
 rewards.1.hours = 1
 rewards.1.item = Money
 rewards.1.count = 250
@@ -211,54 +211,52 @@ There is one set of permissions and one file. A mod asks in-process, the panel
 and script mods ask through `permission.check`, and an operator edits the file
 by hand. All three see the same answer.
 
-### Nodes in a file instead of in mod.lua
+### Changing a node's default without touching the mod
 
-A mod declares its permission nodes in `mod.lua`, which is what keeps a small
-mod one file. A larger one can move them out: a `permissions.config` beside the
-mod declares the same nodes, one section each.
+A mod declares its permission nodes in `mod.lua`, and that is the only place a
+mod declares them. What an operator changes is the *default* — whether a node
+answers allow or deny when no group and no override says anything — and that
+lives in the mod's own `settings.config`, under `[nodes]`:
 
 ```ini
-; mods/BigMod/permissions.config
-[bigmod.reward]
-default = allow
-description = earn the reward on a streak
+; Mods/Palladium/mods/BigMod/settings.config
+reward_every = 5
 
-[bigmod.admin]
-default = deny
-description = administer the mod
+[nodes]
+bigmod.reward = allow    ; earn the reward on a streak
+bigmod.admin = deny      ; administer the mod
 ```
 
-**When that file is present it is the whole truth.** The `permissions` table in
-`mod.lua` is not read at all — not merged, not used as a fallback for nodes the
-file omits — so what an operator reads in the file is exactly what the mod
-owns. Delete the file and the table in `mod.lua` takes over again.
-
-It follows the same rules the table does: every node must start with the mod's
-own lowercased name, and `default` is `allow` or `deny`. And it seeds the same
-way as settings — ship a commented `permissions.example.config` next to your
-code and the first load that finds no live `permissions.config` copies it over,
-so a fresh install has a real file to open. Updates refresh the example only.
+One config per mod folder, so there is never a second file saying something
+different. The studio writes this section for you — the **default** column in
+the permission grid is exactly these lines — and a hand edit is picked up on
+the next server restart, because nodes register as a mod loads.
 
 Full-line comments (`;` or `#`) only. A line that makes no sense is named with
-its number in the log and skipped; the nodes that do parse still register, so
-one typo never costs you the file. Unlike settings, nodes are registered as a
-mod loads, so an edit here applies at the next server restart.
+its number in the log and skipped; the rest of the file still applies.
 
 ## Every mod keeps its own files
 
 A mod's config and its records live **in its own folder**, beside the code:
 
 ```
-examples/palladium/GoldStreak/
-├── mod.lua                 the mod — replaced when you update it
-├── settings.config         your settings for it, if it ships an example
-├── permissions.config      its nodes, if it keeps them in a file
-├── goldstreak.config       a collection it declared with storage = "config"
-└── goldstreak.data         its records
-mods/Palladium/
-├── permissions.config      groups, grants and node defaults — central
-└── bridge.data             the player registry, tags, locations, species
+Mods/Palladium/mods/
+├── Palladium/
+│   ├── permissions.config  groups, grants and node defaults — central
+│   ├── .data               the player registry, tags, locations, species
+│   └── generated/          written by the build; do not edit
+│       └── catalog.ref     every item, species and trait id, with its name
+└── GoldStreak/
+    ├── settings.config     your settings for it, and its nodes
+    ├── .data               its records
+    ├── goldstreak.config   a collection it declared with storage = "config"
+    └── generated/
+        └── commands.ref    the commands it adds, as the engine sees them
 ```
+
+Palladium keeps its own folder in the same shape as a mod's, so there is one
+rule rather than two: a folder per owner, its config at the top, its records in
+`.data`, and anything the build wrote under `generated/`.
 
 Updating a mod means unzipping the new folder over the old one, and a release
 archive contains only what the author shipped — never the generated files — so
@@ -273,7 +271,8 @@ before installing it.
 
 ![Permission resolution: a call descends player overrides, groups by weight, the default group and the node default; a where-constraint on the matched grant decides allow or deny.](img/permission-ladder.svg)
 
-`mods/Palladium/permissions.config`, written by Palladium and yours to edit:
+`Mods/Palladium/mods/Palladium/permissions.config`, written by Palladium and
+yours to edit:
 
 ```ini
 ; groups: what they allow and deny, and which one everybody is in
@@ -455,7 +454,7 @@ types follow:
 end
 ```
 
-**Script mods.** A root [`jsconfig.json`](../jsconfig.json) maps
+**Script mods.** A root [`jsconfig.json`](https://github.com/s-kiu/Palladium/blob/main/jsconfig.json) maps
 `@pal-up/mod-sdk` to the types, so a mod written anywhere in this repository
 completes with no `npm install` and no build step — VS Code, VSCodium and
 anything else running the TypeScript language server pick it up from the

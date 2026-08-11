@@ -9,7 +9,7 @@ panel re-exposes both over HTTP.
 The full list of events and actions — with parameters, stability and which
 runtime serves them — is generated from one manifest and lives in
 [bridge-reference.md](bridge-reference.md). This page is the protocol; runnable
-examples live in [`examples/palladium+pal-up+token/`](https://github.com/s-kiu/Palladium/tree/main/examples/palladium+pal-up+token).
+examples live in [`examples/api/`](https://github.com/s-kiu/Palladium/tree/main/examples/api).
 
 ![Events out, actions in: Palladium inside the game server writes bridge-events.jsonl and consumes bridge-actions.jsonl; your program sits on the other side of both files.](img/bridge-files.svg)
 
@@ -92,6 +92,19 @@ The answer is a result envelope. HTTP status is about the *protocol* (unknown
 type, bad params, missing scope, timeout); `ok` inside the envelope is about
 the *game* ("player not online"). A call that reaches the game and fails there
 is HTTP 200 with `ok: false`.
+
+The permission state itself has a raw-file door, which is how the
+[Palladium Studio](studio.md) mirrors a live server:
+
+```
+GET /api/bridge/permissions-file            → {"text": "<permissions.config>"}
+PUT /api/bridge/permissions-file  {"text"}  → replaces it, as a hand edit would
+```
+
+The GET needs the `read` scope, the PUT `write`. Prefer the capabilities
+(`group.set_entry`, `permission.grant`, …) for changes — they keep the game
+the single writer and land in the audit log; the PUT exists for what no
+capability says, and a running server re-reads the file within seconds.
 
 Discovery is part of the API:
 
@@ -178,7 +191,7 @@ themselves; nobody types coordinates.
 
 The panel answers `!ping` itself (broadcasts `pong`, one command per player per
 2 s). Everything beyond that belongs outside: read `player.chat`, call actions
-— [`chat-shop.mjs`](https://github.com/s-kiu/Palladium/tree/main/examples/palladium+pal-up+token/chat-shop.mjs) adds `!kit`, `!heal`,
+— [`chat-shop.mjs`](https://github.com/s-kiu/Palladium/tree/main/examples/api/chat-shop.mjs) adds `!kit`, `!heal`,
 `!gold` and `!deaths` without touching mod, daemon or panel.
 
 ## The two doors that are not HTTP
@@ -232,7 +245,7 @@ page and the command starts working for its members; the constraint syntax can
 narrow it further ("only Lamball", "only below level 20") without changing the
 mod. The full format is in [docs/mods.md](mods.md); a program that is a tool
 rather than a mod uses the same capabilities over plain HTTP, as in
-[`examples/palladium+pal-up+token/`](https://github.com/s-kiu/Palladium/tree/main/examples/palladium+pal-up+token).
+[`examples/api/`](https://github.com/s-kiu/Palladium/tree/main/examples/api).
 
 ## Placed pals and wild pals
 

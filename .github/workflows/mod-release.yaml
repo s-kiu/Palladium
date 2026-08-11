@@ -18,8 +18,8 @@ on:
     branches: [main]
     paths:
       - 'mods/Palladium/**'
-      - 'examples/palladium/**'
-      - 'examples/palladium+pal-up/**'
+      - 'examples/lua/**'
+      - 'examples/mjs/**'
       - '.github/workflows/mod-release.yaml'
   # Run it by hand from the Actions tab: useful for re-cutting a release
   # without a dummy commit, and the quickest way to tell whether Actions is
@@ -47,10 +47,10 @@ jobs:
           # it are examples first, and live where they are read.
           if [ -d "mods/${{ matrix.mod }}" ]; then
             dir="mods/${{ matrix.mod }}"
-          elif [ -d "examples/palladium/${{ matrix.mod }}" ]; then
-            dir="examples/palladium/${{ matrix.mod }}"
-          elif [ -d "examples/palladium+pal-up/${{ matrix.mod }}" ]; then
-            dir="examples/palladium+pal-up/${{ matrix.mod }}"
+          elif [ -d "examples/lua/${{ matrix.mod }}" ]; then
+            dir="examples/lua/${{ matrix.mod }}"
+          elif [ -d "examples/mjs/${{ matrix.mod }}" ]; then
+            dir="examples/mjs/${{ matrix.mod }}"
           else
             echo "no folder for ${{ matrix.mod }}" >&2; exit 1
           fi

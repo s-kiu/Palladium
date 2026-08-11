@@ -75,25 +75,34 @@ in the log and skipped, not a reason for the server to go down.
 
 ## What it remembers
 
-Every mod keeps its own files in its own folder: `<Mod>/<mod>.config` for what
-an operator edits, `<Mod>/<mod>.data` for its records. Palladium's own live
-beside it — `Palladium/permissions.config` and `Palladium/bridge.data`. Both
-formats are plain text: INI for config, tab-separated records for data, because
-this runtime has no JSON parser and no database.
+Everything lives under `Mods/Palladium/mods/`, one folder per owner — the
+framework included, so its folder reads like any mod's:
 
-Settings ride the same folder. A mod may ship a commented
-`settings.example.config` beside its code; on the first load with no live
-`settings.config`, the example becomes it. From then on the operator's file
-overrides the manifest defaults key by key, edits are picked up within seconds
-without a restart, and updating the mod never touches it.
+```
+Mods/Palladium/mods/
+├── Palladium/
+│   ├── permissions.config  groups, per-player grants, and the built-in nodes
+│   ├── .data               the player registry, tags, playtime, locations
+│   └── generated/          written by the build; not yours to edit
+└── <Mod>/
+    ├── settings.config     what an operator edits, nodes included
+    ├── .data               that mod's records
+    └── generated/          the command reference, written by the framework
+```
 
-Permission nodes work the same way for mods too big to keep them in `mod.lua`:
-a `permissions.config` beside the mod declares them, one `[node]` section each
-with `default` and `description`, seeded from a shipped
-`permissions.example.config` on first load. When that file is present it is the
-whole truth — the `permissions` table in `mod.lua` is not read — so an operator
-has one place to look. Nodes register as a mod loads, so edits apply on the
-next restart.
+Both formats are plain text: INI for config, tab-separated records for data,
+because this runtime has no JSON parser and no database.
+
+A mod may ship a commented `settings.example.config` beside its code; on the
+first load with no live `settings.config`, the example becomes it. From then on
+the operator's file overrides the manifest defaults key by key, edits are picked
+up within seconds without a restart, and updating the mod never touches it.
+
+A mod's permission nodes are declared in `mod.lua` and nowhere else. What an
+operator changes is a node's default, in the `[nodes]` section of that mod's
+`settings.config` — one config per folder, so there is never a second file
+saying something different. Nodes register as a mod loads, so an edit there
+applies on the next restart.
 
 Permissions are one file rather than one per mod: a group spans every mod, so
 splitting membership across them would leave no answer for which copy wins.
