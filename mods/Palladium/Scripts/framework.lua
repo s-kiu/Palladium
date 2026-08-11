@@ -269,9 +269,18 @@ local function parse_settings(content)
     return overlay
 end
 
+-- Where a mod's files actually are. Usually the folder under Palladium/mods,
+-- but a host that refuses to create directories gets the flat layout instead
+-- of a home that is not there — migrate_home records the verdict per mod.
+local homes = {}
+
+local function home_of(name)
+    if homes[name] then return homes[name] end
+    return host.home_for and host.home_for(name) or (host.mods_dir .. "/" .. name)
+end
+
 local function settings_path(name)
-    local home = host.home_for and host.home_for(name) or (host.mods_dir .. "/" .. name)
-    return home .. "/settings.config"
+    return home_of(name) .. "/settings.config"
 end
 
 -- ── carrying an older install across ────────────────────────────────────────
@@ -351,13 +360,29 @@ local function migrate_home(name)
     if not host.home_for then return end
     local to = host.home_for(name)
     local from = host.legacy_home_for and host.legacy_home_for(name)
-    if host.store and host.store.ensure_dir then host.store.ensure_dir(to) end
+
+    -- The new home is only the home once it demonstrably takes files. On a
+    -- host that refuses to create directories — some Windows providers allow
+    -- no shell at all — pointing everything at a folder that is not there
+    -- reads as the mod losing its config and answering nothing: the files sit
+    -- intact in the old place while nothing looks at them. The flat layout
+    -- worked without creating a single directory, so it is the fallback.
+    if host.store and host.store.ensure_dir and not host.store.ensure_dir(to) then
+        if from and from ~= to then
+            homes[name] = from
+            log(string.format(
+                "%s: cannot create %s — the host refused; its files stay in %s. "
+                .. "Create the folder by hand to adopt the new layout.",
+                name, to, from))
+        end
+    end
+    local home = home_of(name)
 
     -- Moving a folder and tidying what is inside it are two jobs. A mod that
     -- is already in its folder still has the old files in it, and returning
     -- early when there was nothing to move left a permissions.config sitting
     -- there that nothing reads any more — the operator's node defaults with it.
-    if from and from ~= to then
+    if from and from ~= home then
         -- from → to, and what each is called once it gets there. The store
         -- used to repeat the mod's name inside its own folder; it is just
         -- `.data` now.
@@ -365,11 +390,14 @@ local function migrate_home(name)
             { "settings.config", "settings.config" },
             { "permissions.config", "permissions.config" },
             { name:lower() .. ".data", ".data" },
+            -- A boot that could not make the folder renamed the store in
+            -- place; when a later one can, the records must come along too.
+            { ".data", ".data" },
         }) do
             local was, becomes = pair[1], pair[2]
-            if not exists(to .. "/" .. becomes) and exists(from .. "/" .. was) then
-                if move_file(from .. "/" .. was, to .. "/" .. becomes) then
-                    log(string.format("%s: moved %s into %s as %s", name, was, to, becomes))
+            if not exists(home .. "/" .. becomes) and exists(from .. "/" .. was) then
+                if move_file(from .. "/" .. was, home .. "/" .. becomes) then
+                    log(string.format("%s: moved %s into %s as %s", name, was, home, becomes))
                 else
                     log(string.format(
                         "%s: could not move %s out of %s — it is still read from there",
@@ -381,16 +409,16 @@ local function migrate_home(name)
 
     -- A folder already moved by an earlier version still carries the old
     -- store name; rename it in place rather than starting an empty one.
-    if not exists(to .. "/.data") and exists(to .. "/" .. name:lower() .. ".data") then
-        if move_file(to .. "/" .. name:lower() .. ".data", to .. "/.data") then
+    if not exists(home .. "/.data") and exists(home .. "/" .. name:lower() .. ".data") then
+        if move_file(home .. "/" .. name:lower() .. ".data", home .. "/.data") then
             log(string.format("%s: renamed %s.data to .data", name, name:lower()))
         end
     end
 
     -- An earlier version wrote the command reference as a config beside the
     -- others, where it read as something an operator should edit.
-    if exists(to .. "/commands.config") then
-        os.remove(to .. "/commands.config")
+    if exists(home .. "/commands.config") then
+        os.remove(home .. "/commands.config")
         log(string.format("%s: removed commands.config — it is generated/commands.ref now", name))
     end
 
@@ -398,13 +426,13 @@ local function migrate_home(name)
     -- mod's node list once groups moved out, so it is appended to the settings
     -- file and dropped — a folder with two config files invites editing the
     -- wrong one.
-    local separate = to .. "/permissions.config"
+    local separate = home .. "/permissions.config"
     if exists(separate) then
         local source = io.open(separate, "r")
         local text = source and source:read("a") or ""
         if source then source:close() end
         local lines, count = translate_nodes(text)
-        local target = io.open(to .. "/settings.config", "a")
+        local target = io.open(home .. "/settings.config", "a")
         if target then
             if count > 0 then
                 target:write("\n; carried over from permissions.config\n[nodes]\n" .. lines)
@@ -668,7 +696,7 @@ local function describe_param(p)
 end
 
 local function write_commands(name, mod)
-    local home = host.home_for and host.home_for(name)
+    local home = host.home_for and home_of(name)
     if not home then return end
     local words = framework.command_words(mod)
 
@@ -756,7 +784,7 @@ function framework.load()
             -- collection declared before it is known would land in the
             -- fallback and be invisible from then on.
             if entry.ok and host.collections then
-                host.collections.home(name, host.home_for and host.home_for(name) or dir)
+                host.collections.home(name, host.home_for and home_of(name) or dir)
             end
             -- A mod's nodes are registered whether or not anyone has granted
             -- them: the panel lists what exists, and a default of "deny" only
@@ -1350,6 +1378,7 @@ end
 function framework.init(options)
     for key, value in pairs(options or {}) do host[key] = value end
     aliases = nil -- capabilities may have changed; the alias map follows them
+    homes = {}   -- home verdicts belong to one boot, not to the process
     return framework
 end
 

@@ -1283,6 +1283,79 @@ check("the merged nodes parse — a warning would mean they were dropped",
     Collections.problems() == nil or #Collections.problems() == 0,
     Collections.problems() and Collections.problems()[1])
 
+-- ── a host that cannot make directories keeps the flat layout ──────────────
+-- Some Windows providers allow no shell, and plain Lua has no other way to
+-- create a directory. 4.26 never needed one; the folder layout does. On such
+-- a host the mod must keep reading and writing the old places rather than
+-- pointing at a folder that is not there — which read as every group gone.
+mkmod("Flat", [[
+return {
+    name = "Flat",
+    settings = { greeting = "author's" },
+    permissions = { { node = "flat.use", description = "use it", default = "deny" } },
+}
+]])
+write(MODS .. "/Flat/settings.config", "greeting = the operator's\n")
+write(MODS .. "/Flat/flat.data", "flat.marks\tid=AAAA\tvalue=1\n")
+write(MODS .. "/Flat/permissions.config", "[flat.use]\ndefault = allow\n")
+
+write(MODS .. "/Palladium/mods.list", "Flat\n")
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local flat_perms = Permissions.new(Collections)
+local refused_lines = {}
+framework.init({
+    collections = Collections,
+    permissions = flat_perms,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    -- the host in question: every attempt to make a directory is refused
+    store = { ensure_dir = function() return false end },
+    info = function(line) refused_lines[#refused_lines + 1] = tostring(line) end,
+})
+framework.load()
+
+check("a refusing host still loads the mod",
+    framework.mods.Flat and framework.mods.Flat.ok == true,
+    framework.mods.Flat and framework.mods.Flat.error)
+check("the operator's default still answers — allow, not the mod's deny",
+    (flat_perms:resolve("ANYBODY", "flat.use", {})) == true)
+local flat_text = io.open(MODS .. "/Flat/settings.config"):read("a")
+check("their node default was carried into settings.config, in place",
+    flat_text:find("flat.use = allow", 1, true) ~= nil, flat_text)
+check("and the old permissions.config is gone — one config, even flat",
+    not exists_file(MODS .. "/Flat/permissions.config"))
+check("the store was renamed to .data without needing a directory",
+    exists_file(MODS .. "/Flat/.data"))
+check("nothing was written under the folder that could not be made",
+    not exists_file(MODS .. "/Palladium/mods/Flat/settings.config"))
+local said = table.concat(refused_lines, "\n")
+check("and the log says what happened and what to do",
+    said:find("the host refused", 1, true) ~= nil
+        and said:find("by hand", 1, true) ~= nil, said)
+
+-- The verdict is per boot: once the folder can be made — the operator made it
+-- by hand, or the host relented — the same install adopts the layout.
+Collections.reset()
+Collections.init({ root = ROOT, info = function() end })
+Collections.home("bridge", MODS .. "/Palladium")
+local relented = Permissions.new(Collections)
+framework.init({
+    collections = Collections,
+    permissions = relented,
+    home_for = function(n) return MODS .. "/Palladium/mods/" .. n end,
+    legacy_home_for = function(n) return MODS .. "/" .. n end,
+    store = Store,
+    info = function() end,
+})
+framework.load()
+check("the next boot with a willing host moves the files across",
+    exists_file(MODS .. "/Palladium/mods/Flat/settings.config")
+        and exists_file(MODS .. "/Palladium/mods/Flat/.data"))
+check("and the operator's default still answers after the move",
+    (relented:resolve("ANYBODY", "flat.use", {})) == true)
+
 -- ── settings and nodes share one file, and neither eats the other ───────────
 -- The file is rewritten whole whenever a node changes. Settings live above the
 -- first section, so they are copied through — losing them here would silently

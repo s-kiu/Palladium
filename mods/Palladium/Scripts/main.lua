@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.27.2"
+local VERSION = "4.27.3"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -106,8 +106,6 @@ Collections.init({ root = PAL_ROOT, info = info, home_for = home_for })
 do
     local mods_root = (MODS_SOURCE or MODS_DIR) .. "/" .. MOD .. "/mods"
     local own = mods_root .. "/" .. MOD
-    Store.ensure_dir(own)
-    Store.ensure_dir(own .. "/generated")
 
     local function carry(from, to)
         if Store.path_exists(to) then return end
@@ -122,19 +120,37 @@ do
         os.remove(from)
         info("moved " .. from .. " to " .. to)
     end
-    -- Two layouts came before this one: everything directly in Palladium/, then
-    -- a mods/ folder with the config loose in it and the records under bridge/.
     local was = (MODS_SOURCE or MODS_DIR) .. "/" .. MOD
-    carry(was .. "/permissions.config", own .. "/permissions.config")
-    carry(was .. "/bridge.data", own .. "/.data")
-    carry(mods_root .. "/permissions.config", own .. "/permissions.config")
-    carry(mods_root .. "/bridge/.data", own .. "/.data")
-    carry(mods_root .. "/catalog.ref", own .. "/generated/catalog.ref")
-    os.remove(mods_root .. "/bridge")
 
-    -- Home is enough: the permissions file and the records both live in it, so
-    -- there is nothing left to pin somewhere else.
-    Collections.home("bridge", own)
+    -- The folder is only home once it demonstrably takes files. A host that
+    -- refuses to create directories — no shell, or a locked-down panel — used
+    -- to leave this pointing at a folder that was not there: the operator's
+    -- permissions.config sat intact in the old place while nothing read it,
+    -- groups vanished and every command denied. The flat layout never needed
+    -- a directory made, so it is what a refusing host keeps.
+    if Store.ensure_dir(own) then
+        Store.ensure_dir(own .. "/generated")
+        -- Two layouts came before this one: everything directly in
+        -- Palladium/, then a mods/ folder with the config loose in it and the
+        -- records under bridge/.
+        carry(was .. "/permissions.config", own .. "/permissions.config")
+        carry(was .. "/bridge.data", own .. "/.data")
+        carry(mods_root .. "/permissions.config", own .. "/permissions.config")
+        carry(mods_root .. "/bridge/.data", own .. "/.data")
+        carry(mods_root .. "/catalog.ref", own .. "/generated/catalog.ref")
+        os.remove(mods_root .. "/bridge")
+
+        -- Home is enough: the permissions file and the records both live in
+        -- it, so there is nothing left to pin somewhere else.
+        Collections.home("bridge", own)
+    else
+        info("cannot create " .. own .. " — the host refused; keeping the flat layout. "
+            .. "Create the folder by hand to adopt the new one.")
+        -- The store dropped the owner's name from its filename; that rename
+        -- needs no new directory, so it still happens here.
+        carry(was .. "/bridge.data", was .. "/.data")
+        Collections.home("bridge", was)
+    end
 end
 local perms = Permissions.new(Collections)
 perms:seed_tiers()
