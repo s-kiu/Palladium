@@ -120,7 +120,12 @@ async function bridgeCall(type, target, data) {
   }
   const result = await api("POST", "/api/bridge/call", { type, target: target || "", data: clean });
   if (result.ok === false) {
-    throw new Error(type + ": " + (result.error || "the server refused"));
+    // This one runs inside the game, so "no answer" means the agent did not
+    // pick the action up — a stopped server, not a refused request.
+    const why = /timed? ?out|no answer/i.test(String(result.error || ""))
+      ? "the game did not answer within six seconds — is the server running?"
+      : (result.error || "the server refused");
+    throw new Error(type + ": " + why);
   }
   return result;
 }
@@ -149,6 +154,24 @@ const LIVE_OPS = {
 // thirty cells re-rendered the whole page thirty times, synchronously, which
 // is exactly as responsive as it sounds.
 async function edit(op, fields, defer) {
+  // Live, a write is a round trip into the running game: the daemon queues the
+  // action and waits up to six seconds for the agent to pick it up and answer.
+  // With nothing on screen saying so, that reads as a frozen page — and the
+  // second click it invites queues a second action.
+  const live = backend.mode === "live" && backend.authenticated && !backend.sandbox;
+  if (live && !defer) {
+    busy(true);
+    await breathe();
+    try {
+      return await applyEdit(op, fields, defer);
+    } finally {
+      busy(false);
+    }
+  }
+  return applyEdit(op, fields, defer);
+}
+
+async function applyEdit(op, fields, defer) {
   if (backend.mode === "live" && backend.authenticated && !backend.sandbox) {
     if (op === "set_default") {
       // No capability flips an operator default — that is the hand-edit path,
@@ -466,13 +489,29 @@ function membership(info) {
 
 // Asked before anything that cannot be taken back. The promise resolves only
 // on yes, so a cancelled question simply never runs the work.
+// showModal() on a dialog inside a display:none ancestor raises the backdrop
+// and renders nothing: the page stops taking clicks and there is no dialog to
+// answer. Every dialog here lives outside the panels for that reason, and this
+// refuses to open one that has been moved back in rather than locking the tab.
+function openDialog(id) {
+  const dialog = $(id);
+  dialog.showModal();
+  if (dialog.getBoundingClientRect().width === 0) {
+    dialog.close();
+    throw new Error("the " + id + " cannot be shown from here — it is inside a hidden panel");
+  }
+}
+
 function confirmThen(question, run) {
   $("confirmtitle").textContent = question.title;
   $("confirmbody").textContent = question.body;
   $("confirmyes").textContent = question.verb;
   const dialog = $("confirmdialog");
   return new Promise((resolve) => {
+    let settled = false;
     const close = (go) => {
+      if (settled) return;
+      settled = true;
       dialog.close();
       $("confirmyes").onclick = null;
       $("confirmno").onclick = null;
@@ -480,7 +519,10 @@ function confirmThen(question, run) {
     };
     $("confirmyes").onclick = () => close(true);
     $("confirmno").onclick = () => close(false);
-    dialog.showModal();
+    // Escape closes a dialog without either button; without this the promise
+    // never settles and whatever was waiting on it waits forever.
+    dialog.addEventListener("close", () => close(false), { once: true });
+    openDialog("confirmdialog");
     $("confirmno").focus();
   });
 }
@@ -720,7 +762,7 @@ function openMemberDialog(group) {
   $("memberdialogname").textContent = "Add somebody to " + group;
   $("pid").value = "";
   $("pid").dataset.group = group;
-  $("memberdialog").showModal();
+  openDialog("memberdialog");
 }
 
 // One line at the top saying what happens to an edit, per connection.
@@ -1065,12 +1107,18 @@ function refreshSettings() {
 async function editSetting(mod, key, value) {
   const wrote = ask("set_setting", { mod, key, value });
   if (backend.mode === "live" && backend.authenticated && !backend.sandbox) {
-    const file = ask("render").files.find((f) => f.name === wrote.file);
-    await api("PUT", "/api/bridge/permissions-file", {
-      mod: wrote.mod,
-      text: file ? file.text : "",
-    });
-    await liveLoad();
+    busy(true);
+    await breathe();
+    try {
+      const file = ask("render").files.find((f) => f.name === wrote.file);
+      await api("PUT", "/api/bridge/permissions-file", {
+        mod: wrote.mod,
+        text: file ? file.text : "",
+      });
+      await liveLoad();
+    } finally {
+      busy(false);
+    }
   } else {
     markUnsaved();
     refreshAll();
@@ -1501,7 +1549,7 @@ function openShow(action, target, params) {
     block.appendChild(pre);
     host.appendChild(block);
   }
-  $("showdialog").showModal();
+  openDialog("showdialog");
 }
 
 // The clipboard API needs a permission this page does not always have — inside
@@ -2119,7 +2167,7 @@ function openCellEditor(kind, name, node, cell) {
   $("celluntil").value = (decidedHere && cell.until_stamp) || "";
   renderCellFields(node);
   attachSuggest($("cellwhere"), constraintSuggestions(node));
-  $("celldialog").showModal();
+  openDialog("celldialog");
 }
 
 // A 32-hex id names nobody. Whenever something knows the person behind one —
@@ -2399,7 +2447,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     const { target, params } = commandValues();
     const out = $("cmdout");
     out.textContent = "";
-    const result = await bridgeCall(chosenCommand.node, target, params);
+    busy(true);
+    await breathe();
+    let result;
+    try {
+      result = await bridgeCall(chosenCommand.node, target, params);
+    } finally {
+      busy(false);
+    }
     const line = document.createElement("p");
     line.className = result.ok === true ? "did" : "not";
     const bits = Object.entries(result.data || {})
@@ -2521,7 +2576,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("gnew").onclick = () => {
     $("gname").value = ""; $("gweight").value = ""; $("gtag").value = "";
-    $("groupdialog").showModal();
+    openDialog("groupdialog");
   };
   $("gclose").onclick = () => $("groupdialog").close();
   $("gsave").onclick = guarded(async () => {
@@ -3028,7 +3083,7 @@ async function openStats(kind, id, name) {
   $("statsresult").textContent = "reading…";
   $("statuspoints").textContent = "";
   renderStats();
-  $("statsdialog").showModal();
+  openDialog("statsdialog");
   try {
     const reply = kind === "player"
       ? await bridgeCall("player.stats", id, {})
@@ -3149,9 +3204,16 @@ async function saveStats() {
     $("statsresult").textContent = "nothing to change";
     return;
   }
-  const reply = statsTarget.kind === "player"
-    ? await bridgeCall("player.set_stats", statsTarget.id, data)
-    : await bridgeCall("pal.set_stats", null, { pal: statsTarget.id, ...data });
+  busy(true);
+  await breathe();
+  let reply;
+  try {
+    reply = statsTarget.kind === "player"
+      ? await bridgeCall("player.set_stats", statsTarget.id, data)
+      : await bridgeCall("pal.set_stats", null, { pal: statsTarget.id, ...data });
+  } finally {
+    busy(false);
+  }
   statsValues = reply.data?.stats || statsValues;
   $("statsresult").textContent = "saved — " + Object.keys(data).join(", ");
   renderStats();

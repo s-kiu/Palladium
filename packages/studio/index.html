@@ -259,43 +259,10 @@ if (new URLSearchParams(location.search).has("embed")) {
       <span class="fine">A group is a name, a weight, and optionally a tag shown in chat.</span>
     </div>
 
-    <dialog id="groupdialog">
-      <h3 id="groupdialogname">New group</h3>
-      <div class="row">
-        <label>name <input id="gname" aria-label="Group name" size="14"></label>
-        <label>weight <input id="gweight" aria-label="Group weight" size="6" type="number"></label>
-        <label>tag <input id="gtag" aria-label="Group tag" placeholder="shown in chat" size="12"></label>
-      </div>
-      <p class="fine">Weight decides which group wins when two disagree — higher first.</p>
-      <div class="row">
-        <button id="gsave" type="button">Add group</button>
-        <button id="gclose" type="button" class="quiet">Close</button>
-      </div>
-    </dialog>
 
     <!-- Deleting a group takes every grant in it with it, and there is no undo
        short of reloading the file. One question first. -->
-  <dialog id="confirmdialog">
-    <h3 id="confirmtitle"></h3>
-    <p id="confirmbody" class="fine"></p>
-    <div class="row">
-      <button id="confirmyes" type="button" class="danger"></button>
-      <button id="confirmno" type="button" class="quiet">Cancel</button>
-    </div>
-  </dialog>
 
-  <dialog id="memberdialog">
-      <h3 id="memberdialogname"></h3>
-      <div class="row">
-        <label class="grow">player
-          <input id="pid" aria-label="Player" placeholder="a name, or a 32-hex id">
-        </label>
-        <button id="passign" type="button">Add to group</button>
-        <button id="pclose" type="button" class="quiet">Close</button>
-      </div>
-      <p class="fine">A player's id is the 32-hex <code>playerId</code> the REST API and the panel
-        show. Type a name to pick somebody this config already knows.</p>
-    </dialog>
   </section>
 
 
@@ -420,6 +387,45 @@ if (new URLSearchParams(location.search).has("embed")) {
     <p class="fine" id="cmdtablenote"></p>
     <div class="scroll"><table id="commands" class="plain"></table></div>
   </section>
+
+<!-- Every dialog lives out here, not inside the panel that opens it. A
+     <dialog> in a display:none ancestor still raises its backdrop when
+     showModal() is called, so the page stops taking clicks while the
+     dialog itself is 0x0 and invisible — which reads as a frozen tab. -->
+<dialog id="groupdialog">
+      <h3 id="groupdialogname">New group</h3>
+      <div class="row">
+        <label>name <input id="gname" aria-label="Group name" size="14"></label>
+        <label>weight <input id="gweight" aria-label="Group weight" size="6" type="number"></label>
+        <label>tag <input id="gtag" aria-label="Group tag" placeholder="shown in chat" size="12"></label>
+      </div>
+      <p class="fine">Weight decides which group wins when two disagree — higher first.</p>
+      <div class="row">
+        <button id="gsave" type="button">Add group</button>
+        <button id="gclose" type="button" class="quiet">Close</button>
+      </div>
+    </dialog>
+<dialog id="confirmdialog">
+    <h3 id="confirmtitle"></h3>
+    <p id="confirmbody" class="fine"></p>
+    <div class="row">
+      <button id="confirmyes" type="button" class="danger"></button>
+      <button id="confirmno" type="button" class="quiet">Cancel</button>
+    </div>
+  </dialog>
+<dialog id="memberdialog">
+      <h3 id="memberdialogname"></h3>
+      <div class="row">
+        <label class="grow">player
+          <input id="pid" aria-label="Player" placeholder="a name, or a 32-hex id">
+        </label>
+        <button id="passign" type="button">Add to group</button>
+        <button id="pclose" type="button" class="quiet">Close</button>
+      </div>
+      <p class="fine">A player's id is the 32-hex <code>playerId</code> the REST API and the panel
+        show. Type a name to pick somebody this config already knows.</p>
+    </dialog>
+
 </main>
 
 <footer>
