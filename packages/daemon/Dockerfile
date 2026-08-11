@@ -28,6 +28,9 @@ COPY --from=daemon /daemon/dist ./dist
 COPY --from=daemon /daemon/node_modules ./node_modules
 COPY --from=daemon /daemon/package.json ./package.json
 COPY --from=panel /panel/dist/panel/browser ./public
+# The permission studio: the same static page the docs site carries, served
+# here at /studio where the session cookie turns it live.
+COPY packages/studio ./public/studio
 # The settings catalog is shared with the game image so the editor's form and
 # the ini generator can never disagree about keys or types.
 COPY packages/server-image/config/settings.map ./settings.map

@@ -642,14 +642,20 @@ gen_mods_txt() { # <user-mods-dir> <target-Mods-dir> [base-mods.txt]
             *) continue ;;
         esac
         state=1
+        # Palladium keeps a mod's state with the rest of its state, in
+        # mods/Palladium/mods/<Name>/. The old place — a marker inside the
+        # folder the mod was installed from — still counts, so an operator who
+        # disabled something before this stays disabled.
         [[ -e "$d/.disabled" ]] && state=0
+        [[ -e "$src/Palladium/mods/$name/.disabled" ]] && state=0
         add_entry "$name" "$state"
     done
 
     mkdir -p "$target"
     {
         echo "; Managed by pal-up — regenerated on every boot (MODS_TXT_MODE=managed)."
-        echo "; Disable a mod by creating an empty file mods/<Name>/.disabled,"
+        echo "; Disable a mod by creating an empty file"
+        echo ";   mods/Palladium/mods/<Name>/.disabled"
         echo "; or take over completely with MODS_TXT_MODE=manual."
         local i
         for i in "${!names[@]}"; do
@@ -674,13 +680,18 @@ gen_mods_list() { # <user-mods-dir> <target-Mods-dir>
         name="$(basename "$d")"
         valid_mod_name "$name" || continue
         [[ "$(mod_kind "$d")" == "framework" ]] || continue
+        # A mod's state lives with the rest of its state, under Palladium. The
+        # marker inside the installed folder is the older place and still
+        # counts, so nothing disabled before this quietly comes back on.
         if [[ -e "$d/.disabled" ]]; then continue; fi
+        if [[ -e "$src/Palladium/mods/$name/.disabled" ]]; then continue; fi
         names+=("$name")
     done
 
     {
         echo "; Managed by pal-up — regenerated on every boot."
-        echo "; Palladium loads these mods; disable one with mods/<Name>/.disabled."
+        echo "; Palladium loads these mods; disable one with"
+        echo ";   mods/Palladium/mods/<Name>/.disabled"
         local n
         for n in "${names[@]}"; do printf '%s\n' "$n"; done
     } >"$list"

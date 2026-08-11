@@ -187,12 +187,21 @@ export async function scanMods(modsDir: string): Promise<ScannedMod[]> {
       }
     }
 
-    const [hasLua, hasLuaLower, hasFramework, disabled] = await Promise.all([
-      fs.stat(path.join(dir, 'Scripts')).then((s) => s.isDirectory()).catch(() => false),
-      fs.stat(path.join(dir, 'scripts')).then((s) => s.isDirectory()).catch(() => false),
-      fs.stat(path.join(dir, 'mod.lua')).then((s) => s.isFile()).catch(() => false),
-      fs.stat(path.join(dir, '.disabled')).then(() => true).catch(() => false),
-    ]);
+    // A mod's state lives with the rest of its state, under Palladium; the
+    // marker inside the installed folder is the older place and still counts,
+    // so nothing an operator disabled before this silently comes back on.
+    const [hasLua, hasLuaLower, hasFramework, disabledHere, disabledUnderPalladium] =
+      await Promise.all([
+        fs.stat(path.join(dir, 'Scripts')).then((s) => s.isDirectory()).catch(() => false),
+        fs.stat(path.join(dir, 'scripts')).then((s) => s.isDirectory()).catch(() => false),
+        fs.stat(path.join(dir, 'mod.lua')).then((s) => s.isFile()).catch(() => false),
+        fs.stat(path.join(dir, '.disabled')).then(() => true).catch(() => false),
+        fs
+          .stat(path.join(modsDir, 'Palladium', 'mods', dirent.name, '.disabled'))
+          .then(() => true)
+          .catch(() => false),
+      ]);
+    const disabled = disabledHere || disabledUnderPalladium;
 
     out.push({
       name: dirent.name,

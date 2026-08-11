@@ -278,6 +278,9 @@ async function gameResources() {
 const app = Fastify({ logger: true, bodyLimit: 64 * 1024 });
 
 await app.register(fastifyCookie, { secret: await sessionSecret() });
+// The studio ships in the image beside the panel (public/studio) and rides
+// the same static registration — wildcard:false globs it a route per file,
+// directory indexes included.
 await app.register(fastifyStatic, { root: PUBLIC_DIR, wildcard: false });
 
 const COOKIE = 'palup_session';
@@ -721,9 +724,20 @@ app.post<{ Body: { name?: string; disabled?: boolean } }>('/api/mods/toggle', as
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) return reply.code(400).send({ error: 'bad mod name' });
   const dir = path.join(PAL_ROOT, 'mods', name);
   if (!(await exists(dir))) return reply.code(404).send({ error: 'not a user mod' });
-  const marker = path.join(dir, '.disabled');
-  if (req.body?.disabled) await fs.writeFile(marker, '');
-  else await fs.rm(marker, { force: true });
+
+  // The marker goes with the rest of the mod's state, under Palladium, so the
+  // folder somebody installed stays exactly what they downloaded. The older
+  // place inside that folder is cleared too, or a mod disabled before this
+  // could never be switched back on.
+  const marker = path.join(PAL_ROOT, 'mods', 'Palladium', 'mods', name, '.disabled');
+  const legacyMarker = path.join(dir, '.disabled');
+  if (req.body?.disabled) {
+    await fs.mkdir(path.dirname(marker), { recursive: true });
+    await fs.writeFile(marker, '');
+  } else {
+    await fs.rm(marker, { force: true });
+    await fs.rm(legacyMarker, { force: true });
+  }
 
   const mod = scanned.find((m) => m.name === name);
   const script = Boolean(mod?.manifest?.entry);
@@ -1642,6 +1656,86 @@ app.post<{ Body: { type?: string; target?: string; data?: Record<string, unknown
   },
 );
 
+
+// ── the studio's raw-file door ───────────────────────────────────────────────
+// The permission studio boots the agent's own engine in the browser, on the
+// bytes of the real file — so every question is answered locally, instantly,
+// and provably in agreement with the server. Writes go through the capability
+// door above wherever one exists; this PUT is the one hand-edit path the
+// studio needs (operator default flips), which a running server re-reads
+// within seconds like any other by-hand edit.
+const PALLADIUM_HOME = path.join(MODS_DIR, 'Palladium');
+// One folder per owner, the framework included: groups and grants live in
+// Palladium's own folder because they span every mod and belong to none, and a
+// mod's nodes share settings.config with its settings, one config per folder.
+const PALLADIUM_MODS = path.join(PALLADIUM_HOME, 'mods');
+const PERMISSIONS_FILE = path.join(PALLADIUM_MODS, 'Palladium', 'permissions.config');
+
+// Groups and per-player grants live in the central file; a mod's node
+// declarations live with the mod. Both are served, because a studio holding
+// only the central one would show an inventory missing every mod's nodes.
+const MOD_FOLDER_RE = /^[A-Za-z0-9_.-]+$/;
+
+// Addressed by folder name alone — the prefix is fixed here, so a name can
+// never walk out of the mods folder however it is spelled.
+function modPermissionsFile(name: string): string | null {
+  if (!MOD_FOLDER_RE.test(name) || name === '.' || name === '..') return null;
+  return path.join(PALLADIUM_MODS, name, 'settings.config');
+}
+
+async function readExact(file: string): Promise<string | null> {
+  try {
+    return await fs.readFile(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/bridge/permissions-file', async (req, reply) => {
+  if (!scopeAllowed(req, 'read')) return reply.code(403).send({ error: "scope 'read' required" });
+  // A server that has not booted Palladium yet simply has no files.
+  const central = await readExact(PERMISSIONS_FILE);
+  const files: { name: string; mod: string | null; text: string }[] = [
+    { name: 'permissions.config', mod: null, text: central ?? '' },
+  ];
+  try {
+    for (const entry of await fs.readdir(PALLADIUM_MODS, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !MOD_FOLDER_RE.test(entry.name)) continue;
+      // Palladium's own folder holds the central file, already served above.
+      if (entry.name === 'Palladium') continue;
+      const text = await readExact(path.join(PALLADIUM_MODS, entry.name, 'settings.config'));
+      if (text !== null) {
+        files.push({ name: `mods/${entry.name}/settings.config`, mod: entry.name, text });
+      }
+    }
+  } catch {
+    // No mods folder yet — the central file is the whole answer.
+  }
+  return { text: central ?? '', files };
+});
+
+app.put<{ Body: { text?: string; mod?: string } }>(
+  '/api/bridge/permissions-file',
+  async (req, reply) => {
+    if (!scopeAllowed(req, 'write')) return reply.code(403).send({ error: "scope 'write' required" });
+    const text = String(req.body?.text ?? '');
+    if (text.length > 512 * 1024) return reply.code(413).send({ error: 'not a permissions.config' });
+
+    const mod = req.body?.mod ? String(req.body.mod) : '';
+    let target = PERMISSIONS_FILE;
+    if (mod) {
+      const resolved = modPermissionsFile(mod);
+      if (!resolved) return reply.code(400).send({ error: 'mod must be a plain folder name' });
+      target = resolved;
+    }
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const tmp = target + '.tmp';
+    await fs.writeFile(tmp, text);
+    await fs.rename(tmp, target);
+    await panelLog(`${mod ? `mods/${mod}/` : ''}permissions.config replaced via the studio`);
+    return { ok: true };
+  },
+);
 
 // Acting on behalf of a player needs an explicit grant, so every capability is
 // also a node, defaulting to deny. The agent stores them like any other.
