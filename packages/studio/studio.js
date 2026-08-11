@@ -644,7 +644,7 @@ function refreshPlayers(info) {
 }
 
 function showPlayer(id) {
-  $("lensfree").value = id;
+  lastLensId = id;
   runLens();
   $("lensdetail").classList.remove("hidden");
 }
@@ -2217,9 +2217,8 @@ function renderSimActors() {
 }
 
 function runLens() {
-  const id = $("lensfree").value.trim() || lastLensId;
+  const id = lastLensId;
   if (!id) return;
-  lastLensId = id;
   const reply = ask("lens", { player: id });
 
   const groups = reply.groups.map((g) => g.name + " (" + g.weight + ")").join(", ");
@@ -2372,13 +2371,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     return [];
   });
 
-  // A player id, by name.
-  attachSuggest($("lensfree"), (text) => {
-    const wanted = text.trim().toLowerCase();
-    return knownPlayers()
-      .filter((p) => !wanted || p.name.toLowerCase().includes(wanted) || p.id.toLowerCase().startsWith(wanted))
-      .map((p) => ({ label: p.name, hint: p.note + " · " + p.id.slice(0, 8) + "…", insert: p.id }));
-  });
   attachSuggest($("pid"), (text) => {
     const wanted = text.trim().toLowerCase();
     return knownPlayers()
@@ -2426,7 +2418,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Released anywhere: a drag that ends off the table still has to apply.
   document.addEventListener("mouseup", () => { void finishPaint(); });
 
-  $("lensrun").onclick = guarded(runLens);
   $("cellclose").onclick = () => $("celldialog").close();
   $("showclose").onclick = () => $("showdialog").close();
   $("cellapply").onclick = guarded(async () => {
@@ -2442,7 +2433,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       else await edit("entry", { group: editing.name, node: editing.node, effect, where, until_stamp });
     }
     $("celldialog").close();
-    if (editing.kind === "player") { $("lensfree").value = editing.name; runLens(); setTab("lenspanel"); }
+    if (editing.kind === "player") { showPlayer(editing.name); setPermSub("lenspanel"); }
   });
 
   $("simadd").onclick = guarded(() => {
@@ -2632,8 +2623,14 @@ function renderCommandReference(wanted) {
     const name = row.insertCell();
     const pick = document.createElement("button");
     pick.type = "button";
-    pick.className = "linklike cmdpick";
-    pick.innerHTML = words.map((w) => "<code>" + escapeHtml(w) + "</code>").join("<br>");
+    pick.className = "cmdchip cmdpick"
+      + (chosenCommand && chosenCommand.word === command.word ? " on" : "");
+    pick.textContent = command.word;
+    if (words.length > 1) {
+      const alias = document.createElement("span");
+      alias.textContent = words.slice(1).join(" ");
+      pick.appendChild(alias);
+    }
     pick.title = "Open " + command.word + " as a form";
     pick.onclick = () => {
       chooseCommand(command, true);

@@ -466,10 +466,11 @@ body.busy::before {
 .groupchip button.icon svg { width: .8rem; height: .8rem; }
 #lensgroups { flex-wrap: wrap; gap: .4rem; align-items: center; }
 
-/* A command in the reference table opens as a form, so it looks like the
-   link it is rather than like text next to one. */
-button.cmdpick { text-align: left; padding: 0; }
-button.cmdpick code { background: none; border: none; padding: 0; }
+/* A command in the reference table is the same chip as in the list above it —
+   same thing, same shape, so picking one from either reads the same. */
+button.cmdpick { cursor: pointer; white-space: nowrap; }
+button.cmdpick:hover { border-color: var(--accent); color: var(--accent); }
+table.plain td:has(> button.cmdpick) { padding-right: .8rem; }
 
 /* The button that does the thing there is no undo for. */
 button.danger { background: var(--no); border-color: var(--no); color: #fff; }
