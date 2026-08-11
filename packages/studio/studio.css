@@ -1,0 +1,592 @@
+/* Hand-rolled on purpose: the studio ships beside the docs and must work with
+   no build step and no request leaving the page. Light and dark follow the
+   system. */
+
+:root {
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --ink: #1c1c1e;
+  --muted: #6e6e73;
+  --line: #e3e3e6;
+  --accent: #6d5ae0;
+  --ok: #1a7f37;
+  --ok-bg: #e6f4ea;
+  --no: #b42318;
+  --no-bg: #fbeae9;
+  --self: #9a6700;
+  --self-bg: #fff4d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131316;
+    --panel: #1c1c21;
+    --ink: #e7e7ea;
+    --muted: #9a9aa2;
+    --line: #2c2c33;
+    --accent: #9b8cff;
+    --ok: #4ecb71;
+    --ok-bg: #12291a;
+    --no: #ff7b6e;
+    --no-bg: #331311;
+    --self: #e3b341;
+    --self-bg: #2e2410;
+  }
+}
+
+/* Inside the Pal-Up panel (?embed=panel) the page wears the panel's own
+   palette — the values mirror packages/panel/src/styles.css, so the iframe
+   reads as one surface with its host. The panel is dark-only; so is this. */
+:root.embed {
+  color-scheme: dark;
+  --bg: #0f1114;
+  --panel: #16191e;
+  --ink: #e7eaee;
+  --muted: #949daa;
+  --line: #262b33;
+  --accent: #3b82f6;
+  --ok: #4ade80;
+  --ok-bg: rgba(74, 222, 128, 0.1);
+  --no: #f87171;
+  --no-bg: rgba(248, 113, 113, 0.1);
+  --self: #fbbf24;
+  --self-bg: rgba(251, 191, 36, 0.1);
+}
+:root.embed body {
+  max-width: none;
+  padding: 0.4rem 0.2rem 2rem;
+  font-size: 14px;
+}
+/* The panel already says where you are; the page's own name and footer would
+   say it twice. */
+:root.embed .brandmini,
+:root.embed footer { display: none; }
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 1.5rem 1rem 4rem;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+code, pre, textarea, input, select { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: .92em; }
+a { color: var(--accent); }
+
+button:focus-visible, 
+input:focus-visible, 
+select:focus-visible, 
+textarea:focus-visible,
+.linklike:focus-visible,
+details summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.version { color: var(--muted); font-size: .85rem; margin: .4rem 0 0; }
+
+/* The whole header, in one line. It follows the page down, because what is
+   loaded and where an edit goes are as worth knowing at the bottom of a long
+   permission grid as at the top. */
+#topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  padding: .4rem 0 .3rem;
+  margin-bottom: .2rem;
+  border-bottom: 1px solid var(--line);
+}
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+}
+.statusgap { flex: 1 1 auto; }
+.brandmini { font-weight: 600; font-size: .9rem; margin-right: .2rem; }
+
+/* A chip is the whole of a section that is fine, and the door to it when it
+   is not. Quiet by default: only a chip with something to say gets colour. */
+button.chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+  font-size: .8rem;
+  font-weight: 500;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.chip:hover { border-color: var(--accent); color: var(--ink); }
+button.chip.open { border-color: var(--accent); color: var(--ink); }
+button.chip.good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+button.chip.bad {
+  color: var(--no);
+  border-color: var(--no);
+  background: var(--no-bg);
+  font-weight: 600;
+}
+
+/* What a chip opens. Nothing is gone — it is one click away instead of
+   permanently occupying the top of every tab. */
+.drawer { margin-top: .4rem; }
+.drawer .banner:last-of-type { margin-bottom: 0; }
+/* Before anything is loaded the way in is the page, so it is not a drawer
+   yet — the chips have nothing to say until there is something loaded. */
+body:not(.booted) #topbar .statusgap,
+body:not(.booted) button.chip { display: none; }
+body:not(.booted) #load { margin-top: 0; }
+/* Nothing is loaded, so there is nothing to answer with. The command
+   reference in particular looked like it was describing your server when it
+   was describing the manifest this page was built from. */
+body:not(.booted) #tabs,
+body:not(.booted) main > section:not(#load):not(#health):not(#modepanel) { display: none; }
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+}
+section h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+section h3 { margin: .2rem 0 .4rem; font-size: .95rem; }
+.fine { color: var(--muted); font-size: .85rem; margin: .35rem 0; }
+.hidden { display: none !important; }
+
+.banner { border-radius: 8px; padding: .5rem .8rem; margin: .5rem 0; }
+.banner.ok { background: var(--ok-bg); color: var(--ok); }
+.banner.error { background: var(--no-bg); color: var(--no); }
+.banner.live { background: var(--ok-bg); color: var(--ok); }
+.banner.warn { background: var(--self-bg); color: var(--self); }
+.banner .linklike { color: inherit; }
+
+.actionline { margin-top: .5rem; }
+.actionline pre { white-space: pre; }
+
+.dropzone {
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  text-align: center;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.dropzone.hover { 
+  border-color: var(--accent); 
+  background-color: var(--self-bg); 
+}
+.dropzone p { margin: .2rem 0; }
+.linklike {
+  background: none; border: none; padding: 0;
+  color: var(--accent); text-decoration: underline; cursor: pointer;
+  font: inherit;
+}
+textarea {
+  width: 100%;
+  margin-top: .6rem;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .5rem;
+  font-size: .82rem;
+}
+
+.row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .5rem 0; }
+.row label { display: flex; flex-direction: column; font-size: .8rem; color: var(--muted); gap: .15rem; }
+.grow { flex: 1; }
+.grow input { width: 100%; }
+
+/* A button sits next to an input far more often than it sits alone, so it is
+   sized to match one rather than to stand out from it. */
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: .3rem .7rem;
+  font-family: inherit;
+  font-size: .85rem;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease, filter 0.2s ease;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+button.quiet { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+
+/* Rows of records — settings, members, groups — carry the same few verbs over
+   and over. As words they out-shout the values; as icons they stay out of the
+   way and still say what they are to a screen reader and on hover. */
+button.icon {
+  padding: .25rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+button.icon svg { width: 1rem; height: 1rem; display: block; }
+.grouphead button.icon { border-radius: 999px; }
+button.icon:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); filter: none; }
+button.icon.go:hover:not(:disabled) { border-color: var(--ok); color: var(--ok); }
+button.icon.danger { background: transparent; border-color: var(--line); color: var(--muted); }
+button.icon.danger:hover:not(:disabled) { border-color: var(--no); color: var(--no); }
+td.actions button.icon + button.icon { margin-left: .25rem; }
+input, select {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: .4rem .5rem;
+  font-size: .85rem;
+}
+
+.problems { color: var(--no); font-size: .88rem; padding-left: 1.2rem; }
+.modlist { font-size: .88rem; padding-left: 1.2rem; }
+.modlist .refused { color: var(--no); }
+.modlist .trouble { color: var(--self); list-style: none; }
+details { margin: .5rem 0; }
+details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+pre {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .6rem;
+  overflow-x: auto;
+  font-size: .78rem;
+  max-height: 24rem;
+}
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+#matrix th, #matrix td { border: 1px solid var(--line); padding: .3rem .55rem; text-align: center; }
+#matrix th { background: var(--bg); }
+#matrix td.node, #matrix th.node {
+  text-align: left;
+  position: sticky; left: 0;
+  background: var(--panel);
+  white-space: nowrap;
+  max-width: 18rem; overflow: hidden; text-overflow: ellipsis;
+}
+#matrix tr.section td {
+  text-align: left; background: var(--bg); color: var(--muted);
+  font-weight: 600; position: sticky; left: 0;
+}
+#matrix td.cell { cursor: pointer; }
+.cell.yes, .cell-demo.yes { background: var(--ok-bg); color: var(--ok); }
+.cell.self, .cell-demo.self { background: var(--self-bg); color: var(--self); }
+.cell.cond, .cell-demo.cond { background: var(--self-bg); color: var(--self); font-style: italic; }
+.cell.no, .cell-demo.no { background: var(--no-bg); color: var(--no); }
+.cell-demo { border-radius: 4px; padding: 0 .35rem; font-size: .8rem; }
+td.default { cursor: pointer; color: var(--muted); }
+td.default.allow { color: var(--ok); }
+
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  background: var(--bg);
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--line);
+  margin: 1rem 0 0;
+}
+.tabs button {
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  padding: .4rem .8rem;
+}
+.tabs button.active { color: var(--ink); border-bottom-color: var(--accent); border-bottom-width: 2px; }
+.tabs button:disabled { opacity: .45; }
+
+dialog {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  width: 100%;
+  max-width: 42rem;
+  box-sizing: border-box;
+  margin: 0 auto;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .55); }
+dialog h3 { margin-top: 0; }
+.helptext { color: var(--muted); font-size: .85rem; }
+.helptext ul { padding-left: 1.2rem; }
+.helptext li { margin: .3rem 0; }
+
+.story {
+  background: var(--bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: .45rem .7rem;
+  font-size: .85rem;
+  white-space: pre-line;
+}
+#lens td.mark { width: 3.5rem; text-align: center; border-radius: 4px; }
+#lens td.tale { color: var(--muted); font-size: .8rem; }
+#lensoverrides { color: var(--self); }
+
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem; padding: 0; margin: .4rem 0; }
+.chips li {
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: .15rem .7rem; font-size: .8rem;
+}
+.chips button { background: none; color: var(--no); padding: 0 0 0 .4rem; }
+
+.chat { margin-top: .6rem; }
+.chat p { margin: .25rem 0; padding: .35rem .6rem; border-radius: 8px; font-size: .85rem; }
+.chat .msg { background: var(--bg); border: 1px solid var(--line); }
+.chat .did { background: var(--ok-bg); color: var(--ok); }
+.chat .not { background: var(--self-bg); color: var(--self); }
+
+table.plain th, table.plain td { border-bottom: 1px solid var(--line); padding: .35rem .5rem; text-align: left; vertical-align: top; }
+table.plain th { color: var(--muted); font-weight: 600; }
+.params { color: var(--muted); font-size: .8rem; }
+.params b { color: var(--ink); font-weight: 600; }
+
+footer { color: var(--muted); font-size: .8rem; margin-top: 2rem; }
+/* ── the five tabs and what they hold ─────────────────────────────────────── */
+
+.subtabs {
+  display: flex;
+  gap: .3rem;
+  margin: 0 0 .6rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: .4rem;
+}
+.subtabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: .3rem .7rem;
+}
+.subtabs button.active { color: var(--ink); background: var(--bg); border-color: var(--line); }
+
+/* A sub-panel is a card inside its tab, not a page of its own. */
+section.sub { margin-top: .6rem; }
+section.sub h3 { margin: 0 0 .4rem; font-size: .95rem; }
+
+/* One line at the top saying what happens to an edit. */
+.applybanner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--self-bg);
+  color: var(--self);
+}
+.applybanner.islive { background: var(--ok-bg); color: var(--ok); }
+/* Something is in this tab and nowhere else — the banner says so louder. */
+.applybanner.dirty { background: var(--no-bg); color: var(--no); font-weight: 600; }
+.applyactions { display: flex; gap: .4rem; }
+
+.modcard {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .7rem .9rem;
+  margin: .6rem 0;
+  background: var(--bg);
+}
+.modcard.broken { border-color: var(--no); }
+.modcard h3 { margin: 0 0 .3rem; font-size: 1rem; display: flex; gap: .5rem; align-items: center; }
+.pill { font-size: .7rem; border-radius: 999px; padding: .05rem .5rem; font-weight: 600; }
+.pill.good { background: var(--ok-bg); color: var(--ok); }
+.pill.bad { background: var(--no-bg); color: var(--no); }
+.filelist { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .8rem; display: flex; flex-wrap: wrap; gap: .5rem; }
+.filelist li { border: 1px solid var(--line); border-radius: 6px; padding: .1rem .5rem; }
+.filelist .there { color: var(--muted); }
+.filelist .missing { color: var(--self); border-color: var(--self); }
+.trouble { color: var(--no); font-size: .82rem; margin: .3rem 0 0; }
+
+/* The data console: a read-only window on the store. */
+.console {
+  max-height: 32rem;
+  white-space: pre;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+.chips li.off { opacity: .45; text-decoration: line-through; }
+/* A filter chip on the event stream: clickable, lit when it is the filter. */
+.chips li.chip { cursor: pointer; user-select: none; }
+.chips li.chip:hover { border-color: var(--accent); }
+.chips li.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#eventlog { overflow: auto; }
+
+/* The three-step token setup: numbered, with the command under each step. */
+/* Work is happening on this thread: say so, and stop clicks piling up behind
+   it. The bar is at the top because that is where the eye already is. */
+body.busy { cursor: progress; }
+body.busy main { pointer-events: none; opacity: .7; }
+body.busy::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 3px;
+  z-index: 99;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: sweep 1s linear infinite;
+}
+@keyframes sweep {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
+/* The button that does the thing there is no undo for. */
+button.danger { background: var(--no); border-color: var(--no); color: #fff; }
+button.danger:hover { filter: brightness(1.08); }
+
+/* A checkbox is not a text box: it does not stretch, and it sits with its
+   label rather than under it. */
+.cmdfield.boolfield { flex-direction: row; align-items: center; gap: .45rem; }
+.cmdfield.boolfield input { width: auto; flex: none; margin: 0; }
+.cmdfield.boolfield i { margin-left: .2rem; }
+
+.steps { padding-left: 1.2rem; font-size: .86rem; line-height: 1.6; }
+.steps li { margin-bottom: .6rem; }
+.steps pre {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .5rem .7rem;
+  margin: .35rem 0 0;
+  overflow-x: auto;
+  font-size: .76rem;
+}
+
+table.plain tr.changed td:first-child { color: var(--self); font-weight: 600; }
+
+/* The suggestion list: one element, moved to whichever field asked for it. */
+.suggest {
+  position: fixed;
+  z-index: 40;
+  list-style: none;
+  margin: 0;
+  padding: .2rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  /* The wheel stops here rather than carrying on into the page behind it. */
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+  font-size: .82rem;
+}
+.suggest li {
+  padding: .25rem .5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  gap: .6rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.suggest li.on, .suggest li:hover { background: var(--bg); }
+.suggest li span { color: var(--muted); font-size: .76rem; }
+.suggest li.more {
+  color: var(--muted);
+  font-size: .74rem;
+  cursor: default;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  margin-top: .2rem;
+  padding-top: .35rem;
+}
+.suggest li.more:hover { background: none; }
+
+/* Settings: one column each for the name, the value and the buttons, so the
+   inputs line up down the card instead of following the longest key. */
+table.settings { table-layout: fixed; width: 100%; }
+table.settings th:nth-child(1), table.settings td:nth-child(1) { width: 34%; }
+table.settings th:nth-child(2), table.settings td:nth-child(2) { width: 30%; }
+table.settings th:nth-child(3), table.settings td:nth-child(3) { width: 22%; }
+table.settings th:nth-child(4), table.settings td:nth-child(4) { width: 14%; }
+table.settings td { vertical-align: middle; }
+table.settings td:nth-child(1) { word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
+table.settings input { width: 100%; box-sizing: border-box; }
+table.settings td.actions { display: table-cell; white-space: nowrap; text-align: right; }
+table.settings td.actions button { margin-left: .3rem; }
+
+.callform { margin: .6rem 0; }
+.callform pre { white-space: pre-wrap; word-break: break-word; }
+
+/* The command chooser: every word as a chip, the chosen one lit. */
+.cmdlist { display: flex; flex-wrap: wrap; gap: .3rem; max-height: 11rem; overflow-y: auto; padding: .2rem 0; }
+.cmdchip {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .2rem .7rem;
+  font-size: .8rem;
+  display: inline-flex;
+  gap: .4rem;
+  align-items: baseline;
+}
+.cmdchip span { color: var(--muted); font-size: .7rem; }
+.cmdchip.on { border-color: var(--accent); color: var(--accent); }
+
+.cmdfield { display: flex; flex-direction: column; gap: .15rem; margin: .5rem 0; max-width: 32rem; }
+.cmdfield > span { font-size: .8rem; font-weight: 600; }
+.cmdfield > i { font-size: .74rem; color: var(--muted); font-style: normal; }
+
+/* An element carried as a colour, so a pal list reads at a glance. */
+.suggest .el {
+  display: inline-block;
+  width: .55rem; height: .55rem;
+  border-radius: 50%;
+  margin-right: .4rem;
+  background: var(--muted);
+  vertical-align: baseline;
+}
+.suggest .el-fire { background: #f97316; }
+.suggest .el-water { background: #38bdf8; }
+.suggest .el-grass { background: #4ade80; }
+.suggest .el-electric, .suggest .el-electricity { background: #facc15; }
+.suggest .el-ice { background: #7dd3fc; }
+.suggest .el-ground { background: #b45309; }
+.suggest .el-dark { background: #a855f7; }
+.suggest .el-dragon { background: #6366f1; }
+.suggest .el-neutral { background: #94a3b8; }
+
+/* The stamp: pick one, then drag the grid. */
+.stamprow { align-items: center; }
+.stamp { background: var(--panel); color: var(--muted); border: 1px solid var(--line); padding: .25rem .7rem; }
+.stamp.on { border-color: var(--accent); color: var(--ink); }
+.stamp.yes.on { border-color: var(--ok); color: var(--ok); }
+.stamp.no.on { border-color: var(--no); color: var(--no); }
+#matrix.stamping td.cell { cursor: crosshair; user-select: none; }
+#matrix td.cell.pending { background: var(--bg); color: var(--muted); }
+
+/* Groups as cards you can open, rather than a table you cannot. */
+.groupcard { border: 1px solid var(--line); border-radius: 10px; margin: .5rem 0; background: var(--bg); }
+.grouphead { display: flex; align-items: center; gap: .6rem; padding: .5rem .7rem; }
+.grouphead .grow { flex: 1; }
+.expander { background: none; border: none; color: var(--muted); padding: 0 .2rem; font-size: .9rem; }
+
+.memberlist { list-style: none; margin: 0; padding: 0 .7rem .6rem 2rem; }
+.memberlist li { display: flex; align-items: center; gap: .6rem; padding: .2rem 0; font-size: .85rem; }
+.pill.self { background: var(--self-bg); color: var(--self); border-radius: 999px; padding: 0 .5rem; font-size: .72rem; }
+.row.spread { justify-content: space-between; }

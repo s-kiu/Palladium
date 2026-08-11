@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palladium Studio</title>
+<script>
+// Embedded in the Pal-Up panel, the page wears the panel's palette instead of
+// its own. Classed on <html> before the stylesheet loads, so there is no
+// flash of the standalone look.
+if (new URLSearchParams(location.search).has("embed")) {
+  document.documentElement.className = "embed";
+}
+</script>
+<link rel="stylesheet" href="studio.css">
+</head>
+<body>
+<!-- Once something is loaded the whole header is one line: what is loaded,
+     whether it reads clean, and where an edit goes. Each is a button that
+     opens the detail below it, so nothing is lost — it is just not in the way
+     of the tab you came here for. -->
+<header id="topbar">
+  <div class="statusbar">
+    <span class="brandmini">Palladium&nbsp;Studio</span>
+    <button class="chip" id="chipsource" type="button" aria-expanded="false"
+      title="What is loaded — click to load something else">nothing loaded</button>
+    <button class="chip" id="chiphealth" type="button" aria-expanded="false"
+      title="Whether the config and the mods read clean">—</button>
+    <button class="chip" id="chipmode" type="button" aria-expanded="false"
+      title="Where an edit made here ends up">—</button>
+    <span class="statusgap"></span>
+    <span class="applyactions hidden" id="applyactions">
+      <button id="download" type="button">Download changed files</button>
+      <button id="copy" type="button" class="quiet">Copy</button>
+    </span>
+  </div>
+  <noscript><p class="banner error">This page is the engine — it needs JavaScript.</p></noscript>
+  <p class="banner error hidden" id="fatal"></p>
+</header>
+
+<main>
+  <section id="modepanel" class="drawer hidden">
+    <p class="banner hidden" id="modebanner"></p>
+    <p class="banner applybanner hidden" id="applybanner"><span id="applytext"></span></p>
+    <p class="version" id="version"></p>
+  </section>
+
+  <section id="load" class="drawer">
+    <p class="fine">
+      Everything about the mods themselves — what they store, the commands they answer, their
+      settings, and who may do what — answered by Palladium's own engine running in this tab.
+      Nothing is uploaded anywhere.
+    </p>
+    <p id="loadsummary" class="hidden">Loaded: <b id="loadedwhat"></b>
+      <button class="linklike" id="loadchange" type="button">load something else</button></p>
+    <div id="loadbody">
+      <div class="dropzone" id="dropzone">
+        <p>Drop <code>permissions.config</code> here — mod folders too, straight from
+          <code>./mods</code> — or
+          <label class="linklike">browse files<input type="file" aria-label="Browse files" id="filepick" multiple hidden></label>,
+          <label class="linklike">add a mod folder<input type="file" aria-label="Add a mod folder" id="modpick" webkitdirectory multiple hidden></label>,
+          paste below, or
+          <button class="linklike" id="fresh" type="button">start from a fresh server's defaults</button>.
+        </p>
+        <p class="fine">A dropped mod loads exactly as a server loads it: its commands work in the
+          simulator and its permissions register. Files from a Windows host or a provider's file
+          manager are fine — line endings are normalised.</p>
+      </div>
+      <textarea id="paste" aria-label="Paste configuration" rows="4" spellcheck="false"
+        placeholder="…or paste the contents of permissions.config and press Load"></textarea>
+      <div class="row">
+        <button id="loadpasted" type="button">Load pasted text</button>
+        <span class="fine" id="loadedname"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="health" class="drawer hidden">
+    <p id="cleanbadge" class="banner ok hidden">The config reads clean.</p>
+    <ul id="problems" class="problems"></ul>
+    <ul id="modlist" class="modlist"></ul>
+    <p class="fine hidden" id="ignorednote"></p>
+    <details><summary>engine log</summary><pre id="bootlog"></pre></details>
+  </section>
+
+  <nav id="tabs" class="tabs">
+    <button data-tab="overviewpanel" type="button" disabled>Overview</button>
+    <button data-tab="datapanel" type="button" disabled>Data</button>
+    <button data-tab="commandpanel" type="button" class="active" disabled>Commands</button>
+    <button data-tab="permspanel" type="button" disabled>Permissions</button>
+    <button data-tab="settingspanel" type="button" disabled>Settings</button>
+    <!-- Only a live server has an agent to look at; offline this button is not
+         there at all rather than there and dead. -->
+    <button data-tab="agentpanel" type="button" class="hidden" id="agenttab">Agent</button>
+  </nav>
+
+  <section id="overviewpanel" class="hidden">
+    <h2>Overview</h2>
+    <p class="fine">Every mod Palladium loaded, what it brought, and whether its folder is whole.
+      A mod that would not load is here too, with the reason.</p>
+    <div id="overviewmods"></div>
+  </section>
+
+  <section id="datapanel" class="hidden">
+    <h2>Data</h2>
+    <p class="fine">What the mods have remembered. Read-only — this is a window on the store,
+      not a way into it. Use the switches to quieten a mod you are not looking at.</p>
+    <ul id="datatoggles" class="chips"></ul>
+    <pre id="datastream" class="console"></pre>
+  </section>
+
+  <section id="settingspanel" class="hidden">
+    <h2>Settings</h2>
+    <p class="fine">Every mod's settings in one place. A value you change is written into that
+      mod's <code>settings.config</code>; the author's default is shown beside it, and
+      <b>reset</b> puts it back.</p>
+    <div id="settingsmods"></div>
+  </section>
+
+  <section id="permspanel" class="hidden">
+    <h2>Permissions</h2>
+    <nav id="permtabs" class="subtabs">
+      <button data-sub="matrixpanel" type="button" class="active">Groups</button>
+      <button data-sub="lenspanel" type="button">Players</button>
+    </nav>
+  </section>
+
+  <section id="matrixpanel" class="hidden sub">
+    <h3>Groups</h3>
+    <p class="fine">One column per group, heaviest first. <span class="cell-demo yes">✓</span> may,
+      <span class="cell-demo self">@me</span> constrained — a self-call passes,
+      <span class="cell-demo cond">if</span> constrained — only certain calls pass
+      (a species or level rule, say), <span class="cell-demo no">✗</span> may not.
+      Hover a cell for the deciding entry and its exact rule; click one to change it.
+      Click a node's default to flip it. Dated entries (<code>until …</code>) are honoured —
+      an expired one is simply gone — and the date itself is visible in the preview below.</p>
+    <div class="row stamprow">
+      <span class="fine">Stamp:</span>
+      <button id="stampoff" type="button" class="stamp on">off</button>
+      <button id="stampallow" type="button" class="stamp yes">✓ allow</button>
+      <button id="stampdeny" type="button" class="stamp no">✗ deny</button>
+      <button id="stampclear" type="button" class="stamp">inherit</button>
+      <span class="fine" id="stampnote">With a stamp picked, drag across cells to set them all.
+        Clicking one still opens it.</span>
+    </div>
+    <div class="row">
+      <input id="matrixsearch" class="grow" placeholder="show only nodes matching — give, pal, leaderboards…"
+        aria-label="Filter nodes" spellcheck="false">
+      <span class="fine" id="matrixcount"></span>
+    </div>
+    <div class="scroll"><table id="matrix"></table></div>
+  </section>
+
+  <dialog id="celldialog">
+    <h3 id="cellname"></h3>
+    <p id="cellstory" class="story"></p>
+    <div class="row">
+      <label>effect
+        <select id="celleffect" aria-label="Effect">
+          <option value="inherit">inherit</option>
+          <option value="allow">allow</option>
+          <option value="deny">deny</option>
+        </select>
+      </label>
+      <label class="grow">constraint
+        <input id="cellwhere" aria-label="Constraint" placeholder="where target = @me">
+      </label>
+      <label>until
+        <input id="celluntil" aria-label="End date" type="date">
+      </label>
+    </div>
+    <p class="fine" id="cellfields"></p>
+    <details>
+      <summary>how constraints read</summary>
+      <div class="helptext">
+        <p>An entry is a node, then optionally a rule, then optionally an end date:</p>
+        <p><code>allow = pal.spawn where species in SheepBall,Lamball and level &lt;= 20 until 2026-12-31</code></p>
+        <ul>
+          <li><code>where field op value</code>, chained with <code>and</code> / <code>or</code> —
+            <code>and</code> binds tighter, so <code>a and b or c</code> is <code>(a and b) or c</code></li>
+          <li>Type <code>?</code> in any box to reach a list the field does not offer by itself —
+            <code>?items</code>, <code>?pals</code>, <code>?traits</code> from the game, and
+            <code>?groups</code>, <code>?players</code>, <code>?permissions</code> from this
+            config. Keep typing after the name to narrow it</li>
+          <li>operators: <code>in</code> (comma-separated list), <code>=</code>, <code>!=</code>,
+            <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code></li>
+          <li>a field the call does not carry <b>fails</b> the rule — a grant narrowed to
+            "only Lamball" must not widen when the species is simply left out; that is what
+            an <i>if</i> cell means</li>
+          <li>calls aimed at a player also carry <code>target</code> (<code>@me</code> is the
+            caller), <code>target_group</code> and <code>target_weight</code> — the target's
+            highest-weight group and its weight; a self-call weighs −1, beneath every rank</li>
+          <li>group operations carry <code>group_weight</code>, so "may assign groups, but only
+            below your own" is <code>where group_weight &lt; 12</code></li>
+          <li><code>until 2026-12-31</code> (or <code>…T14:30</code>) ends the entry — once the
+            stamp passes it is simply gone</li>
+        </ul>
+      </div>
+    </details>
+    <div class="row">
+      <button id="cellapply" type="button">Apply</button>
+      <button id="cellclose" type="button" class="quiet">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="showdialog">
+    <h3 id="showname"></h3>
+    <p class="fine">The same call, spelled four ways. Every one of them goes through the same
+      node and the same constraints.</p>
+    <div id="showforms"></div>
+    <div class="row"><button id="showclose" type="button" class="quiet">Close</button></div>
+  </dialog>
+
+  <section id="lenspanel" class="hidden sub">
+    <h3>Players</h3>
+    <p class="fine">Everything one person may do, and why — their overrides first, then their
+      groups by weight, then the default group, then each node's default. Pick a player the
+      config names, one of the simulated players below, or paste any id.</p>
+    <div id="playerlist"></div>
+    <div class="row">
+      <select id="lenspick" aria-label="Pick player"></select>
+      <input id="lensfree" aria-label="Player ID" class="grow" placeholder="…or any player id (32 hex)" size="34">
+      <button id="lensrun" type="button">Look</button>
+    </div>
+    <div id="lensdetail" class="hidden">
+      <div class="row spread">
+        <p id="lenswho" class="fine"></p>
+        <button id="lensclose" type="button" class="quiet">Close</button>
+      </div>
+    <ul id="lensoverrides" class="problems hidden"></ul>
+    <p class="fine">Click a row to give this player their own override for that node — an
+      override outranks every group they are in.</p>
+    <div class="scroll"><table id="lens" class="plain"></table></div>
+    </div>
+  </section>
+
+  <section id="simpanel" class="hidden sub">
+    <h3>Try it as a player</h3>
+    <p class="fine">Simulated players exist only here — they are never written into the config.</p>
+    <div class="row">
+      <input id="simname" aria-label="Simulated Player Name" placeholder="name (Hero)" size="10">
+      <input id="simgroups" aria-label="Simulated Player Groups" placeholder="groups (vip,member)" size="16">
+      <button id="simadd" type="button">Add player</button>
+    </div>
+    <ul id="simlist" class="chips"></ul>
+    <div class="row">
+      <select id="simactor" aria-label="Select actor"></select>
+      <input id="simline" aria-label="Command" class="grow" placeholder="!heal @Sidekick" spellcheck="false">
+      <button id="simrun" type="button">Run</button>
+    </div>
+    <div id="simout" class="chat"></div>
+  </section>
+
+  <section id="grouppanel" class="hidden sub">
+    <h3>Groups and membership</h3>
+    <p class="fine">Expand a group to see who is in it. <b>+</b> puts somebody in;
+      <b>remove</b> takes them out. Heaviest group first — that is the order they resolve in.</p>
+    <div id="grouplist"></div>
+    <div class="row">
+      <button id="gnew" type="button">+ New group</button>
+      <span class="fine">A group is a name, a weight, and optionally a tag shown in chat.</span>
+    </div>
+
+    <dialog id="groupdialog">
+      <h3 id="groupdialogname">New group</h3>
+      <div class="row">
+        <label>name <input id="gname" aria-label="Group name" size="14"></label>
+        <label>weight <input id="gweight" aria-label="Group weight" size="6" type="number"></label>
+        <label>tag <input id="gtag" aria-label="Group tag" placeholder="shown in chat" size="12"></label>
+      </div>
+      <p class="fine">Weight decides which group wins when two disagree — higher first.</p>
+      <div class="row">
+        <button id="gsave" type="button">Add group</button>
+        <button id="gclose" type="button" class="quiet">Close</button>
+      </div>
+    </dialog>
+
+    <!-- Deleting a group takes every grant in it with it, and there is no undo
+       short of reloading the file. One question first. -->
+  <dialog id="confirmdialog">
+    <h3 id="confirmtitle"></h3>
+    <p id="confirmbody" class="fine"></p>
+    <div class="row">
+      <button id="confirmyes" type="button" class="danger"></button>
+      <button id="confirmno" type="button" class="quiet">Cancel</button>
+    </div>
+  </dialog>
+
+  <dialog id="memberdialog">
+      <h3 id="memberdialogname"></h3>
+      <div class="row">
+        <label class="grow">player
+          <input id="pid" aria-label="Player" placeholder="a name, or a 32-hex id">
+        </label>
+        <button id="passign" type="button">Add to group</button>
+        <button id="pclose" type="button" class="quiet">Close</button>
+      </div>
+      <p class="fine">A player's id is the 32-hex <code>playerId</code> the REST API and the panel
+        show. Type a name to pick somebody this config already knows.</p>
+    </dialog>
+  </section>
+
+
+  <section id="agentpanel" class="hidden">
+    <h2>Agent</h2>
+    <p class="fine">The mod as it is running right now — what it has seen, which hooks it holds,
+      who is connected and what is loaded around them. Read-only: nothing on this tab changes
+      the server.</p>
+    <nav id="agenttabs" class="subtabs">
+      <button data-agentsub="eventspanel" type="button" class="active">Events</button>
+      <button data-agentsub="hookspanel" type="button">Hooks</button>
+      <button data-agentsub="peoplepanel" type="button">Players</button>
+      <button data-agentsub="palspanel" type="button">Pals in the world</button>
+      <button data-agentsub="buildpanel" type="button">Build on this server</button>
+    </nav>
+  </section>
+
+  <section id="buildpanel" class="hidden sub">
+    <h3>Build on this server</h3>
+    <p class="fine">Events in, actions out, from any language. Every form on the Commands tab is
+      exactly the call below — nothing here is privileged over what a token can do.</p>
+    <ol class="steps">
+      <li>Create an API token on the panel's <b>admin</b> page — read for feeds, read and write
+        for bots that act — and send it as <code>Authorization: Bearer palup_…</code>.</li>
+      <li>Follow events by cursor. New events arrive with a growing <code>cursor</code>; a smaller
+        one means the server rebooted.
+<pre>curl -H "Authorization: Bearer $TOKEN" \
+  "http://this-host:3000/api/bridge/events?since=0&amp;type=player.join,player.chat"</pre></li>
+      <li>Act through one verb.
+<pre>curl -H "Authorization: Bearer $TOKEN" -X POST http://this-host:3000/api/bridge/call \
+  -H "content-type: application/json" \
+  -d '{"type":"player.give_item","target":"&lt;player id&gt;","data":{"item":"PalSphere","count":5}}'</pre></li>
+    </ol>
+    <p class="fine"><code>GET /api/bridge/schema</code> lists every capability with its parameters
+      and whether it is live on this build. Full contract:
+      <a href="https://github.com/s-kiu/Palladium/blob/main/docs/bridge.md">docs/bridge.md</a> ·
+      <a href="https://github.com/s-kiu/Palladium/blob/main/docs/bridge-reference.md">capability reference</a> ·
+      <a href="https://github.com/s-kiu/Palladium/tree/main/examples/api">runnable examples</a>.</p>
+  </section>
+
+  <section id="eventspanel" class="hidden sub">
+    <h3>Events <span class="fine" id="eventcount"></span></h3>
+    <p class="fine">Live stream for this server run, refreshed every two seconds while this tab is
+      open. Click a type to narrow it. An action's result travels the same stream.</p>
+    <div class="row">
+      <ul id="eventtypes" class="chips"></ul>
+    </div>
+    <pre id="eventlog" class="console"></pre>
+  </section>
+
+  <section id="hookspanel" class="hidden sub">
+    <h3>Hooks <span class="fine" id="agentlabel"></span></h3>
+    <p class="fine">Engine hooks the mod registered on this run. A hook that fails costs its own
+      event type and nothing else — the rest keep working.</p>
+    <div class="scroll"><table id="hooktable" class="plain"></table></div>
+  </section>
+
+  <section id="peoplepanel" class="hidden sub">
+    <h3>Players <span class="fine" id="peoplecount"></span></h3>
+    <p class="fine">Every id the bridge has seen, kept across restarts. Tags are the agent's own,
+      read back from its store.</p>
+    <div class="scroll"><table id="peopletable" class="plain"></table></div>
+  </section>
+
+  <section id="palspanel" class="hidden sub">
+    <h3>Pals in the world <span class="fine" id="palcount"></span></h3>
+    <p class="fine">Pals loaded near players, spawned ones included. Ids come from the engine, so
+      one you just spawned is addressable straight away.</p>
+    <div class="row">
+      <button id="palrefresh" type="button">Refresh</button>
+    </div>
+    <div class="scroll"><table id="paltable" class="plain"></table></div>
+    <div id="palinspect"></div>
+  </section>
+
+  <!-- Reading and writing a player's or a pal's stats is the one thing on this
+       page that is not a plain capability form: the current values have to be
+       read first, and a status point is spent rather than set. -->
+  <dialog id="statsdialog">
+    <div class="row spread">
+      <h3 id="statstitle"></h3>
+      <button id="statsclose" type="button" class="quiet">Close</button>
+    </div>
+    <p class="fine">A blank box leaves that stat alone. A stat this build does not expose reads
+      as <code>—</code> and cannot be set.</p>
+    <div class="scroll"><table id="statstable" class="plain"></table></div>
+    <div id="statuspoints"></div>
+    <p class="fine" id="statsresult"></p>
+    <div class="row">
+      <button id="statssave" type="button">Save changes</button>
+    </div>
+  </dialog>
+
+  <section id="commandpanel">
+    <h2>Command reference</h2>
+    <p class="fine">Every capability is a chat command, gated by the node of the same name —
+      <code>!player.heal</code>, or the short form when nothing else claims it. Parameters go by
+      position or <code>key=value</code>; <code>@me</code> is the caller, <code>@Name</code> an online
+      player. Mods add their own commands (<code>!lb</code>, …) — those declare a word, a help line
+      and a node, and parse their own arguments.</p>
+    <div class="row">
+      <input id="cmdsearch" class="grow" placeholder="find a command — !heal, spawn, give…"
+        aria-label="Find a command" spellcheck="false">
+    </div>
+    <div id="cmdlist" class="cmdlist"></div>
+    <div id="cmdform" class="hidden">
+      <h3 id="cmdname"></h3>
+      <p id="cmdhelp" class="fine"></p>
+      <div id="cmdfields"></div>
+      <div class="row">
+        <button id="cmdrun" type="button">Run on the server</button>
+        <button id="cmdshow" type="button" class="quiet">Show</button>
+        <span class="fine" id="cmdnote"></span>
+      </div>
+      <div id="cmdout" class="chat"></div>
+    </div>
+
+    <h3>Every command, as a table</h3>
+    <p class="fine" id="cmdtablenote"></p>
+    <div class="scroll"><table id="commands" class="plain"></table></div>
+  </section>
+</main>
+
+<footer>
+  <p>Runs Palladium's own <code>permissions.lua</code>, <code>collections.lua</code>,
+    <code>store.lua</code> and <code>framework.lua</code> — generated, drift-checked copies —
+    under <a href="https://github.com/fengari-lua/fengari-web">fengari</a> (MIT, vendored).
+    Part of <a href="https://github.com/s-kiu/Palladium">Palladium</a> — <a href="docs/">documentation</a>.</p>
+</footer>
+
+<script src="vendor/fengari-web.js"></script>
+<script src="engine/manifest.js"></script>
+<script src="engine/catalog.js"></script>
+<script src="studio.js"></script>
+</body>
+</html>
