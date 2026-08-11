@@ -218,8 +218,8 @@ if (new URLSearchParams(location.search).has("embed")) {
       config names, one of the simulated players below, or paste any id.</p>
     <div id="playerlist"></div>
     <div class="row">
-      <select id="lenspick" aria-label="Pick player"></select>
-      <input id="lensfree" aria-label="Player ID" class="grow" placeholder="…or any player id (32 hex)" size="34">
+      <input id="lensfree" aria-label="Player ID" class="grow"
+        placeholder="…or paste any player id — 32 hex — to look at somebody this config does not name">
       <button id="lensrun" type="button">Look</button>
     </div>
     <div id="lensdetail" class="hidden">
@@ -227,6 +227,7 @@ if (new URLSearchParams(location.search).has("embed")) {
         <p id="lenswho" class="fine"></p>
         <button id="lensclose" type="button" class="quiet">Close</button>
       </div>
+    <div class="row" id="lensgroups"></div>
     <ul id="lensoverrides" class="problems hidden"></ul>
     <p class="fine">Click a row to give this player their own override for that node — an
       override outranks every group they are in.</p>
@@ -243,10 +244,12 @@ if (new URLSearchParams(location.search).has("embed")) {
       <button id="simadd" type="button">Add player</button>
     </div>
     <ul id="simlist" class="chips"></ul>
-    <div class="row">
-      <select id="simactor" aria-label="Select actor"></select>
+    <p class="fine" id="simnobody">Add somebody above, then type a command as them.</p>
+    <div class="row hidden" id="simrunrow">
+      <select id="simactor" aria-label="Select actor" class="hidden"></select>
+      <span class="fine hidden" id="simone"></span>
       <input id="simline" aria-label="Command" class="grow" placeholder="!heal @Sidekick" spellcheck="false">
-      <button id="simrun" type="button">Run</button>
+      <button id="simrun" type="button">Simulate</button>
     </div>
     <div id="simout" class="chat"></div>
   </section>

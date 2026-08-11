@@ -404,12 +404,20 @@ local function matrix_reply()
             -- allow entry matched and its constraint did not hold — which is a
             -- different answer from "denied", and the matrix must not collapse
             -- the two. A deny entry produces no violation, ever.
+            -- The date a grant expires is part of the grant, so the cell
+            -- carries it: reopening a dated entry with an empty date box read
+            -- as "it did not save", and saving from there would have wiped it.
+            local expires = ""
+            for _, entry in ipairs(s.perms:entries_of(group.name)) do
+                if entry.node == node.id then expires = entry.until_stamp or "" end
+            end
             column[node.id] = {
                 allowed = bare and true or false,
                 self = self_ok and true or false,
                 conditional = (not bare and not self_ok and violation ~= nil) or false,
                 source = tostring(source or ""),
                 where = where and tostring(where) or "",
+                until_stamp = expires,
                 why = violation and tostring(violation) or "",
             }
         end

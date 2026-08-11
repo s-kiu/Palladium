@@ -455,8 +455,16 @@ body.busy::before {
 
 /* The fields a call carries, in the constraint dialog: a name you can click
    to write, with what it holds beside it. */
-.fieldchips li { align-items: baseline; gap: .35rem; }
+/* `.chips li` is not a flex box, so a gap on it did nothing — the field name
+   and what it holds ran together into one word. */
+.fieldchips li { display: inline-flex; align-items: baseline; gap: .4rem; }
 .fieldchips li span { color: var(--muted); font-size: .74rem; }
+
+/* A group this player is in, with the way out of it attached. */
+.groupchip { display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .3rem .1rem .6rem; }
+.groupchip button.icon { width: 1.3rem; height: 1.3rem; border: none; }
+.groupchip button.icon svg { width: .8rem; height: .8rem; }
+#lensgroups { flex-wrap: wrap; gap: .4rem; align-items: center; }
 
 /* A command in the reference table opens as a form, so it looks like the
    link it is rather than like text next to one. */
@@ -598,5 +606,8 @@ table.settings td.actions button { margin-left: .3rem; }
 
 .memberlist { list-style: none; margin: 0; padding: 0 .7rem .6rem 2rem; }
 .memberlist li { display: flex; align-items: center; gap: .6rem; padding: .2rem 0; font-size: .85rem; }
+/* There is room for the whole name and the start of the id — clipping to
+   eight hex characters was throwing away the only readable part. */
+.memberlist .linklike { max-width: none; text-align: left; }
 .pill.self { background: var(--self-bg); color: var(--self); border-radius: 999px; padding: 0 .5rem; font-size: .72rem; }
 .row.spread { justify-content: space-between; }

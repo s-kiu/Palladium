@@ -563,7 +563,7 @@ function refreshGroups(info) {
         const who = document.createElement("button");
         who.type = "button";
         who.className = "linklike";
-        who.textContent = shortId(member.id);
+        who.textContent = personLabel(member.id);
         who.title = member.id;
         who.onclick = () => { setPermSub("lenspanel"); showPlayer(member.id); };
         item.appendChild(who);
@@ -621,7 +621,9 @@ function refreshPlayers(info) {
   });
   for (const player of sorted) {
     const row = table.insertRow();
-    row.insertCell().textContent = shortId(player.id);
+    const cell = row.insertCell();
+    cell.textContent = personLabel(player.id);
+    cell.title = player.id;
     row.insertCell().textContent = player.groups || "the default group";
     const own = row.insertCell();
     if (player.overrides) {
@@ -645,6 +647,73 @@ function showPlayer(id) {
   $("lensfree").value = id;
   runLens();
   $("lensdetail").classList.remove("hidden");
+}
+
+// Which groups this person is in, from their side. The group cards can take
+// somebody out; until now nothing could put them in another one without going
+// to find that group first, which is the wrong way round when the person is
+// what you are looking at.
+function renderLensGroups(id, reply) {
+  const host = $("lensgroups");
+  host.textContent = "";
+  if (reply.simulated) {
+    const note = document.createElement("span");
+    note.className = "fine";
+    note.textContent = "Simulated — change their groups where you made them up, below.";
+    host.appendChild(note);
+    return;
+  }
+
+  const label = document.createElement("span");
+  label.className = "fine";
+  label.textContent = "groups:";
+  host.appendChild(label);
+
+  const inGroup = new Set(reply.groups.map((g) => g.name));
+  for (const group of reply.groups) {
+    const chip = document.createElement("span");
+    chip.className = "pill self groupchip";
+    chip.textContent = group.name;
+    const drop = iconButton("remove", "Take them out of " + group.name, "danger");
+    drop.onclick = guarded(() => confirmThen({
+      title: "Take " + shortId(id) + " out of " + group.name + "?",
+      body: "They keep any override of their own, and fall back to whatever their "
+        + "remaining groups allow.",
+      verb: "Remove them",
+      // refreshAll redraws the groups and the players; the lens is looking at
+      // one person and has to be told to look again.
+    }, async () => { await edit("unassign", { player: id, group: group.name }); showPlayer(id); }));
+    chip.appendChild(drop);
+    host.appendChild(chip);
+  }
+  if (inGroup.size === 0) {
+    const none = document.createElement("span");
+    none.className = "fine";
+    none.textContent = "none — the default group answers for them";
+    host.appendChild(none);
+  }
+
+  const spare = ((lastInfo && lastInfo.groups) || []).filter(
+    (g) => !inGroup.has(g.name) && !g.is_default);
+  if (spare.length === 0) return;
+  const pick = document.createElement("select");
+  pick.setAttribute("aria-label", "Add to a group");
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = "add to a group…";
+  pick.appendChild(first);
+  for (const group of spare) {
+    const option = document.createElement("option");
+    option.value = group.name;
+    option.textContent = group.name + " (" + group.weight + ")";
+    pick.appendChild(option);
+  }
+  pick.onchange = guarded(async () => {
+    if (!pick.value) return;
+    await edit("assign", { player: id, group: pick.value });
+    showPlayer(id);
+  });
+  host.appendChild(pick);
 }
 
 function openMemberDialog(group) {
@@ -1787,9 +1856,12 @@ function collapseLoad(label) {
 
 // Which files inside a mod folder matter to the engine; everything else in
 // the folder (README, tests) is noise here.
+// What a mod folder can contribute. `permissions.config` is deliberately not
+// here: a mod's nodes live in its settings.config now, so the only file by
+// that name is the central one — and treating it as a mod's file is what made
+// a dropped folder lose every group and every player in it.
 const MOD_FILES = new Set([
   "mod.lua", "settings.config", "settings.example.config",
-  "permissions.config", "permissions.example.config",
 ]);
 
 function stagedName(text, fallback) {
@@ -1830,7 +1902,20 @@ async function stageAndBoot(entries) {
       ignored.push(entry.dir ? entry.dir + "/" + entry.name : entry.name);
     }
   }
+  // A folder carrying settings.config but no mod.lua is a mod installed on a
+  // server whose code was not handed over — the same thing a live panel serves.
+  // Staging it as a mod would refuse it for having no code; staging it as that
+  // mod's home keeps its settings and its nodes, which is all it has.
+  const homes = [];
+  for (const [name, folder] of Object.entries(mods)) {
+    if (folder["mod.lua"]) continue;
+    if (folder["settings.config"] || folder["settings.example.config"]) {
+      homes.push({ mod: name, text: folder["settings.config"] || folder["settings.example.config"] });
+    }
+    delete mods[name];
+  }
   for (const name of Object.keys(mods)) labels.push(name + "/");
+  for (const home of homes) labels.push(home.mod + "/");
   for (const file of files) labels.push(file.name);
   if (labels.length === 0) {
     fatal(ignored.length
@@ -1840,7 +1925,7 @@ async function stageAndBoot(entries) {
       : "Nothing to load.");
     return;
   }
-  bootFrom(files, mods, labels.join(", "));
+  bootFrom(files, mods, labels.join(", "), homes);
   if (ignored.length > 0) {
     const note = $("ignorednote");
     note.classList.remove("hidden");
@@ -1853,8 +1938,12 @@ async function stageAndBoot(entries) {
 async function loadFileList(list) {
   const entries = [];
   for (const file of list) {
+    // The folder that holds the file, not the folder the picker started in:
+    // picking Palladium/mods/ gave every file the name `mods`, so each mod's
+    // settings landed under one made-up mod called after the parent.
     const path = file.webkitRelativePath || "";
-    const dir = path.includes("/") ? path.split("/")[0] : null;
+    const parts = path.split("/").filter(Boolean);
+    const dir = parts.length > 1 ? parts[parts.length - 2] : null;
     entries.push({ name: file.name, dir, file });
   }
   await stageAndBoot(entries);
@@ -2006,6 +2095,7 @@ function storyOf(cell) {
     : cell.source === "unregistered" ? "nothing — a node nobody registered is denied"
     : cell.source ? "the entry in " + cell.source : "nothing"));
   if (cell.where) bits.push("rule: " + cell.where);
+  if (cell.until_stamp) bits.push("expires " + cell.until_stamp);
   if (cell.why) bits.push("a bare call fails because " + cell.why);
   return { kind, text: bits.join("\n"), line: bits.join(" · ") };
 }
@@ -2024,16 +2114,33 @@ function openCellEditor(kind, name, node, cell) {
   // A cell decided here may still carry no rule, and `undefined` printed
   // into the box became the first half of whatever got typed next.
   $("cellwhere").value = (decidedHere && cell.where) || "";
-  $("celluntil").value = "";
+  // Its own date, not a blank one — reopening a dated grant showed nothing and
+  // saving from there would have quietly dropped the date.
+  $("celluntil").value = (decidedHere && cell.until_stamp) || "";
   renderCellFields(node);
   attachSuggest($("cellwhere"), constraintSuggestions(node));
   $("celldialog").showModal();
 }
 
+// A 32-hex id names nobody. Whenever something knows the person behind one —
+// the simulator, or a live server's player list — say the name and keep the id
+// for the tooltip.
+function nameOf(id) {
+  const simulated = simPlayers.find((p) => p.id === id);
+  if (simulated) return simulated.name;
+  const live = livePlayers.find((p) => p.id === id);
+  if (live && live.name) return live.name;
+  return null;
+}
+
 function shortId(id) {
-  const player = simPlayers.find((p) => p.id === id);
-  if (player) return player.name;
-  return id.length > 12 ? id.slice(0, 8) + "…" : id;
+  return nameOf(id) || (id.length > 12 ? id.slice(0, 8) + "…" : id);
+}
+
+// The same, but keeping the id visible when there is room for both.
+function personLabel(id) {
+  const name = nameOf(id);
+  return name ? name + " · " + id.slice(0, 8) + "…" : id;
 }
 
 // What this call actually carries, so a constraint is written against the
@@ -2084,30 +2191,33 @@ function insertField(name) {
 
 // ── the player lens ──────────────────────────────────────────────────────────
 
+// The simulator's actor list, and nothing else — the player table is how you
+// reach somebody this config names, so a second dropdown saying the same names
+// was a row of controls doing what a click already did.
 function fillLensPick() {
-  const pick = $("lenspick");
-  pick.textContent = "";
-  const add = (value, label) => {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    pick.appendChild(option);
-  };
-  for (const player of (lastInfo && lastInfo.players) || []) {
-    add(player.id, player.id.slice(0, 8) + "… — " + (player.groups || "no groups")
-      + (player.overrides ? ", " + player.overrides + " override(s)" : ""));
-  }
-  for (const player of livePlayers) {
-    add(player.id, player.name + " (online now)");
-  }
+  renderSimActors();
+}
+
+// One simulated player needs no chooser: there is nothing to choose. None at
+// all needs neither the chooser nor the row it sits in.
+function renderSimActors() {
+  const actor = $("simactor");
+  actor.textContent = "";
   for (const player of simPlayers) {
-    add(player.id, player.name + " (simulated" + (player.groups ? ": " + player.groups : "") + ")");
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = player.name;
+    actor.appendChild(option);
   }
-  if (!pick.firstChild) add("", "— nobody named yet —");
+  actor.classList.toggle("hidden", simPlayers.length < 2);
+  $("simrunrow").classList.toggle("hidden", simPlayers.length === 0);
+  $("simnobody").classList.toggle("hidden", simPlayers.length > 0);
+  $("simone").textContent = simPlayers.length === 1 ? "as " + simPlayers[0].name : "";
+  $("simone").classList.toggle("hidden", simPlayers.length !== 1);
 }
 
 function runLens() {
-  const id = $("lensfree").value.trim() || $("lenspick").value;
+  const id = $("lensfree").value.trim() || lastLensId;
   if (!id) return;
   lastLensId = id;
   const reply = ask("lens", { player: id });
@@ -2117,6 +2227,8 @@ function runLens() {
     + " — standing: " + reply.standing + " (" + reply.weight + ")"
     + " · groups: " + (groups || "none — the default group answers")
     + (reply.simulated ? " · simulated, never written to the config" : "");
+
+  renderLensGroups(id, reply);
 
   const overrides = $("lensoverrides");
   overrides.textContent = "";
@@ -2472,8 +2584,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 function renderSimPlayers() {
   const list = $("simlist");
   list.textContent = "";
-  const actor = $("simactor");
-  actor.textContent = "";
   for (const player of simPlayers) {
     const chip = document.createElement("li");
     chip.textContent = player.name + (player.groups ? " (" + player.groups + ")" : "");
@@ -2491,12 +2601,8 @@ function renderSimPlayers() {
     chip.appendChild(remove);
     list.appendChild(chip);
 
-    const option = document.createElement("option");
-    option.value = player.id;
-    option.textContent = player.name;
-    actor.appendChild(option);
   }
-  fillLensPick();
+  renderSimActors();
 }
 
 // ── the command reference ───────────────────────────────────────────────────
