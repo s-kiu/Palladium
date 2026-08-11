@@ -259,8 +259,8 @@ either way:
 
 | `storage` | Kept in | For |
 |---|---|---|
-| `data` | `mods/<Mod>/<mod>.data`, an append log indexed in memory | thousands of records nobody hand-edits |
-| `config` | `mods/<Mod>/<mod>.config`, INI | a handful an operator owns and edits |
+| `data` | `Mods/Palladium/mods/<Mod>/.data`, an append log indexed in memory | thousands of records nobody hand-edits |
+| `config` | `Mods/Palladium/mods/<Mod>/<name>.config`, INI | a handful an operator owns and edits |
 
 ```lua
 local homes = pal.data("homes")

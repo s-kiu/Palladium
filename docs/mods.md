@@ -492,7 +492,7 @@ misbehaving where the author cannot see it.
 
 ### How mods are found, loaded and isolated
 
-- Every mod's records live in `mods/<Mod>/<mod>.data` — tab-separated,
+- Every mod's records live in `Mods/Palladium/mods/<Mod>/.data` — tab-separated,
   appended and periodically rewritten, since this runtime has no JSON parser
   and no database. A line torn by a crash is dropped and the file healed on the
   next load. On Pal-Up the loader reads an rsync copy of the mod folders, so

@@ -5,7 +5,7 @@ Posts joins, deaths and chat into a Discord channel.
 Needs **Palladium and Pal-Up**: it runs beside the game as a child process of
 the panel, because it has to reach the network and UE4SS Lua has no sockets.
 That is the only reason to leave the game process — anything that stays inside
-it should be a [Palladium mod](../../palladium), which needs no panel and no
+it should be a [Palladium mod](../../lua), which needs no panel and no
 token.
 
 ## Install
