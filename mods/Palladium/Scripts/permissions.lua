@@ -99,20 +99,31 @@ end
 -- → list of alternatives — each a list of conditions — or nil when there is
 -- no constraint at all. `and` binds tighter than `or`: "a and b or c" is
 -- (a and b) or (c).
+-- Second return: the fragments that could not be read at all. Resolution
+-- ignores them — a condition nobody can parse must never widen a grant — but
+-- dropping them in silence is how `item matches Sphere_*` becomes a rule that
+-- looks written and is not there. `lint` reports them.
 function permissions.parse_where(where)
     if not where or where == "" then return nil end
     local body = where:match("^where%s+(.+)$")
-    if not body then return nil end
-    local alternatives = {}
+    -- A rule that does not start with `where` is not a rule; the whole of it
+    -- is the mistake.
+    if not body then return nil, { tostring(where) } end
+    local alternatives, bad = {}, {}
     for clause in (body .. " or "):gmatch("(.-)%s+or%s+") do
         local conditions = {}
         for piece in (clause .. " and "):gmatch("(.-)%s+and%s+") do
-            local parsed = condition(piece:gsub("^%s+", ""):gsub("%s+$", ""))
-            if parsed then conditions[#conditions + 1] = parsed end
+            local text = piece:gsub("^%s+", ""):gsub("%s+$", "")
+            local parsed = condition(text)
+            if parsed then
+                conditions[#conditions + 1] = parsed
+            elseif text ~= "" then
+                bad[#bad + 1] = text
+            end
         end
         if #conditions > 0 then alternatives[#alternatives + 1] = conditions end
     end
-    return #alternatives > 0 and alternatives or nil
+    return (#alternatives > 0 and alternatives or nil), (#bad > 0 and bad or nil)
 end
 
 -- → nil when the condition holds, or why it does not
@@ -199,8 +210,42 @@ function permissions.new(collections)
         fields = { groups = "list", allow = "list", deny = "list" },
     })
 
+    -- A mod's nodes live with the mod: <Mod>/permissions.config, declared
+    -- lazily the first time that mod registers anything. Groups and per-player
+    -- grants stay in the file above, because a grant spans every mod and
+    -- belongs under none of them.
+    self.mod_nodes = {}
+
     self:ensure_default_group()
     return self
+end
+
+-- Which file a node's declaration belongs in. Owners with no folder of their
+-- own — the built-in capabilities under `bridge`, and anything registered for
+-- a mod that is not installed — stay in the central file, which is also where
+-- every node lived before mods had folders.
+function permissions:nodes_of(owner)
+    owner = tostring(owner or ""):lower()
+    if owner == "" or owner == "bridge" then return self.nodes_c end
+    if not (self.collections.has_home and self.collections.has_home(owner)) then
+        return self.nodes_c
+    end
+    if not self.mod_nodes[owner] then
+        self.mod_nodes[owner] = self.collections.declare(owner, "nodes", {
+            description = "the permission nodes this mod registers, and their defaults",
+            storage = "config",
+            -- One config per mod folder: its settings and its nodes together.
+            -- `preamble` tells collections the settings above the first
+            -- section are data it must copy through, not junk to report.
+            file = "settings",
+            preamble = true,
+            layout = "flat",
+            value_field = "default",
+            comment_field = "description",
+            fields = { default = "string" },
+        })
+    end
+    return self.mod_nodes[owner]
 end
 
 -- Called at boot, not in the constructor, so tests that build their own
@@ -284,14 +329,26 @@ end
 -- default it asked for, ready to be changed.
 
 function permissions:register(mod, nodes)
+    local held = self:nodes_of(mod)
     local count = 0
     for _, entry in ipairs(nodes or {}) do
         if type(entry) == "table" and type(entry.node) == "string" then
             local node = entry.node:lower()
-            local existing = self.nodes_c:get(node)
+            local existing = held:get(node)
+            -- Before mods had folders every node lived in the central file. An
+            -- operator's default set back then is still their word, so it is
+            -- carried into the mod's own file and the old copy dropped —
+            -- otherwise the first boot after an update would quietly reset it.
+            if not existing and held ~= self.nodes_c then
+                local central = self.nodes_c:get(node)
+                if central then
+                    existing = central
+                    self.nodes_c:delete(node)
+                end
+            end
             -- An operator's change to a default outranks the mod's opinion of
             -- it: re-registering must not silently undo the file.
-            self.nodes_c:set(node, {
+            held:set(node, {
                 default = existing and existing.default
                     or (entry.default == "allow" and "allow" or "deny"),
                 description = entry.description or (existing and existing.description) or "",
@@ -303,7 +360,12 @@ function permissions:register(mod, nodes)
 end
 
 function permissions:nodes()
-    return self.nodes_c:all()
+    local all = {}
+    for node, record in pairs(self.nodes_c:all()) do all[node] = record end
+    for _, held in pairs(self.mod_nodes) do
+        for node, record in pairs(held:all()) do all[node] = record end
+    end
+    return all
 end
 
 -- The mod a node belongs to is its prefix — the rule that a mod may only
@@ -483,11 +545,25 @@ function permissions:user_entries(userid)
     return entries_from(self.players_c, userid)
 end
 
+-- A membership is written by hand as often as by the panel, so `Moderator` and
+-- `moderator` mean the same group. Without this the mismatch granted nothing
+-- and said nothing — the config looked right and the player had no rights.
+function permissions:group_named(name)
+    local wanted = tostring(name or "")
+    local record = self.groups_c:get(wanted)
+    if record then return wanted, record end
+    wanted = wanted:lower()
+    for existing, found in pairs(self.groups_c:all()) do
+        if tostring(existing):lower() == wanted then return existing, found end
+    end
+    return nil
+end
+
 function permissions:groups_of(userid)
     local names = {}
     for _, group in ipairs(self.players_c:list(userid, "groups")) do
-        local record = self.groups_c:get(group)
-        if record then names[#names + 1] = { name = group, weight = tonumber(record.weight) or 0 } end
+        local actual, record = self:group_named(group)
+        if record then names[#names + 1] = { name = actual, weight = tonumber(record.weight) or 0 } end
     end
     table.sort(names, function(a, b)
         if a.weight ~= b.weight then return a.weight > b.weight end
@@ -572,9 +648,71 @@ function permissions:resolve(userid, node, params)
         end
     end
 
-    local registered = self.nodes_c:get(node)
+    -- The mod's own file first, the central one after: a node a mod no longer
+    -- declares still answers from where it was last written, rather than
+    -- turning into "nobody registered this" and denying silently.
+    local held = self:nodes_of(permissions.owner_of(node))
+    local registered = held:get(node)
+    if not registered and held ~= self.nodes_c then registered = self.nodes_c:get(node) end
     if registered then return registered.default == "allow", "default", nil end
     return false, "unregistered", nil
+end
+
+-- ── lint ────────────────────────────────────────────────────────────────────
+-- Reads what is stored and names what cannot mean what it says. Nothing here
+-- changes an answer; it exists because both of these failures are silent, and
+-- a permission that silently does nothing is indistinguishable from one the
+-- operator wrote wrongly:
+--
+--   * a condition nobody can parse is dropped, so the grant is wider or
+--     narrower than it reads,
+--   * a node listed twice in one source is only ever consulted once — an
+--     exact-match tie keeps the first, so the second line is dead. One entry
+--     with `or` is how two alternatives are spelled.
+function permissions:lint()
+    local problems = {}
+    local function scan(label, handle, id)
+        local seen = {}
+        for _, effect in ipairs({ "allow", "deny" }) do
+            for _, text in ipairs(handle:list(id, effect)) do
+                local body = split_until(text)
+                local node, where = split_entry(body)
+                if node then
+                    if seen[node] then
+                        problems[#problems + 1] = string.format(
+                            "%s: %s is listed more than once — only the first is consulted; "
+                            .. "put the alternatives in one entry with `or`", label, node)
+                    end
+                    seen[node] = true
+                end
+                local _, bad = permissions.parse_where(where)
+                for _, fragment in ipairs(bad or {}) do
+                    problems[#problems + 1] = string.format(
+                        "%s: %s — cannot read `%s`; a condition is `field op value` with "
+                        .. "in, =, !=, <, <=, >, >=", label, tostring(node), fragment)
+                end
+            end
+        end
+    end
+    for name in pairs(self.groups_c:all()) do scan("group " .. name, self.groups_c, name) end
+    for id in pairs(self.players_c:all()) do
+        scan("player " .. id, self.players_c, id)
+        -- A membership naming a group that is not there grants nothing. Silence
+        -- is the worst answer to that, so it is named with what does exist.
+        for _, group in ipairs(self.players_c:list(id, "groups")) do
+            if not self:group_named(group) then
+                local known = {}
+                for name in pairs(self.groups_c:all()) do known[#known + 1] = name end
+                table.sort(known)
+                problems[#problems + 1] = string.format(
+                    "player %s: no group called `%s`, so this grants nothing — "
+                    .. "the groups in this file are %s", id, tostring(group),
+                    table.concat(known, ", "))
+            end
+        end
+    end
+    table.sort(problems)
+    return problems
 end
 
 -- The highest-weight tagged group a player belongs to — the [ROLE] shown in
