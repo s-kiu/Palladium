@@ -27,7 +27,7 @@
 --   - everything runs under pcall; a bridge bug drops an event, never the game
 
 local MOD = "Palladium"
-local VERSION = "4.27.4"
+local VERSION = "4.27.5"
 
 local CAPS = require("generated/capabilities")
 local framework = require("framework")
@@ -207,44 +207,11 @@ local function record_join(userid, name, now)
 end
 
 -- ── JSON ────────────────────────────────────────────────────────────────────
-local ESCAPES = {
-    ['"'] = '\\"', ["\\"] = "\\\\", ["\b"] = "\\b", ["\f"] = "\\f",
-    ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t",
-}
-
-local function json_string(value, limit)
-    local text = tostring(value or "")
-    if #text > (limit or MAX_TEXT) then
-        text = text:sub(1, limit or MAX_TEXT)
-    end
-    text = text:gsub('[%c"\\]', function(c)
-        return ESCAPES[c] or string.format("\\u%04x", c:byte())
-    end)
-    return '"' .. text .. '"'
-end
-
--- Values in data pairs: strings, numbers, booleans, or {raw=<json>} for a
--- pre-encoded object (a nested subject).
-local function json_value(value)
-    local kind = type(value)
-    if kind == "boolean" then return value and "true" or "false" end
-    if kind == "number" then
-        if value % 1 == 0 then return string.format("%d", value) end
-        return string.format("%.6g", value)
-    end
-    if kind == "table" and value.raw then return value.raw end
-    return json_string(value)
-end
-
-local function json_pairs(fields)
-    local parts = {}
-    for _, field in ipairs(fields or {}) do
-        if field[2] ~= nil then
-            parts[#parts + 1] = json_string(field[1], 32) .. ":" .. json_value(field[2])
-        end
-    end
-    return table.concat(parts, ",")
-end
+-- The JSON layer lives in its own file so a Lua interpreter can test it
+-- without booting an engine; nothing in it ever raises, whatever a loader
+-- hands it. See jsonlite.lua for the rules.
+local jsonlite = require("jsonlite")
+local json_string, json_value, json_pairs = jsonlite.string, jsonlite.value, jsonlite.pairs
 
 -- ── event file ──────────────────────────────────────────────────────────────
 local function append_line(line)

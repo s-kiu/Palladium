@@ -37,6 +37,9 @@ run() {
     rm -rf "$col_root"
     [[ $col_status -eq 0 ]] || return $col_status
 
+    echo "── json ────────────────────────────────────────────────────"
+    PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/json.lua || return $?
+
     echo "── discovery ───────────────────────────────────────────────"
     local disc_root
     disc_root="$(mktemp -d)"
