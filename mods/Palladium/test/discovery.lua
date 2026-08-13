@@ -76,6 +76,8 @@ check("and Palladium itself is not treated as a mod",
     fw.mods.Palladium == nil)
 
 -- ── the iterate tree is keyed by name, not by path ───────────────────────────
+-- The cmd boot above wrote its findings back; this boot is about the tree.
+os.remove(MODS .. "/Palladium/mods.list")
 local by_name = { Mods = { Palladium = {}, Thing = {} } }
 local fw2, log2 = boot_with("/", function() return nil end, function() return by_name end)
 check("an absolute mods path still matches the tree by its own name",
@@ -85,6 +87,7 @@ check("and it really was the iterate tree that answered",
     log2:find("via IterateGameDirectories", 1, true) ~= nil, log2)
 
 -- ── every route dead: the log says exactly what to write, and the list file works ──
+os.remove(MODS .. "/Palladium/mods.list")
 local fw3, log3 = boot_with("\\", function() return nil end, nil)
 check("with no route at all, nothing loads",
     fw3.mods.Thing == nil, log3)
@@ -98,6 +101,61 @@ local fw4, log4 = boot_with("\\", function() return nil end, nil)
 check("a hand-written mods.list is believed with no shell and no iterate",
     fw4.mods.Thing and fw4.mods.Thing.ok == true,
     fw4.mods.Thing and fw4.mods.Thing.error or log4)
+
+-- ── names from UE4SS's own mods.txt, with no shell and no iterate ───────────
+os.remove(MODS .. "/Palladium/mods.list")
+local txt = io.open(MODS .. "/mods.txt", "w")
+txt:write("Palladium : 1\nThing : 1\nGhost : 1\nSwitched : 0\n")
+txt:close()
+os.execute("mkdir -p '" .. MODS .. "/Switched'")
+local sw = io.open(MODS .. "/Switched/mod.lua", "w")
+sw:write('return { name = "Switched", commands = {}, permissions = {} }\n')
+sw:close()
+local fw5, log5 = boot_with("\\", function() return nil end, nil)
+check("mods.txt names are probed when no listing exists",
+    fw5.mods.Thing and fw5.mods.Thing.ok == true,
+    fw5.mods.Thing and fw5.mods.Thing.error or log5)
+check("a name with no mod.lua behind it is not a mod",
+    fw5.mods.Ghost == nil)
+check("a `: 0` line stays disabled here too",
+    fw5.mods.Switched == nil, log5)
+
+-- ── one good scan writes the list; the next boot needs no routes at all ─────
+check("what the scan found was written back as mods.list",
+    (function()
+        local file = io.open(MODS .. "/Palladium/mods.list", "r")
+        if not file then return false end
+        local text = file:read("a"); file:close()
+        return text:find("Thing", 1, true) ~= nil and text:find("via", 1, true) ~= nil
+            or text:find("Thing", 1, true) ~= nil
+    end)())
+os.remove(MODS .. "/mods.txt")
+local fw6, log6 = boot_with("\\", function() return nil end, nil)
+check("the next boot loads from that file with every route dead",
+    fw6.mods.Thing and fw6.mods.Thing.ok == true,
+    fw6.mods.Thing and fw6.mods.Thing.error or log6)
+check("and via mods.list, so the scan is no longer consulted",
+    log6:find("via mods.list", 1, true) ~= nil, log6)
+
+-- ── the operator's own file is never overwritten by a scan ──────────────────
+local hand = io.open(MODS .. "/Palladium/mods.list", "w")
+hand:write("; mine\nThing\n")
+hand:close()
+local cmd_popen_again = function(command)
+    if not command:match('^dir /b /ad "') then return nil end
+    local lines = { "Palladium", "Thing", "Switched" }
+    local at = 0
+    return {
+        lines = function() return function() at = at + 1; return lines[at] end end,
+        close = function() return true end,
+    }
+end
+local fw7 = boot_with("\\", cmd_popen_again, nil)
+check("a hand-written list is believed over a scan that sees more",
+    fw7.mods.Thing and fw7.mods.Thing.ok == true and fw7.mods.Switched == nil)
+local kept = io.open(MODS .. "/Palladium/mods.list", "r"):read("a")
+check("and the file still reads exactly as the operator wrote it",
+    kept == "; mine\nThing\n", kept)
 
 if failures > 0 then
     io.write(failures, " check(s) failed\n")

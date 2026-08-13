@@ -175,19 +175,26 @@ build crashes the server with a floating-point exception on engine calls
 ([#1](https://github.com/s-kiu/Palladium/issues/1)). Windows servers use the
 ordinary UE4SS release.
 
-To install a mod *for* it, drop that folder in beside this one and name it in
-`Mods/Palladium/mods.list`, one per line:
+To install a mod *for* it, drop that folder in beside this one and restart.
+Palladium finds it by scanning the `Mods` directory — and writes what the scan
+found into `Mods/Palladium/mods.list`, so the roster is a file you can read
+rather than a scan you have to guess about:
 
 ```
-; mods Palladium loads, in order
+; Palladium — mods.list, written from the last scan.
 GoldStreak
 ```
 
-On Pal-Up that file is regenerated on every boot from `./mods` and you never
-touch it. Standalone, it is how you control load order and disable a mod
-without deleting it — the same job `load_order.txt` does for BPModLoaderMod. If
-the file is absent entirely, Palladium falls back to asking the loader for a
-directory listing.
+That file is yours from then on: order in it is load order, and removing a
+line disables a mod without deleting it — the same job `load_order.txt` does
+for BPModLoaderMod. A hand-edited list is believed over any scan and is never
+overwritten. On Pal-Up it is regenerated on every boot from `./mods` and you
+never touch it.
+
+On a host where nothing can list a folder — no shell, a loader without
+directory support — Palladium probes the names in UE4SS's own `mods.txt` for a
+`mod.lua`, and failing even that, asks in the log for a hand-written
+`mods.list`. Writing one is only ever needed there.
 
 ## What it writes
 

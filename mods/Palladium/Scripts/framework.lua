@@ -148,12 +148,53 @@ local function from_shell(dir)
     return names, "directory listing"
 end
 
+-- UE4SS's own mods.txt as a source of NAMES, probed for a mod.lua. It needs
+-- no shell and no loader help — io.open is enough — and operators habitually
+-- list every folder there anyway. Names only: a listing it is not, so it runs
+-- after the real listings, as the route of last resort before giving up.
+local function from_mods_txt(dir)
+    local path = dir .. "/mods.txt"
+    if not exists(path) then return nil end
+    local names = {}
+    for line in io.lines(path) do
+        local name, flag = line:match("^%s*([%w_%.%-]+)%s*:%s*(%d)")
+        if not name then name = line:match("^%s*([%w_%.%-]+)%s*$") end
+        -- `: 0` is the operator disabling the folder; a cross-system disable
+        -- is still a disable, so it is honoured rather than second-guessed.
+        if name and flag ~= "0" and name ~= "Palladium"
+            and exists(dir .. "/" .. name .. "/mod.lua") then
+            names[#names + 1] = name
+        end
+    end
+    if #names == 0 then return nil end
+    return names, "mods.txt"
+end
+
 local function discover(dir)
-    for _, route in ipairs({ from_list_file, from_iterate, from_shell }) do
+    for _, route in ipairs({ from_list_file, from_iterate, from_shell, from_mods_txt }) do
         local names, how = route(dir)
         if names and #names > 0 then return names, how end
     end
     return {}, "nothing"
+end
+
+-- What a scan found is worth keeping: written back as the list file, the next
+-- boot is deterministic even if the shell that answered today is refused
+-- tomorrow, and the operator has a real file to reorder or trim instead of a
+-- scan to guess about. Never over their own file — a hand-written list is the
+-- one that just answered, so success via mods.list never lands here.
+local function remember(dir, names, how)
+    local file = io.open(dir .. "/Palladium/mods.list", "w")
+    if not file then
+        log("could not write Palladium/mods.list — discovery stays per-boot (via " .. how .. ")")
+        return
+    end
+    file:write("; Palladium — mods.list, written from the last scan (" .. how .. ").\n")
+    file:write("; Yours to edit: order here is load order, and removing a line disables\n")
+    file:write("; the mod without deleting it. This file is believed over any scan.\n")
+    for _, name in ipairs(names) do file:write(name .. "\n") end
+    file:close()
+    log(string.format("wrote Palladium/mods.list from this scan (%d mod(s), via %s)", #names, how))
 end
 
 -- ── loading ─────────────────────────────────────────────────────────────────
@@ -763,6 +804,7 @@ function framework.load()
     local dir = host.mods_dir
     local names, how = discover(dir)
     log(string.format("scanning %s via %s — %d folder(s)", dir, how, #names))
+    if #names > 0 and how ~= "mods.list" then remember(dir, names, how) end
 
     for _, name in ipairs(names) do
         local path = dir .. "/" .. name .. "/mod.lua"
