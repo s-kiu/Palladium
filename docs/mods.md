@@ -591,7 +591,8 @@ Game patches routinely break UE4SS (memory offsets move). Pal-Up's model:
    is where those fixes are being merged, not a build to run: its releases are
    missing part of the Linux fix set and the `UE4SS_Signatures/` overrides,
    and a server on them crashes on the first chat command
-   ([troubleshooting](troubleshooting.md#mods)).
+   ([#1](https://github.com/s-kiu/Palladium/issues/1),
+   [troubleshooting](troubleshooting.md#mods)).
 3. `docker compose run --rm palworld update` (auto-backup happens first),
    start, and test with `MODS_ENABLED=true`. If the server crashes on boot,
    flip `MODS_ENABLED=false` to confirm it's mod-related, then bisect with

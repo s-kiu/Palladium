@@ -5,35 +5,10 @@
 [![release](https://img.shields.io/github/v/release/s-kiu/Palladium?display_name=release&label=release)](https://github.com/s-kiu/Palladium/releases)
 [![license](https://img.shields.io/github/license/s-kiu/Palladium)](LICENSE)
 
-> ## 🛠️ New — [Palladium Studio](https://s-kiu.github.io/Palladium/)
->
-> **[→ Open it in your browser](https://s-kiu.github.io/Palladium/)** · nothing to install, nothing uploaded
->
-> Permissions used to mean hand-editing an INI file and hoping. The Studio is
-> the whole framework with a face on it — and it answers using **Palladium's
-> own engine**, compiled to run in your browser tab, so what it shows you is
-> what your server will actually do.
->
-> Drop `permissions.config` on it — or your whole `Mods/Palladium/mods/` folder —
-> and you get:
->
-> | | |
-> |---|---|
-> | **Overview** | every mod that loaded, what it brought, and any that refused — with the reason |
-> | **Data** | what your mods have remembered |
-> | **Commands** | every command as a form, with searchable pickers: 2,400+ items, 750+ pal species, every passive skill |
-> | **Permissions** | every node × every group, and one player at a time with the deciding entry spelled out |
-> | **Settings** | every mod's settings, the author's default beside each |
->
-> Edit, download, put the file back — a running server re-reads it in seconds,
-> and only the files you actually changed are written. **Works on a rented
-> server you have no shell access to:** all you need is your provider's file
-> manager.
->
-> **Running Pal-Up?** The same page is built into the panel — reading the live
-> config, applying edits as you make them, running commands for real, plus an
-> **Agent** tab with the live event stream, the engine hooks this build holds,
-> who is connected and the pals loaded around them.
+> [!TIP]
+> **New — [Palladium Studio](https://s-kiu.github.io/Palladium/):** every mod's commands, settings,
+> stored data and permissions, answered in your browser by Palladium's own engine — nothing to
+> install, nothing uploaded. Built into the Pal-Up panel; standalone for everyone else.
 
 **A modding framework for Palworld dedicated servers — and a Linux server that ships it ready to run.**
 
@@ -66,13 +41,17 @@ What each delivers — and what only the combination can:
 | Every mod's data edited in the browser | | | ✓ |
 | Script mods in JS/TS that reach the network — a Discord relay as a drop-in folder | | | ✓ |
 
-> [!NOTE]
-> Mod loading currently ships via the community-maintained
-> [UE4SS build v1.0.3-palworld-linux](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux),
-> which carries the Linux stability fixes for the current Palworld build while
-> they are merged upstream ([details](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11)).
-> The pin lives in [ue4ss.lock](packages/server-image/ue4ss/ue4ss.lock) and
-> will move back to an upstream release once one includes the fixes.
+> [!IMPORTANT]
+> On Linux, the
+> [Qiiks UE4SS build v1.0.3-palworld-linux](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux)
+> is **required** — the upstream build crashes the server with a floating-point
+> exception on engine calls ([#1](https://github.com/s-kiu/Palladium/issues/1),
+> [upstream](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11)),
+> and its bundled `UE4SS_Signatures/` directory must stay next to the loader.
+> Pal-Up ships it already — the pin lives in
+> [ue4ss.lock](packages/server-image/ue4ss/ue4ss.lock) and moves back upstream
+> once a release carries the fixes. Standalone Linux servers install it
+> themselves.
 
 ## Features
 
@@ -135,6 +114,11 @@ No clone, no Docker. Download the latest `Palladium` zip from the
 `Palladium` folder into your server's UE4SS `Mods` directory, enable it, and
 restart. Mods built on it go in folders right beside it. Full steps, including
 where permissions and mod data land: [mods/Palladium](mods/Palladium).
+
+On a **Linux** server, UE4SS itself must be the
+[Qiiks build](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux)
+— the upstream one crashes on engine calls
+([#1](https://github.com/s-kiu/Palladium/issues/1)).
 
 ### The full server — Pal-Up
 

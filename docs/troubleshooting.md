@@ -104,7 +104,8 @@ it's restored on every boot ([mods.md](mods.md), "Files that keep resetting").
 Seen on the upstream `ue4ss-linux-palworld` build: the server boots, hooks
 register, then the first `!command` typed in chat takes the process down with
 a floating-point exception. That build is missing part of the Linux fix set
-([upstream issue #11](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11))
+(tracked as [#1](https://github.com/s-kiu/Palladium/issues/1) here,
+[upstream #11](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11))
 — most relevantly the bundled `UE4SS_Signatures/` address overrides. Without
 them the loader can resolve an engine function to the wrong address, and the
 first real engine call Lua makes — sending your chat reply — executes

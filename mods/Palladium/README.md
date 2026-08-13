@@ -168,7 +168,12 @@ Drop the `Palladium` folder into your server's UE4SS `Mods` directory (on
 `server/UE4SS.log` will show each hook registering.
 
 Nothing else is required: the mod has no configuration and no dependencies
-beyond UE4SS itself.
+beyond UE4SS itself. On a **Linux** server, UE4SS must be the
+[Qiiks build v1.0.3-palworld-linux](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux),
+with its `UE4SS_Signatures/` directory kept next to the loader — the upstream
+build crashes the server with a floating-point exception on engine calls
+([#1](https://github.com/s-kiu/Palladium/issues/1)). Windows servers use the
+ordinary UE4SS release.
 
 To install a mod *for* it, drop that folder in beside this one and name it in
 `Mods/Palladium/mods.list`, one per line:

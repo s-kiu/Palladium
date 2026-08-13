@@ -5,6 +5,10 @@ you already run a UE4SS dedicated server and only want the modding framework,
 skip all of this — download the `Palladium` zip from the
 [releases page](https://github.com/s-kiu/Palladium/releases) and follow
 [its README](https://github.com/s-kiu/Palladium/tree/main/mods/Palladium).
+On a Linux server, UE4SS itself must be the
+[Qiiks build](https://github.com/Qiiks/ue4ss-linux-palworld/releases/tag/v1.0.3-palworld-linux)
+— the upstream one crashes on engine calls
+([#1](https://github.com/s-kiu/Palladium/issues/1)).
 
 Tested target: Ubuntu 24.04, x86_64. Any Linux with Docker ≥ 24 and the
 compose plugin works the same way. **Not** supported: ARM (Raspberry Pi) — the
