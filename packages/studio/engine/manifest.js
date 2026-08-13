@@ -1,6 +1,6 @@
 // Generated from packages/shared/bridge-capabilities.json — do not edit. Regenerate: node packages/shared/generate.mjs
 window.PALLADIUM_STUDIO = {
-  "version": "4.27.3",
+  "version": "4.27.4",
   "capabilities": [
     {
       "type": "player.message",

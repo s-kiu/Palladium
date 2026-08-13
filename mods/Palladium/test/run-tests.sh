@@ -37,6 +37,14 @@ run() {
     rm -rf "$col_root"
     [[ $col_status -eq 0 ]] || return $col_status
 
+    echo "── discovery ───────────────────────────────────────────────"
+    local disc_root
+    disc_root="$(mktemp -d)"
+    PALLADIUM_TEST_ROOT="$disc_root" PALLADIUM_SCRIPTS="$MOD_DIR/Scripts" "$lua" test/discovery.lua
+    local disc_status=$?
+    rm -rf "$disc_root"
+    [[ $disc_status -eq 0 ]] || return $disc_status
+
     echo "── framework ───────────────────────────────────────────────"
     local fw_root
     fw_root="$(mktemp -d)"

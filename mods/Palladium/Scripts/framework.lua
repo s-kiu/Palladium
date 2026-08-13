@@ -106,10 +106,12 @@ local function from_iterate(dir)
     if type(IterateGameDirectories) ~= "function" then return nil end
     local ok, dirs = pcall(IterateGameDirectories)
     if not ok or type(dirs) ~= "table" then return nil end
-    -- The tree this returns is keyed by directory name at every level; the
-    -- Mods folder is only in it on some builds, which is why this is not the
-    -- only route.
-    local mods = dirs[dir] or (dirs.Binaries and dirs.Binaries[dir])
+    -- The tree this returns is keyed by directory NAME at every level, and
+    -- `dir` arrives as an absolute path — looking the path up as a key found
+    -- nothing on any build. The folder's own name is what can match.
+    local base = dir:match("([^/]+)/*$") or dir
+    local mods = dirs[dir] or dirs[base]
+        or (dirs.Binaries and (dirs.Binaries[dir] or dirs.Binaries[base]))
     if type(mods) ~= "table" then return nil end
     local names = {}
     for name, entry in pairs(mods) do
@@ -119,13 +121,26 @@ local function from_iterate(dir)
     return names, "IterateGameDirectories"
 end
 
+-- Lua's own directory separator says which shell this host speaks; the wrong
+-- listing command is not an error, it is silence, which is worse.
+local SHELL_IS_CMD = package.config:sub(1, 1) == "\\"
+
 local function from_shell(dir)
     if type(io.popen) ~= "function" then return nil end
-    local ok, pipe = pcall(io.popen, "ls -1 '" .. dir:gsub("'", "") .. "' 2>/dev/null")
+    -- `ls` does not exist on cmd.exe: on a Windows dedicated server this
+    -- route never returned a single name, which left hosts where the other
+    -- two routes also fail — most of them — discovering nothing at all.
+    local command
+    if SHELL_IS_CMD then
+        command = 'dir /b /ad "' .. dir:gsub("/", "\\"):gsub('"', "") .. '" 2>nul'
+    else
+        command = "ls -1 '" .. dir:gsub("'", "") .. "' 2>/dev/null"
+    end
+    local ok, pipe = pcall(io.popen, command)
     if not ok or not pipe then return nil end
     local names = {}
     for line in pipe:lines() do
-        local name = line:match("^([%w_%.%-]+)$")
+        local name = line:match("^([%w_%.%-]+)%s*$")
         if name then names[#names + 1] = name end
     end
     pipe:close()
@@ -825,7 +840,10 @@ function framework.load()
     end
 
     if #framework.order == 0 then
-        log("no mods found — a mod is a folder with a mod.lua beside " .. dir .. "/Palladium")
+        log("no mods found — a mod is a folder with a mod.lua beside " .. dir .. "/Palladium. "
+            .. "If mods ARE there, this host offers no way to list a folder: write "
+            .. dir .. "/Palladium/mods.list yourself, one folder name per line, "
+            .. "and it is believed over any scan.")
     end
     return #framework.order
 end
