@@ -100,6 +100,24 @@ Set `MODS_ENABLED=false`, restart. Boots fine → it's a mod: bisect with
 Put your copy of the file under `config/persist/<server-relative-path>` —
 it's restored on every boot ([mods.md](mods.md), "Files that keep resetting").
 
+**Chat commands crash a standalone Linux server (signal 8 / exit 136).**
+Seen on the upstream `ue4ss-linux-palworld` build: the server boots, hooks
+register, then the first `!command` typed in chat takes the process down with
+a floating-point exception. That build is missing part of the Linux fix set
+([upstream issue #11](https://github.com/BlackBookOfficial/ue4ss-linux-palworld/issues/11))
+— most relevantly the bundled `UE4SS_Signatures/` address overrides. Without
+them the loader can resolve an engine function to the wrong address, and the
+first real engine call Lua makes — sending your chat reply — executes
+something that was never meant to run.
+
+Use the release Pal-Up itself pins:
+[`Qiiks/ue4ss-linux-palworld`, tag `v1.0.3-palworld-linux`](https://github.com/Qiiks/ue4ss-linux-palworld/releases)
+— and keep the `UE4SS_Signatures/` directory from that archive next to the
+loader, it is required, not optional. To confirm this is your case first:
+type `!zzz` (any unknown command) in chat. Its reply is one short line — if
+that also crashes, message length is irrelevant and it is the loader's
+engine-call path; the same crash would eventually surface without Palladium.
+
 ## Updates
 
 **"GAME UPDATE AVAILABLE — NOT APPLIED".**
